@@ -40,6 +40,25 @@ test('ambiguidade nao cai no parser legado', async () => {
   assert.match(result.clarification, /pedido ou a tarefa/i);
 });
 
+test('negacao bloqueada nao cai no parser legado', async () => {
+  const result = await resolveSemanticMessage('Miauby nao faca sangria de 30', {
+    url: 'http://agent/interpret',
+    token: 'test-token',
+    timeoutMs: 100,
+    fetchImpl: async () => new Response(JSON.stringify({
+      ok: true,
+      status: 'blocked',
+      intent: 'registrar_sangria',
+      module: 'financeiro',
+      clarification: 'Entendi. Nao vou executar essa acao.',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+  });
+
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.message, '');
+  assert.match(result.clarification, /nao vou executar/i);
+});
+
 test('indisponibilidade preserva o formato legado', async () => {
   const result = await resolveSemanticMessage('miauby pedido anb 350', {
     url: 'http://agent/interpret',

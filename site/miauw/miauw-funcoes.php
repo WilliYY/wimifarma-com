@@ -6924,14 +6924,17 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
     }
 
     $semantic = miauw_agent_semantic_interpretation($message, 'internal');
-    if (is_array($semantic) && (string) ($semantic['status'] ?? '') === 'ambiguous') {
+    $semanticStatus = is_array($semantic) ? (string) ($semantic['status'] ?? '') : '';
+    if (in_array($semanticStatus, array('ambiguous', 'blocked'), true)) {
         return array(
-            'text' => trim((string) ($semantic['clarification'] ?? 'Qual acao voce quer executar?')),
+            'text' => trim((string) ($semantic['clarification'] ?? ($semanticStatus === 'blocked'
+                ? 'Entendi. Nao vou executar essa acao.'
+                : 'Qual acao voce quer executar?'))),
             'fallback' => false,
-            'model' => 'miauw-semantic-clarification',
+            'model' => $semanticStatus === 'blocked' ? 'miauw-semantic-blocked' : 'miauw-semantic-clarification',
         );
     }
-    if (is_array($semantic) && (string) ($semantic['status'] ?? '') === 'resolved') {
+    if (is_array($semantic) && $semanticStatus === 'resolved') {
         $canonicalMessage = trim((string) ($semantic['canonical_message'] ?? ''));
         if ($canonicalMessage !== '') {
             miauw_trace_record('interpretar_comando_miauby', 'resolved', array(

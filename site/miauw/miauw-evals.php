@@ -1153,6 +1153,28 @@ miauw_eval_add('fase22_ambiguidade_bloqueia_acao_legada', static function (): vo
     miauw_eval_assert(!isset($reply['confirmation']), 'Ambiguidade nao pode criar confirmacao.');
 });
 
+miauw_eval_add('fase22_negacao_bloqueia_acao_legada', static function (): void {
+    miauw_eval_reset_action_state();
+    $GLOBALS['miauw_semantic_interpreter_override'] = static function (): array {
+        return array(
+            'ok' => true,
+            'status' => 'blocked',
+            'intent' => 'registrar_sangria',
+            'module' => 'financeiro',
+            'risk' => 'alto',
+            'clarification' => 'Entendi. Nao vou executar essa acao.',
+        );
+    };
+
+    $reply = miauw_try_controlled_action('Miauby nao faca sangria de 30', 1);
+    unset($GLOBALS['miauw_semantic_interpreter_override']);
+
+    miauw_eval_assert(is_array($reply), 'Negacao deveria gerar resposta segura.');
+    miauw_eval_assert_same('miauw-semantic-blocked', (string) ($reply['model'] ?? ''), 'Negacao passou para parser legado.');
+    miauw_eval_assert_contains('Nao vou executar', (string) ($reply['text'] ?? ''), 'Resposta de bloqueio perdeu a confirmacao de seguranca.');
+    miauw_eval_assert(!isset($reply['confirmation']), 'Negacao nao pode criar confirmacao.');
+});
+
 $passed = 0;
 $failed = 0;
 

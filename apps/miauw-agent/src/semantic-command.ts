@@ -1,5 +1,5 @@
 export type SemanticChannel = 'internal' | 'whatsapp';
-export type SemanticStatus = 'resolved' | 'ambiguous' | 'none';
+export type SemanticStatus = 'resolved' | 'ambiguous' | 'blocked' | 'none';
 
 export type SemanticEntityType =
   | 'money'
@@ -63,15 +63,37 @@ type Candidate = {
   consumed: Set<number>;
 };
 
+type PhraseMatch = {
+  phrase: string;
+  indexes: number[];
+  fuzzyCount: number;
+};
+
 const ACTIVATION_WORDS = new Set(['miauby', 'miauw', 'miau']);
 const EDGE_FILLERS = new Set([
   'a', 'ai', 'como', 'da', 'de', 'do', 'e', 'eu', 'favor', 'me', 'no', 'o', 'por', 'porfavor',
   'quero', 'queria', 'preciso', 'pra', 'pode', 'poderia', 'por',
 ]);
 const ACTION_FILLERS = new Set([
-  'abre', 'abrir', 'adiciona', 'adicionar', 'coloca', 'colocar', 'cria', 'criar', 'faz', 'fazer',
-  'lanca', 'lancar', 'registra', 'registrar',
+  'abre', 'abrir', 'adiciona', 'adicionar', 'coloca', 'colocar', 'cria', 'criar', 'faca', 'faco',
+  'faz', 'fazer', 'lanca', 'lancar', 'registra', 'registrar',
 ]);
+const NEGATION_WORDS = new Set(['jamais', 'nao', 'nem', 'nunca']);
+const INFORMATIONAL_CUES = [
+  'como faco', 'como fazer', 'como funciona', 'da para', 'devo', 'deveria', 'e possivel', 'o que acontece',
+  'pode me explicar', 'poderia', 'posso', 'tem como',
+];
+const RELATIVE_DATE_WORDS = new Set(['anteontem', 'amanha', 'hoje', 'ontem']);
+const QUANTITY_UNITS = new Set([
+  'ampola', 'ampolas', 'caixa', 'caixas', 'comprimido', 'comprimidos', 'frasco', 'frascos',
+  'item', 'itens', 'pacote', 'pacotes', 'unidade', 'unidades',
+]);
+const NUMBER_WORDS = new Map<string, string>([
+  ['uma', '1'], ['um', '1'], ['duas', '2'], ['dois', '2'], ['tres', '3'], ['quatro', '4'],
+  ['cinco', '5'], ['seis', '6'], ['sete', '7'], ['oito', '8'], ['nove', '9'], ['dez', '10'],
+]);
+const PHRASE_PARTS_CACHE = new Map<string, string[]>();
+const MONEY_TOKEN_PATTERN = /^(?:\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)$/;
 const CATEGORY_WORDS = new Set([
   'alta', 'baixa', 'critica', 'critico', 'encomenda', 'falta', 'geral', 'grave', 'importante',
   'normal', 'popular', 'urgente',
@@ -84,6 +106,7 @@ const INTENTS: IntentSpec[] = [
       'falteiro', 'falta', 'faltou', 'acabou', 'esta faltando', 'ta faltando', 'ficou sem', 'estamos sem',
       'sem estoque', 'nao tem mais', 'terminou', 'precisa comprar', 'precisamos comprar', 'no falteiro',
       'preciso urgente de', 'preciso de', 'precisamos de', 'esta em falta', 'ta em falta', 'em falta',
+      'estao faltando', 'tao faltando', 'faltam',
     ]],
     optional: ['coloca', 'adiciona', 'joga'],
     blockers: ['qual faltou', 'o que faltou', 'relatorio', 'historico'],
@@ -244,6 +267,20 @@ export function interpretSemanticCommand(message: string, _options: SemanticOpti
 
   const top = candidates[0];
   const second = candidates[1];
+  if (top.spec.risk !== 'baixo' && hasUnconsumedNegation(tokens, top.consumed)) {
+    return {
+      status: 'blocked',
+      intent: top.spec.intent,
+      module: top.spec.module,
+      risk: top.spec.risk,
+      confidence: round(top.confidence),
+      evidence: top.evidence,
+      entities: extractEntities(original, tokens, top.spec, top.consumed),
+      canonical_message: '',
+      missing: [],
+      clarification: 'Entendi. Nao vou executar essa acao.',
+    };
+  }
   if (second && isAmbiguous(top, second)) {
     return {
       status: 'ambiguous',
@@ -256,6 +293,21 @@ export function interpretSemanticCommand(message: string, _options: SemanticOpti
       canonical_message: '',
       missing: [],
       clarification: ambiguityQuestion(top.spec, second.spec),
+    };
+  }
+
+  if (top.spec.risk !== 'baixo' && hasInformationalCue(tokens)) {
+    return {
+      status: 'ambiguous',
+      intent: top.spec.intent,
+      module: top.spec.module,
+      risk: top.spec.risk,
+      confidence: round(Math.max(0.5, top.confidence - 0.08)),
+      evidence: top.evidence,
+      entities: extractEntities(original, tokens, top.spec, top.consumed),
+      canonical_message: '',
+      missing: [],
+      clarification: `Voce quer ${intentLabel(top.spec)}?`,
     };
   }
 
@@ -289,16 +341,18 @@ function candidateFor(
 
   const consumed = new Set<number>();
   const evidence: string[] = [];
+  let fuzzyCount = 0;
   for (const group of spec.groups) {
-    const matched = bestPhrase(tokens, group);
+    const matched = bestPhrase(tokens, group, activated);
     if (!matched) return null;
     evidence.push(matched.phrase);
+    fuzzyCount += matched.fuzzyCount;
     matched.indexes.forEach((index) => consumed.add(index));
   }
 
   const optional = (spec.optional || [])
     .map((phrase) => bestPhrase(tokens, [phrase]))
-    .filter((match): match is { phrase: string; indexes: number[] } => match !== null);
+    .filter((match): match is PhraseMatch => match !== null);
   for (const match of optional) {
     evidence.push(match.phrase);
     match.indexes.forEach((index) => consumed.add(index));
@@ -308,9 +362,12 @@ function candidateFor(
   if (spec.intent === 'criar_conta_gestao' && !containsMoneyLike(tokens) && !hasPhrase(tokens, 'conta')) return null;
 
   const specificity = evidence.reduce((total, phrase) => total + phrase.split(' ').length, 0);
-  const score = (spec.priority || 0) + spec.groups.length * 35 + optional.length * 5 + specificity * 3 + (activated ? 4 : 0);
+  const score = (spec.priority || 0) + spec.groups.length * 35 + optional.length * 5 + specificity * 3
+    + (activated ? 4 : 0) - fuzzyCount * 4;
   const base = spec.risk === 'baixo' ? 0.58 : 0.64;
-  const confidence = Math.min(0.98, base + Math.min(0.24, specificity * 0.035) + Math.min(0.08, optional.length * 0.02));
+  const confidence = Math.max(0.5, Math.min(0.98,
+    base + Math.min(0.24, specificity * 0.035) + Math.min(0.08, optional.length * 0.02) - fuzzyCount * 0.07,
+  ));
   if (!activated && normalized.split(' ').length > 18 && specificity < 2) return null;
 
   return { spec, score, confidence, evidence: unique(evidence), consumed };
@@ -374,34 +431,96 @@ function intentLabel(spec: IntentSpec): string {
   return spec.prefix.toLowerCase();
 }
 
-function bestPhrase(tokens: MessageToken[], phrases: string[]): { phrase: string; indexes: number[] } | null {
-  let best: { phrase: string; indexes: number[] } | null = null;
+function bestPhrase(tokens: MessageToken[], phrases: string[], allowFuzzy = false): PhraseMatch | null {
+  let best: PhraseMatch | null = null;
   for (const phrase of phrases) {
-    const indexes = phraseIndexes(tokens, phrase);
-    if (!indexes.length) continue;
-    if (!best || indexes.length > best.indexes.length) best = { phrase, indexes };
+    const match = phraseMatch(tokens, phrase, allowFuzzy);
+    if (!match) continue;
+    if (!best || match.indexes.length > best.indexes.length
+      || (match.indexes.length === best.indexes.length && match.fuzzyCount < best.fuzzyCount)) {
+      best = { phrase, ...match };
+    }
   }
   return best;
 }
 
 function hasPhrase(tokens: MessageToken[], phrase: string): boolean {
-  return phraseIndexes(tokens, phrase).length > 0;
+  return phraseMatch(tokens, phrase, false) !== null;
 }
 
-function phraseIndexes(tokens: MessageToken[], phrase: string): number[] {
-  const parts = normalizeText(phrase).split(' ').filter(Boolean);
-  if (!parts.length || parts.length > tokens.length) return [];
+function phraseMatch(
+  tokens: MessageToken[],
+  phrase: string,
+  allowFuzzy: boolean,
+): { indexes: number[]; fuzzyCount: number } | null {
+  const parts = phraseParts(phrase);
+  if (!parts.length || parts.length > tokens.length) return null;
   for (let start = 0; start <= tokens.length - parts.length; start += 1) {
-    let matches = true;
+    let fuzzyCount = 0;
     for (let offset = 0; offset < parts.length; offset += 1) {
-      if (tokens[start + offset].normalized !== parts[offset]) {
-        matches = false;
+      const actual = tokens[start + offset].normalized;
+      const expected = parts[offset];
+      if (actual === expected) continue;
+      if (!allowFuzzy || !isConservativeTypo(actual, expected)) {
+        fuzzyCount = -1;
         break;
       }
+      fuzzyCount += 1;
     }
-    if (matches) return parts.map((_part, offset) => start + offset);
+    if (fuzzyCount >= 0) {
+      return { indexes: parts.map((_part, offset) => start + offset), fuzzyCount };
+    }
   }
-  return [];
+  return null;
+}
+
+function phraseParts(phrase: string): string[] {
+  const cached = PHRASE_PARTS_CACHE.get(phrase);
+  if (cached) return cached;
+  const parts = normalizeText(phrase).split(' ').filter(Boolean);
+  PHRASE_PARTS_CACHE.set(phrase, parts);
+  return parts;
+}
+
+function isConservativeTypo(actual: string, expected: string): boolean {
+  if (actual.length < 5 || expected.length < 6 || Math.abs(actual.length - expected.length) > 1) return false;
+  if (actual.length === expected.length) {
+    const mismatches: number[] = [];
+    for (let index = 0; index < actual.length; index += 1) {
+      if (actual[index] !== expected[index]) mismatches.push(index);
+      if (mismatches.length > 2) return false;
+    }
+    if (mismatches.length === 1) return true;
+    return mismatches.length === 2
+      && mismatches[1] === mismatches[0] + 1
+      && actual[mismatches[0]] === expected[mismatches[1]]
+      && actual[mismatches[1]] === expected[mismatches[0]];
+  }
+
+  const [shorter, longer] = actual.length < expected.length ? [actual, expected] : [expected, actual];
+  if (`${shorter}s` === longer) return false;
+  let shortIndex = 0;
+  let longIndex = 0;
+  let skipped = false;
+  while (shortIndex < shorter.length && longIndex < longer.length) {
+    if (shorter[shortIndex] === longer[longIndex]) {
+      shortIndex += 1;
+      longIndex += 1;
+      continue;
+    }
+    if (skipped) return false;
+    skipped = true;
+    longIndex += 1;
+  }
+  return true;
+}
+
+function hasUnconsumedNegation(tokens: MessageToken[], consumed: Set<number>): boolean {
+  return tokens.some((token, index) => NEGATION_WORDS.has(token.normalized) && !consumed.has(index));
+}
+
+function hasInformationalCue(tokens: MessageToken[]): boolean {
+  return INFORMATIONAL_CUES.some((phrase) => hasPhrase(tokens, phrase));
 }
 
 function tokenize(message: string): MessageToken[] {
@@ -426,11 +545,26 @@ function extractEntities(
   collectMatches(entities, message, 'time', /\b(?:[01]?\d|2[0-3])\s*h(?:[0-5]\d)?\b/gi);
   collectMatches(entities, message, 'dosage', /\b\d+(?:[.,]\d+)?\s*(?:mg|mcg|g|kg|ml|l|ui|%)\b/gi);
   collectMatches(entities, message, 'quantity', /\b(?:quantidade|qtd)\s*[:=-]?\s*\d+\b/gi);
-  collectMatches(entities, message, 'money', /(?:R\$\s*)?\d+(?:\.\d{3})*(?:,\d{1,2})\s*(?:reais?|real)?\b/gi);
-  collectMatches(entities, message, 'money', /\b\d+(?:\.\d{1,2})\s*(?:reais?|real)\b/gi);
+  collectMatches(entities, message, 'quantity', /\b\d+\s*(?:ampolas?|caixas?|comprimidos?|frascos?|itens?|pacotes?|unidades?)\b/gi);
+  collectMatches(entities, message, 'money', /(?:R\$\s*\d+(?:\.\d{3})*(?:,\d{1,2})?|\b\d+(?:[.,]\d{1,2})?\s*(?:reais?|real))\b/gi);
+
+  for (const [index, token] of tokens.entries()) {
+    if (RELATIVE_DATE_WORDS.has(token.normalized)) entities.push(entityFromToken('date', token));
+    const numericWord = NUMBER_WORDS.get(token.normalized);
+    const next = tokens[index + 1];
+    if (numericWord && next && QUANTITY_UNITS.has(next.normalized)) {
+      entities.push({
+        type: 'quantity',
+        value: message.slice(token.start, next.end),
+        normalized: numericWord,
+        start: token.start,
+        end: next.end,
+      });
+    }
+  }
 
   if (spec?.moneyFirst && !entities.some((entity) => entity.type === 'money')) {
-    const plain = tokens.find((token) => /^\d+$/.test(token.normalized)
+    const plain = tokens.find((token) => MONEY_TOKEN_PATTERN.test(token.normalized)
       && !entities.some((entity) => ['date', 'time', 'dosage', 'quantity'].includes(entity.type)
         && rangesOverlap(token.start, token.end, entity.start, entity.end)));
     if (plain) entities.push(entityFromToken('money', plain));
@@ -475,12 +609,12 @@ function entityFromToken(type: SemanticEntityType, token: MessageToken): Semanti
 }
 
 function plainMoneyEntity(tokens: MessageToken[]): SemanticEntity | null {
-  const token = tokens.find((item) => /^\d+(?:[.,]\d{1,2})?$/.test(item.normalized));
+  const token = tokens.find((item) => MONEY_TOKEN_PATTERN.test(item.normalized));
   return token ? entityFromToken('money', token) : null;
 }
 
 function containsMoneyLike(tokens: MessageToken[]): boolean {
-  return tokens.some((token) => /^\d+(?:[.,]\d{1,2})?$/.test(token.normalized));
+  return tokens.some((token) => MONEY_TOKEN_PATTERN.test(token.normalized));
 }
 
 function dedupeEntities(entities: SemanticEntity[]): SemanticEntity[] {

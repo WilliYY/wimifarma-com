@@ -1,5 +1,5 @@
 export type SemanticMessageResult = {
-  status: 'resolved' | 'ambiguous' | 'none' | 'fallback';
+  status: 'resolved' | 'ambiguous' | 'blocked' | 'none' | 'fallback';
   message: string;
   intent: string;
   module: string;
@@ -47,14 +47,15 @@ export async function resolveSemanticMessage(message: string, options: ResolveOp
     if (!response.ok || !body || body.ok !== true) return fallback(original);
 
     const status = stringValue(body.status);
-    if (status === 'ambiguous') {
+    if (status === 'ambiguous' || status === 'blocked') {
       return {
-        status: 'ambiguous',
+        status,
         message: '',
-        intent: '',
-        module: '',
+        intent: stringValue(body.intent),
+        module: stringValue(body.module),
         confidence: numberValue(body.confidence),
-        clarification: stringValue(body.clarification) || 'Qual acao voce quer executar?',
+        clarification: stringValue(body.clarification)
+          || (status === 'blocked' ? 'Entendi. Nao vou executar essa acao.' : 'Qual acao voce quer executar?'),
       };
     }
     if (status === 'resolved') {

@@ -15,7 +15,7 @@ O endpoint interno `POST /miauw/agent/interpret` recebe:
 
 E retorna:
 
-- `status`: `resolved`, `ambiguous` ou `none`;
+- `status`: `resolved`, `ambiguous`, `blocked` ou `none`;
 - `intent` e `module`;
 - `confidence`, entre 0 e 1;
 - `evidence`: sinais da intencao encontrados na frase;
@@ -33,7 +33,10 @@ E retorna:
 5. Nao inventar categoria, usuario, data, quantidade ou valor. Validacoes dependentes de banco continuam no modulo dono do dado.
 6. Intencoes de escrita exigem confianca maior que consultas. Empate proximo entre intencoes potencialmente destrutivas retorna `ambiguous` e pede somente a informacao necessaria.
 7. O interpretador nao chama OpenAI e nao executa tools. O PHP continua dono da confirmacao e da escrita; o WhatsApp continua usando confirmacoes idempotentes.
-8. Se o servico estiver indisponivel ou retornar `none`, usar o parser legado com a mensagem original. Se retornar `ambiguous`, nao executar o parser legado.
+8. Negacao explicita fora dos termos da propria intencao retorna `blocked`; perguntas informativas sobre acoes de escrita retornam `ambiguous`. Nenhum dos dois estados pode cair no parser legado.
+9. Pequenos erros de uma letra sao tolerados somente nos termos do comando e quando `Miauby` foi chamado. Singular/plural nao usa aproximacao para nao misturar intencoes diferentes.
+10. Frases e sinonimos normalizados ficam em cache no processo. Datas relativas, quantidades naturais e valores brasileiros como `1.500,20` sao extraidos como contexto sem inventar nem reformatar dados.
+11. Se o servico estiver indisponivel ou retornar `none`, usar o parser legado com a mensagem original.
 
 ## Comandos cobertos
 
@@ -69,6 +72,9 @@ Para cada familia, cobrir:
 - formatos legados;
 - ausencia de falso positivo conversacional;
 - ambiguidade bloqueada para acoes fortes;
+- negacao explicita bloqueada sem confundir expressoes como `nao tem mais`;
+- pergunta informativa sem execucao acidental;
+- typo conservador somente com ativacao explicita;
 - fallback quando o endpoint nao estiver disponivel.
 
 ## Criterios de aceite

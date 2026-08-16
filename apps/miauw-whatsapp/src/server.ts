@@ -681,7 +681,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.39';
+const SERVICE_VERSION = '0.5.40';
 const MODULE_KEY = 'miauw_whatsapp';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
@@ -7905,11 +7905,11 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     token: INTERNAL_TOKEN,
     timeoutMs: AGENT_INTERPRET_TIMEOUT_MS,
   });
-  if (semantic.status === 'ambiguous') {
+  if (semantic.status === 'ambiguous' || semantic.status === 'blocked') {
     return {
       text: semantic.clarification,
       engine: 'local',
-      reason: 'semantic_command_ambiguous',
+      reason: semantic.status === 'blocked' ? 'semantic_command_blocked' : 'semantic_command_ambiguous',
     };
   }
   message = semantic.message;

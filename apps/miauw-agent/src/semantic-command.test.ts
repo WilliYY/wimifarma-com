@@ -160,6 +160,70 @@ test('nao transforma conversa solta em comando operacional', () => {
   assert.equal(resolved('bom dia, tudo bem?').status, 'none');
 });
 
+test('bloqueia comando negado sem confundir falta de estoque', () => {
+  const sangria = resolved('Miauby nao faca sangria de 30');
+  assert.equal(sangria.status, 'blocked');
+  assert.equal(sangria.canonical_message, '');
+  assert.match(sangria.clarification, /nao vou executar/i);
+
+  const falteiroNegado = resolved('Miauby nao acabou losartana 50mg');
+  assert.equal(falteiroNegado.status, 'blocked');
+
+  const faltaReal = resolved('MIAUBY nao tem mais losartana 50mg urgente');
+  assert.equal(faltaReal.status, 'resolved');
+  assert.equal(faltaReal.intent, 'registrar_falteiro');
+
+  const consultaNegativa = resolved('Miauby nao tem tarefas para hoje?');
+  assert.equal(consultaNegativa.status, 'resolved');
+  assert.equal(consultaNegativa.intent, 'listar_tarefas');
+});
+
+test('pede confirmacao quando a frase apenas pergunta sobre uma acao', () => {
+  for (const message of [
+    'Miauby como faco uma sangria de 30?',
+    'Miauby posso fechar o caixa hoje?',
+    'Miauby tem como cancelar o pedido da ANB?',
+  ]) {
+    const result = resolved(message);
+    assert.equal(result.status, 'ambiguous', message);
+    assert.equal(result.canonical_message, '', message);
+    assert.match(result.clarification, /voce quer/i, message);
+  }
+
+  const consulta = resolved('Miauby o caixa de hoje esta aberto?');
+  assert.equal(consulta.status, 'resolved');
+  assert.equal(consulta.intent, 'consultar_fechamento_caixa');
+});
+
+test('tolera um pequeno erro somente nas palavras do comando ativado', () => {
+  const sangria = resolved('Miauby sagria 30 para Maria');
+  assert.equal(sangria.status, 'resolved');
+  assert.equal(sangria.intent, 'registrar_sangria');
+  assert.match(sangria.canonical_message, /^sangria 30/i);
+
+  const pedido = resolved('Miauby cancela peddo 123');
+  assert.equal(pedido.status, 'resolved');
+  assert.equal(pedido.intent, 'cancelar_pedido');
+
+  assert.equal(resolved('sagria 30 para Maria').status, 'none');
+});
+
+test('extrai quantidade natural e data relativa como contexto', () => {
+  const result = resolved('Miauby estao faltando tres caixas de dipirona 500mg para amanha');
+  assert.equal(result.status, 'resolved');
+  assert.equal(result.intent, 'registrar_falteiro');
+  assert.ok(result.entities.some((entity) => entity.type === 'quantity' && entity.normalized === '3'));
+  assert.ok(result.entities.some((entity) => entity.type === 'date' && entity.normalized === 'amanha'));
+});
+
+test('normaliza caixa, acentos e valores brasileiros sem perder o dado original', () => {
+  const result = resolved('MÍÁÚBY SÁNGRIA 1.500,20 PARA MARIA');
+  assert.equal(result.status, 'resolved');
+  assert.equal(result.intent, 'registrar_sangria');
+  assert.match(result.canonical_message, /^sangria 1\.500,20 PARA MARIA$/i);
+  assert.ok(result.entities.some((entity) => entity.type === 'money' && entity.value === '1.500,20'));
+});
+
 test('bloqueia ambiguidade real entre duas acoes destrutivas', () => {
   const result = resolved('Miauby cancelar o pedido e a tarefa');
   assert.equal(result.status, 'ambiguous');
