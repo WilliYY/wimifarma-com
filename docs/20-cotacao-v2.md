@@ -6,11 +6,13 @@ A Cotacao V2 substitui a planilha PHP antiga em `/cotacao/` por um servico dedic
 
 ## Falteiro pelo Miauby
 
-Desde 2026-08-16, `apps/cotacao/src/falteiro-command.js` e a fonte unica de interpretacao dos comandos do Falteiro usados pelo Miauby Interno e pelo Miauby WhatsApp. O parser e case-insensitive, aceita somente comandos claros iniciados por `falteiro`, `falta`, `faltou` ou `acabou`, com `miauby`/`miauw` opcional na entrada interna, e rejeita perguntas ou frases em que o gatilho aparece fora da posicao de comando. Dosagem e apresentacao permanecem no produto; `urgente`, `urgencia` ou `prioridade urgente` no fim sao removidos do nome e gravados como categoria `Urgente`.
+Desde 2026-08-16, `apps/cotacao/src/falteiro-command.js` e a fonte unica de interpretacao dos comandos do Falteiro usados pelo Miauby Interno e pelo Miauby WhatsApp. O parser e case-insensitive, aceita `miauby`/`miauw` opcional e reconhece intencao clara de falta de estoque ou necessidade de compra em frases como `falta`, `acabou`, `esta faltando`, `estamos sem`, `sem estoque`, `nao tem mais`, `terminou`, `precisa comprar` e `coloca no falteiro`, inclusive com o produto antes da intencao. Perguntas, comandos de chegada e indisponibilidades comuns como internet ou energia nao viram escrita.
+
+Dosagem e apresentacao permanecem no produto. A cada comando, o endpoint monta o catalogo de categorias a partir das categorias nao vazias de linhas ativas que tambem tenham produto e das regras cadastradas para a coluna `categoria`; valores numericos ou vazios sao ignorados. O parser reconhece o nome cadastrado mesmo quando a ordem das palavras muda, preserva exatamente o rotulo do sistema e nunca cria categoria nova. Palavras de contexto como `urgente`, `popular` e `falta` sao retiradas do produto quando ocupam uma posicao explicita de categoria; se nao houver categoria correspondente no catalogo, nenhuma categoria e gravada.
 
 O endpoint tokenizado `POST /cotacao/api/internal/falteiro/commands` recebe a frase bruta, `source`, `request_id` e ator. Ele procura a primeira linha ativa ordenada por posicao em que `values->>'produto'` esteja vazio, trava a operacao por cotacao e atualiza somente `produto` e, quando informada, `categoria`. Se nao houver linha vazia, responde conflito e nao cria nem sobrescreve linha. A transacao grava o evento `cells_batch_updated`, publica Socket.IO e registra a deduplicacao/auditoria em `cotacao_v2_miauby_falteiro_commands`; a chave unica `(source, request_id)` faz retry devolver o resultado original sem nova escrita.
 
-Exemplos: `Miauby falteiro losartana`, `miauby falta losartana 40mg` e `MIAUBY acabou losartana 40mg urgente`. A resposta curta vem do mesmo endpoint, por exemplo `✅ Losartana 40mg adicionada ao Falteiro como Urgente.`.
+Exemplos: `Miauby falteiro losartana`, `Miauby estamos sem dipirona`, `Miauby coloca omeprazol 20mg no falteiro`, `Miauby losartana 50mg acabou, urgente` e `Miauby preciso urgente de amoxicilina 500mg`. A resposta curta vem do mesmo endpoint, por exemplo `✅ Losartana 40mg adicionada ao Falteiro como Urgente.`.
 
 ## Arquivos, rotas e servicos envolvidos
 

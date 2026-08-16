@@ -1075,8 +1075,14 @@ miauw_eval_add('falteiro_comando_compartilhado_case_insensitive', static functio
     miauw_eval_assert(function_exists('miauw_skill_falteiro_command_candidate'), 'Detector compartilhado do Falteiro ausente.');
     miauw_eval_assert(miauw_skill_falteiro_command_candidate('Miauby falteiro losartana'), 'Falteiro em caixa mista deveria ser candidato.');
     miauw_eval_assert(miauw_skill_falteiro_command_candidate('MIAUBY ACABOU LOSARTANA'), 'Acabou em caixa alta deveria ser candidato.');
+    miauw_eval_assert(miauw_skill_falteiro_command_candidate('Miauby ta faltando losartana 50mg'), 'Intencao natural de falta deveria ser candidata.');
+    miauw_eval_assert(miauw_skill_falteiro_command_candidate('Miauby estamos sem dipirona'), 'Estamos sem deveria ser candidato.');
+    miauw_eval_assert(miauw_skill_falteiro_command_candidate('Miauby coloca omeprazol 20mg no falteiro'), 'Acao no Falteiro deveria ser candidata.');
+    miauw_eval_assert(miauw_skill_falteiro_command_candidate('Miauby precisa comprar losartana 50mg'), 'Necessidade de compra deveria ser candidata.');
+    miauw_eval_assert(miauw_skill_falteiro_command_candidate('Miauby amoxicilina 500mg esta em falta'), 'Produto antes da intencao deveria ser candidato.');
     miauw_eval_assert(!miauw_skill_falteiro_command_candidate('Miauby cotacao losartana'), 'Consulta comum nao pode virar Falteiro.');
     miauw_eval_assert(!miauw_skill_falteiro_command_candidate('qual produto faltou ontem?'), 'Pergunta sobre falta nao pode virar escrita.');
+    miauw_eval_assert(!miauw_skill_falteiro_command_candidate('Miauby estamos sem internet'), 'Contexto sem estoque nao pode capturar indisponibilidade comum.');
 });
 
 $passed = 0;

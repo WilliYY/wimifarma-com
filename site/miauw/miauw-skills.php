@@ -3652,12 +3652,40 @@ function miauw_skill_cotacao_v2_internal_request(string $method, string $path, a
 
 function miauw_skill_falteiro_command_candidate(string $message): bool
 {
-    $clean = preg_replace('/^(?:miauby|miauw)\b[\s,:;\-]*/iu', '', trim($message));
+    if (preg_match('/\?\s*$/u', trim($message)) === 1) {
+        return false;
+    }
+
+    $clean = miauw_skill_normalized($message);
+    $clean = preg_replace('/^(?:miauby|miauw)\b[\s,:;\-]*/iu', '', trim($clean));
     if (!is_string($clean)) {
         return false;
     }
 
-    return preg_match('/^(?:por\s+favor\s+)?(?:falteiro|falta|faltou|acabou)\b/iu', trim($clean)) === 1;
+    $clean = trim((string) preg_replace('/[^a-z0-9]+/iu', ' ', $clean));
+    if ($clean === '' || preg_match('/^(?:estamos|estou|ficou|esta|ta)\s+sem\s+(?:internet|energia|tempo|sistema|acesso|sinal|conexao|dados)$/iu', $clean) === 1) {
+        return false;
+    }
+
+    $patterns = array(
+        '/^(?:por\s+favor\s+)?(?:falteiro|falta|faltou|acabou)\b/iu',
+        '/^(?:por\s+favor\s+)?(?:esta|ta)\s+faltando\b/iu',
+        '/^(?:por\s+favor\s+)?(?:ficou|estamos|estou|esta|ta)\s+sem\b/iu',
+        '/^(?:por\s+favor\s+)?sem\s+estoque\b/iu',
+        '/^(?:por\s+favor\s+)?nao\s+tem\s+mais\b/iu',
+        '/^(?:por\s+favor\s+)?terminou\b/iu',
+        '/^(?:por\s+favor\s+)?(?:precisa|precisamos|preciso)\s+(?:comprar\b|(?:urgente|urgencia|popular|falta)(?:\s+(?:urgente|urgencia|popular|falta))*\s+de\b)/iu',
+        '/^(?:por\s+favor\s+)?(?:coloca|coloque|adiciona|adicione|joga|jogue)\b.*\bno\s+falteiro\b/iu',
+        '/\b(?:acabou|terminou)(?:\s+(?:urgente|urgencia|popular|falta))*$/iu',
+        '/\b(?:esta|ta)\s+(?:em\s+falta|faltando|sem\s+estoque)(?:\s+(?:urgente|urgencia|popular|falta))*$/iu',
+    );
+    foreach ($patterns as $pattern) {
+        if (preg_match($pattern, $clean) === 1) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function miauw_skill_register_falteiro_command(string $message, array $user, string $requestId): ?array

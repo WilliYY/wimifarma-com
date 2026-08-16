@@ -680,7 +680,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.37';
+const SERVICE_VERSION = '0.5.38';
 const MODULE_KEY = 'miauw_whatsapp';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);

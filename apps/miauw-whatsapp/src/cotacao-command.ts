@@ -31,10 +31,26 @@ export type CotacaoEncomendasSummary = {
 const WRITE_INTENT_PATTERN = /\b(criar|cria|adicionar|adiciona|registrar|registra|lancar|lançar|colocar|coloca|inserir|insere|nova|novo)\b/;
 const RECENT_PATTERN = /\b(recentes?|novas?|ultimas?|últimas?|ultima|última|mais recentes?|mais novas?)\b/;
 const OLD_PATTERN = /\b(antigas?|velhas?|paradas?|mais antigas?)\b/;
-const FALTEIRO_CANDIDATE_PATTERN = /^(?:por favor\s+)?(?:falteiro|falta|faltou|acabou)\b/i;
+const FALTEIRO_CANDIDATE_PATTERNS = [
+  /^(?:por favor\s+)?(?:falteiro|falta|faltou|acabou)\b/,
+  /^(?:por favor\s+)?(?:esta|ta)\s+faltando\b/,
+  /^(?:por favor\s+)?(?:ficou|estamos|estou|esta|ta)\s+sem\b/,
+  /^(?:por favor\s+)?sem\s+estoque\b/,
+  /^(?:por favor\s+)?nao\s+tem\s+mais\b/,
+  /^(?:por favor\s+)?terminou\b/,
+  /^(?:por favor\s+)?(?:precisa|precisamos|preciso)\s+(?:comprar\b|(?:urgente|urgencia|popular|falta)(?:\s+(?:urgente|urgencia|popular|falta))*\s+de\b)/,
+  /^(?:por favor\s+)?(?:coloca|coloque|adiciona|adicione|joga|jogue)\b.*\bno\s+falteiro\b/,
+  /\b(?:acabou|terminou)(?:\s+(?:urgente|urgencia|popular|falta))*$/,
+  /\b(?:esta|ta)\s+(?:em\s+falta|faltando|sem\s+estoque)(?:\s+(?:urgente|urgencia|popular|falta))*$/,
+];
 
 export function mightBeFalteiroCommand(message: string): boolean {
-  return FALTEIRO_CANDIDATE_PATTERN.test(normalizeIntentText(stripActivationWord(message)));
+  if (/\?\s*$/.test(String(message || ''))) return false;
+  const normalized = normalizeIntentText(stripActivationWord(message));
+  if (!normalized || /^(?:estamos|estou|ficou|esta|ta)\s+sem\s+(?:internet|energia|tempo|sistema|acesso|sinal|conexao|dados)$/.test(normalized)) {
+    return false;
+  }
+  return FALTEIRO_CANDIDATE_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 export function parseCotacaoEncomendasCommand(message: string): CotacaoEncomendasCommand | null {

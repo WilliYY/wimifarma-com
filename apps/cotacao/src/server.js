@@ -15,7 +15,11 @@ import {
   encomendaTextParts,
   hasEncomendaWord
 } from './encomendas.js';
-import { formatFalteiroConfirmation, parseFalteiroCommand } from './falteiro-command.js';
+import {
+  formatFalteiroConfirmation,
+  parseFalteiroCommand,
+  sanitizeFalteiroCategories,
+} from './falteiro-command.js';
 
 const { Pool } = pg;
 
@@ -3271,17 +3275,33 @@ app.get(`${BASE_PATH}/api/internal/search`, requireInternalToken, asyncRoute(asy
   return res.json({ ok: true, query, items, total: items.length, quoteId: sheet.quote.id });
 }));
 
+async function falteiroCategoriesForQuote(quoteId, db = pgPool) {
+  const result = await db.query(
+    `SELECT category
+       FROM (
+         SELECT values->>'categoria' AS category
+           FROM cotacao_v2_rows
+          WHERE quote_id = $1
+            AND deleted_at IS NULL
+            AND btrim(COALESCE(values->>'produto', '')) <> ''
+            AND btrim(COALESCE(values->>'categoria', '')) <> ''
+         UNION ALL
+         SELECT value AS category
+           FROM cotacao_v2_rules
+          WHERE quote_id = $1
+            AND column_key = 'categoria'
+            AND btrim(COALESCE(value, '')) <> ''
+       ) available_categories`,
+    [quoteId]
+  );
+  return sanitizeFalteiroCategories(result.rows.map((row) => row.category));
+}
+
 app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, asyncRoute(async (req, res) => {
   const rawMessage = normalizeInternalText(req.body?.message, 600);
-  const parsed = parseFalteiroCommand(rawMessage);
-  if (!parsed) {
+  const preflight = parseFalteiroCommand(rawMessage);
+  if (!preflight) {
     return res.json({ ok: true, matched: false });
-  }
-  if (parsed.error === 'missing_product') {
-    return res.status(422).json({ ok: false, matched: true, error: 'Informe o produto que deve entrar no Falteiro.' });
-  }
-  if (parsed.error === 'product_too_long') {
-    return res.status(422).json({ ok: false, matched: true, error: 'O nome do produto e longo demais.' });
   }
 
   const requestId = normalizeInternalText(req.body?.request_id, 160);
@@ -3292,6 +3312,17 @@ app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, as
   const source = requestedSource === 'whatsapp' ? 'whatsapp' : 'interno';
   const actor = internalActor(req.body);
   const quote = await getOrCreateDefaultQuote();
+  const categories = await falteiroCategoriesForQuote(quote.id);
+  const parsed = parseFalteiroCommand(rawMessage, { categories });
+  if (!parsed) {
+    return res.json({ ok: true, matched: false });
+  }
+  if (parsed.error === 'missing_product') {
+    return res.status(422).json({ ok: false, matched: true, error: 'Informe o produto que deve entrar no Falteiro.' });
+  }
+  if (parsed.error === 'product_too_long') {
+    return res.status(422).json({ ok: false, matched: true, error: 'O nome do produto e longo demais.' });
+  }
   const client = await pgPool.connect();
   let result = null;
   let event = null;
