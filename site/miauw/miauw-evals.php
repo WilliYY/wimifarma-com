@@ -1080,8 +1080,12 @@ miauw_eval_add('falteiro_comando_compartilhado_case_insensitive', static functio
     miauw_eval_assert(miauw_skill_falteiro_command_candidate('Miauby coloca omeprazol 20mg no falteiro'), 'Acao no Falteiro deveria ser candidata.');
     miauw_eval_assert(miauw_skill_falteiro_command_candidate('Miauby precisa comprar losartana 50mg'), 'Necessidade de compra deveria ser candidata.');
     miauw_eval_assert(miauw_skill_falteiro_command_candidate('Miauby amoxicilina 500mg esta em falta'), 'Produto antes da intencao deveria ser candidato.');
+    miauw_eval_assert(miauw_skill_falteiro_command_candidate('Miauby urgente popular metformina 850 falta'), 'Categoria antes do produto e da intencao deveria ser candidata.');
+    miauw_eval_assert(miauw_skill_falteiro_command_candidate('Miauby metformina falta urgente popular 850'), 'Intencao no meio da frase deveria ser candidata.');
     miauw_eval_assert(!miauw_skill_falteiro_command_candidate('Miauby cotacao losartana'), 'Consulta comum nao pode virar Falteiro.');
     miauw_eval_assert(!miauw_skill_falteiro_command_candidate('qual produto faltou ontem?'), 'Pergunta sobre falta nao pode virar escrita.');
+    miauw_eval_assert(!miauw_skill_falteiro_command_candidate('Miauby falta chegar'), 'Consulta de pedidos nao pode virar Falteiro.');
+    miauw_eval_assert(!miauw_skill_falteiro_command_candidate('Miauby relatorio de falta'), 'Relatorio nao pode virar Falteiro.');
     miauw_eval_assert(!miauw_skill_falteiro_command_candidate('Miauby estamos sem internet'), 'Contexto sem estoque nao pode capturar indisponibilidade comum.');
 });
 

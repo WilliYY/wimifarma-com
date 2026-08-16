@@ -14,12 +14,16 @@ test('encaminha candidatos do Falteiro sem diferenciar maiusculas', () => {
   assert.equal(mightBeFalteiroCommand('Miauby losartana 50mg acabou, urgente'), true);
   assert.equal(mightBeFalteiroCommand('Miauby amoxicilina 500mg está em falta'), true);
   assert.equal(mightBeFalteiroCommand('Miauby o estoque de losartana acabou'), true);
+  assert.equal(mightBeFalteiroCommand('Miauby urgente popular metformina 850 falta'), true);
+  assert.equal(mightBeFalteiroCommand('Miauby metformina falta urgente popular 850'), true);
 });
 
 test('nao encaminha mensagens sem sinonimo do Falteiro', () => {
   assert.equal(mightBeFalteiroCommand('Miauby cotacao losartana'), false);
   assert.equal(mightBeFalteiroCommand('qual e o relatorio de hoje?'), false);
   assert.equal(mightBeFalteiroCommand('qual produto faltou ontem?'), false);
+  assert.equal(mightBeFalteiroCommand('Miauby falta chegar'), false);
+  assert.equal(mightBeFalteiroCommand('Miauby relatorio de falta'), false);
   assert.equal(mightBeFalteiroCommand('o estoque de losartana acabou?'), false);
   assert.equal(mightBeFalteiroCommand('Miauby estamos sem internet'), false);
 });

@@ -3323,6 +3323,23 @@ app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, as
   if (parsed.error === 'product_too_long') {
     return res.status(422).json({ ok: false, matched: true, error: 'O nome do produto e longo demais.' });
   }
+  if (parsed.error === 'category_not_found' || parsed.error === 'category_ambiguous') {
+    const categoryHint = normalizeInternalText(parsed.categoryHint, 160) || 'categoria informada';
+    const available = categories.slice(0, 8).join(', ');
+    const more = categories.length > 8 ? ` e mais ${categories.length - 8}` : '';
+    const options = available ? `${available}${more}` : 'nenhuma categoria cadastrada';
+    const error = parsed.error === 'category_ambiguous'
+      ? `A categoria "${categoryHint}" ficou ambigua. Categorias disponiveis: ${options}. Envie novamente com o nome exato.`
+      : `Nao encontrei a categoria "${categoryHint}" no Falteiro. Categorias disponiveis: ${options}. Envie novamente com uma categoria cadastrada.`;
+    return res.status(422).json({
+      ok: false,
+      matched: true,
+      code: parsed.error,
+      error,
+      category_hint: categoryHint,
+      available_categories: categories,
+    });
+  }
   const client = await pgPool.connect();
   let result = null;
   let event = null;

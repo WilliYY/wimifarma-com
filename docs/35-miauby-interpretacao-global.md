@@ -35,6 +35,7 @@ E retorna:
 7. O interpretador nao chama OpenAI e nao executa tools. O PHP continua dono da confirmacao e da escrita; o WhatsApp continua usando confirmacoes idempotentes.
 8. Negacao explicita fora dos termos da propria intencao retorna `blocked`; perguntas informativas sobre acoes de escrita retornam `ambiguous`. Nenhum dos dois estados pode cair no parser legado.
 9. Pequenos erros de uma letra sao tolerados somente nos termos do comando e quando `Miauby` foi chamado. Singular/plural nao usa aproximacao para nao misturar intencoes diferentes.
+10. No Falteiro, a camada semantica preserva todos os termos de produto, apresentacao e categoria; `apps/cotacao/src/falteiro-command.js` cruza a frase inteira com o catalogo real da Cotacao, prefere categorias compostas e bloqueia a escrita quando um contexto de categoria nao possui correspondencia unica.
 10. Frases e sinonimos normalizados ficam em cache no processo. Datas relativas, quantidades naturais e valores brasileiros como `1.500,20` sao extraidos como contexto sem inventar nem reformatar dados.
 11. Se o servico estiver indisponivel ou retornar `none`, usar o parser legado com a mensagem original.
 

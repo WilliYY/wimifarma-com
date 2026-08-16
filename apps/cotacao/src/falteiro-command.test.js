@@ -114,10 +114,57 @@ test('entende ordem natural e resolve somente categorias cadastradas', () => {
   }
 });
 
-test('remove contexto de categoria sem inventar categoria ausente', () => {
+test('resolve categoria composta em qualquer posicao sem contaminar o produto', () => {
+  const messages = [
+    'Miauby falta metformina 850 urgente popular',
+    'Miauby urgente popular metformina 850 falta',
+    'Miauby metformina 850 urgente popular falta',
+    'Miauby metformina falta urgente popular 850',
+    'Miauby popular urgente falta metformina 850',
+  ];
+
+  for (const message of messages) {
+    assert.deepEqual(parse(message), {
+      matched: true,
+      trigger: 'falta',
+      product: 'Metformina 850',
+      category: 'Urgente Popular',
+      error: '',
+    }, message);
+  }
+});
+
+test('prefere a categoria real mais especifica e aceita ordem, acento e pontuacao', () => {
+  const cases = [
+    ['Miauby urgente falta cotar metformina 850 falta', 'Urgente Falta Cotar'],
+    ['Miauby urgente falta cotar metformina 850 acabou', 'Urgente Falta Cotar'],
+    ['Miauby urgente falta cotar acabou metformina 850', 'Urgente Falta Cotar'],
+    ['MIAUBY, COTAR; URGENTE FALTA metformina 850', 'Urgente Falta Cotar'],
+    ['Miauby popular urgencia metformina 850 falta', 'Urgente Popular'],
+  ];
+
+  for (const [message, category] of cases) {
+    const parsed = parse(message);
+    assert.equal(parsed?.product, 'Metformina 850', message);
+    assert.equal(parsed?.category, category, message);
+    assert.equal(parsed?.error, '', message);
+  }
+});
+
+test('nao ignora contexto de categoria sem correspondencia cadastrada', () => {
   const parsed = parse('Miauby falta dipirona 500mg popular', ['Urgente']);
   assert.equal(parsed?.product, 'Dipirona 500mg');
   assert.equal(parsed?.category, '');
+  assert.equal(parsed?.error, 'category_not_found');
+  assert.equal(parsed?.categoryHint, 'popular');
+});
+
+test('nao reduz categoria composta inexistente para uma categoria simples', () => {
+  const parsed = parse('Miauby falta metformina 850 urgente popular', ['Urgente', 'Popular']);
+  assert.equal(parsed?.product, 'Metformina 850');
+  assert.equal(parsed?.category, '');
+  assert.equal(parsed?.error, 'category_not_found');
+  assert.equal(parsed?.categoryHint, 'urgente popular');
 });
 
 test('preserva categorias reais e descarta valores que nao sao categoria', () => {

@@ -50,7 +50,10 @@ export function mightBeFalteiroCommand(message: string): boolean {
   if (!normalized || /^(?:estamos|estou|ficou|esta|ta)\s+sem\s+(?:internet|energia|tempo|sistema|acesso|sinal|conexao|dados)$/.test(normalized)) {
     return false;
   }
-  return FALTEIRO_CANDIDATE_PATTERNS.some((pattern) => pattern.test(normalized));
+  if (/\b(?:relatorio|historico|qual|quais)\b/.test(normalized)) return false;
+  if (/\bfalta\s+(?:de\s+)?(?:chegar|chegando|chegada|chegadas)\b/.test(normalized)) return false;
+  if (FALTEIRO_CANDIDATE_PATTERNS.some((pattern) => pattern.test(normalized))) return true;
+  return /\b(?:falteiro|falta|faltou|faltam|acabou|terminou|faltando)\b|\b(?:sem\s+estoque|nao\s+tem\s+mais|precis(?:a|amos|o)\s+comprar)\b/.test(normalized);
 }
 
 export function parseCotacaoEncomendasCommand(message: string): CotacaoEncomendasCommand | null {

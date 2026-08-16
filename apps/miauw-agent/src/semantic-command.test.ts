@@ -58,6 +58,29 @@ test('interpreta Falteiro sem depender da ordem ou da caixa', () => {
   }
 });
 
+test('preserva todos os termos de categoria composta para o parser autoritativo do Falteiro', () => {
+  const messages = [
+    'Miauby falta metformina 850 urgente popular',
+    'Miauby urgente popular metformina 850 falta',
+    'Miauby metformina 850 urgente popular falta',
+    'Miauby metformina falta urgente popular 850',
+    'Miauby popular urgente falta metformina 850',
+  ];
+
+  for (const message of messages) {
+    const result = resolved(message);
+    assert.equal(result.status, 'resolved', message);
+    assert.equal(result.intent, 'registrar_falteiro', message);
+    assert.match(result.canonical_message, /^falta\b/i, message);
+    assert.match(result.canonical_message, /metformina/i, message);
+    assert.match(result.canonical_message, /\b850\b/i, message);
+    assert.match(result.canonical_message, /urgente/i, message);
+    assert.match(result.canonical_message, /popular/i, message);
+    assert.ok(result.entities.some((entity) => entity.type === 'category' && entity.normalized === 'urgente'), message);
+    assert.ok(result.entities.some((entity) => entity.type === 'category' && entity.normalized === 'popular'), message);
+  }
+});
+
 test('canoniza comandos financeiros com valor em qualquer posicao', () => {
   const sangria = [
     'Miauby sangria 30 troco do caixa',
