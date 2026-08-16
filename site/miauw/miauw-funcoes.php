@@ -3765,6 +3765,11 @@ function miauw_agent_shadow_request(string $message, string $traceId, int $timeo
     return $decoded;
 }
 
+function miauw_semantic_interpretation_status_supported(string $status): bool
+{
+    return in_array($status, array('resolved', 'ambiguous', 'blocked', 'none'), true);
+}
+
 function miauw_agent_semantic_interpretation(string $message, string $channel = 'internal'): ?array
 {
     if (isset($GLOBALS['miauw_semantic_interpreter_override']) && is_callable($GLOBALS['miauw_semantic_interpreter_override'])) {
@@ -3807,7 +3812,7 @@ function miauw_agent_semantic_interpretation(string $message, string $channel = 
     }
 
     $status = (string) ($decoded['status'] ?? 'none');
-    if (!in_array($status, array('resolved', 'ambiguous', 'none'), true)) {
+    if (!miauw_semantic_interpretation_status_supported($status)) {
         return null;
     }
 

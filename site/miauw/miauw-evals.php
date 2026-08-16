@@ -1154,6 +1154,9 @@ miauw_eval_add('fase22_ambiguidade_bloqueia_acao_legada', static function (): vo
 });
 
 miauw_eval_add('fase22_negacao_bloqueia_acao_legada', static function (): void {
+    miauw_eval_assert(miauw_semantic_interpretation_status_supported('blocked'), 'Contrato PHP rejeitou o status blocked do Agent.');
+    miauw_eval_assert(!miauw_semantic_interpretation_status_supported('desconhecido'), 'Contrato PHP aceitou status sem suporte.');
+
     miauw_eval_reset_action_state();
     $GLOBALS['miauw_semantic_interpreter_override'] = static function (): array {
         return array(
