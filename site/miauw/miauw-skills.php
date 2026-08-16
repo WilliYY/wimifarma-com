@@ -880,8 +880,10 @@ function miauw_skill_registry_diagnostics(): string
 function miauw_skill_period_from_message(string $message): array
 {
     $lower = miauw_skill_lower($message);
-    $month = (int) date('n');
-    $year = (int) date('Y');
+    $timezone = new DateTimeZone('America/Sao_Paulo');
+    $today = new DateTimeImmutable('today', $timezone);
+    $month = (int) $today->format('n');
+    $year = (int) $today->format('Y');
     $months = array(
         1 => array('janeiro', 'jan'),
         2 => array('fevereiro', 'fev'),
@@ -920,11 +922,56 @@ function miauw_skill_period_from_message(string $message): array
         $month = (int) $match[2];
     }
 
+    $dayDate = null;
+    if (preg_match('/\banteontem\b/iu', $lower)) {
+        $dayDate = $today->modify('-2 days');
+    } elseif (preg_match('/\bontem\b/iu', $lower)) {
+        $dayDate = $today->modify('-1 day');
+    } elseif (preg_match('/\bhoje\b/iu', $lower)) {
+        $dayDate = $today;
+    } elseif (preg_match('/\b(20[0-9]{2})-(0?[1-9]|1[0-2])-(0?[1-9]|[12][0-9]|3[01])\b/', $message, $match)) {
+        $candidateYear = (int) $match[1];
+        $candidateMonth = (int) $match[2];
+        $candidateDay = (int) $match[3];
+        if (checkdate($candidateMonth, $candidateDay, $candidateYear)) {
+            $dayDate = new DateTimeImmutable(sprintf('%04d-%02d-%02d', $candidateYear, $candidateMonth, $candidateDay), $timezone);
+        }
+    } elseif (preg_match('/\b(0?[1-9]|[12][0-9]|3[01])\s*[\/\-]\s*(0?[1-9]|1[0-2])(?:\s*[\/\-]\s*(20[0-9]{2}|[0-9]{2}))?\b/', $message, $match)) {
+        $candidateDay = (int) $match[1];
+        $candidateMonth = (int) $match[2];
+        $candidateYear = isset($match[3]) && $match[3] !== '' ? (int) $match[3] : $year;
+        if ($candidateYear < 100) {
+            $candidateYear += 2000;
+        }
+        if (checkdate($candidateMonth, $candidateDay, $candidateYear)) {
+            $dayDate = new DateTimeImmutable(sprintf('%04d-%02d-%02d', $candidateYear, $candidateMonth, $candidateDay), $timezone);
+        }
+    } elseif (preg_match('/\bdia\s+(0?[1-9]|[12][0-9]|3[01])\b/iu', $lower, $match)) {
+        $candidateDay = (int) $match[1];
+        if (checkdate($month, $candidateDay, $year)) {
+            $dayDate = new DateTimeImmutable(sprintf('%04d-%02d-%02d', $year, $month, $candidateDay), $timezone);
+        }
+    }
+
+    if ($dayDate instanceof DateTimeImmutable) {
+        return array(
+            'granularity' => 'day',
+            'day' => (int) $dayDate->format('j'),
+            'month' => (int) $dayDate->format('n'),
+            'year' => (int) $dayDate->format('Y'),
+            'start' => $dayDate->format('Y-m-d'),
+            'end_exclusive' => $dayDate->modify('+1 day')->format('Y-m-d'),
+            'end_inclusive' => $dayDate->format('Y-m-d'),
+            'label' => $dayDate->format('d/m/Y'),
+        );
+    }
+
     $start = sprintf('%04d-%02d-01', $year, $month);
     $endExclusive = date('Y-m-d', strtotime($start . ' +1 month'));
     $endInclusive = date('Y-m-t', strtotime($start));
 
     return array(
+        'granularity' => 'month',
         'month' => $month,
         'year' => $year,
         'start' => $start,
@@ -938,6 +985,51 @@ function miauw_skill_financeiro_summary(array $period): array
 {
     if (miauw_skill_financeiro_internal_configured()) {
         try {
+            if (($period['granularity'] ?? 'month') === 'day') {
+                $response = miauw_skill_financeiro_internal_request('GET', '/api/internal/day', array(), array(
+                    'data' => (string) ($period['start'] ?? ''),
+                ));
+                if (is_array($response) && !empty($response['ok'])) {
+                    $closing = is_array($response['closing'] ?? null) ? $response['closing'] : array();
+                    $entries = is_array($response['entries'] ?? null) ? $response['entries'] : array();
+                    if (empty($closing['id']) && !$entries) {
+                        return array(
+                            'FINANCEIRO ' . (string) ($period['label'] ?? ''),
+                            'Sem fechamento ou lancamento registrado nesse dia.',
+                            'Fonte: Financeiro Node/Postgres.',
+                        );
+                    }
+
+                    $lines = array(
+                        'FINANCEIRO ' . (string) ($period['label'] ?? ''),
+                        'Status: ' . (string) ($closing['status'] ?? 'aberto'),
+                        'Responsavel: ' . ((string) ($closing['responsavel_nome'] ?? '') !== '' ? (string) $closing['responsavel_nome'] : 'nao informado'),
+                        'Total lancado/conferido: ' . miauw_skill_money((float) ($closing['total_conferido'] ?? 0)),
+                        'Total sistema: ' . miauw_skill_money((float) ($closing['abertura_sistema'] ?? 0)),
+                        'Faturamento do dia: ' . miauw_skill_money((float) ($closing['faturamento_dia'] ?? 0)),
+                        'Sobra/Falta: ' . miauw_skill_money((float) ($closing['sobra_falta'] ?? 0)),
+                        'Lancamentos ativos: ' . count(array_filter($entries, static function ($entry): bool {
+                            return is_array($entry) && (string) ($entry['status'] ?? 'lancado') !== 'cancelado';
+                        })),
+                    );
+                    $parts = array();
+                    foreach ($entries as $entry) {
+                        if (!is_array($entry) || (string) ($entry['status'] ?? 'lancado') === 'cancelado') {
+                            continue;
+                        }
+                        $parts[] = (string) ($entry['categoria'] ?? '-') . ': ' . miauw_skill_money((float) ($entry['valor'] ?? 0));
+                        if (count($parts) >= 8) {
+                            break;
+                        }
+                    }
+                    if ($parts) {
+                        $lines[] = 'Categorias: ' . implode('; ', $parts) . '.';
+                    }
+                    $lines[] = 'Fonte: Financeiro Node/Postgres.';
+                    return $lines;
+                }
+            }
+
             $response = miauw_skill_financeiro_internal_request('GET', '/api/internal/summary', array(), array(
                 'mes' => sprintf('%04d-%02d', (int) $period['year'], (int) $period['month']),
             ));
@@ -5825,7 +5917,9 @@ function miauw_skill_context_for_message(string $message): string
     }
 
     if (!$modules && $wantsReport) {
-        $modules = array('financeiro', 'cashback', 'codigos', 'cotacao', 'calendario', 'notas', 'tarefa');
+        $modules = ($period['granularity'] ?? 'month') === 'day'
+            ? array('financeiro', 'cashback', 'tarefa')
+            : array('financeiro', 'cashback', 'codigos', 'cotacao', 'calendario', 'notas', 'tarefa');
     }
 
     if ($lookupLines && !$modules && !$wantsReport) {
@@ -5877,7 +5971,8 @@ function miauw_skill_context_for_message(string $message): string
         return '';
     }
 
-    $context = "CONTEXTO VIVO DAS SKILLS DO MIAUBY\nPeriodo interpretado: " . $period['label'] . "\n";
+    $context = "CONTEXTO VIVO DAS SKILLS DO MIAUBY\nPeriodo interpretado: " . $period['label']
+        . ' (' . (($period['granularity'] ?? 'month') === 'day' ? 'dia exato' : 'mes') . ")\n";
     $context .= implode("\n", $lines);
 
     if ($wantsReport) {

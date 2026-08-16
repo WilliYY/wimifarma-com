@@ -84,6 +84,21 @@ function miauw_eval_reset_action_state(): void
     unset($GLOBALS['miauw_pending_confirmation_response']);
 }
 
+miauw_eval_add('periodo_diario_exato', static function (): void {
+    $period = miauw_skill_period_from_message('relatorio financeiro do dia 15/08/2026');
+    miauw_eval_assert_same('day', (string) ($period['granularity'] ?? ''), 'Relatorio com dia deve usar granularidade diaria.');
+    miauw_eval_assert_same('2026-08-15', (string) ($period['start'] ?? ''), 'Inicio do dia interpretado incorretamente.');
+    miauw_eval_assert_same('2026-08-16', (string) ($period['end_exclusive'] ?? ''), 'Fim exclusivo do dia interpretado incorretamente.');
+    miauw_eval_assert_same('15/08/2026', (string) ($period['label'] ?? ''), 'Rotulo do dia interpretado incorretamente.');
+});
+
+miauw_eval_add('periodo_mensal_preservado', static function (): void {
+    $period = miauw_skill_period_from_message('relatorio financeiro de agosto de 2026');
+    miauw_eval_assert_same('month', (string) ($period['granularity'] ?? ''), 'Relatorio mensal nao pode virar um unico dia.');
+    miauw_eval_assert_same('2026-08-01', (string) ($period['start'] ?? ''), 'Inicio mensal mudou.');
+    miauw_eval_assert_same('2026-09-01', (string) ($period['end_exclusive'] ?? ''), 'Fim mensal mudou.');
+});
+
 miauw_eval_add('agent_status_fase21', static function (): void {
     $status = miauw_agent_public_status();
 

@@ -36,6 +36,10 @@ import {
   parseTaskCommand,
   type TaskCommand,
 } from './task-command.js';
+import {
+  advanceReportDialog,
+  type ReportDialogState,
+} from './report-dialog.js';
 
 const { Pool } = pg;
 
@@ -190,6 +194,11 @@ type PendingConfirmationRow = {
   risk: string;
   command_payload: JsonRecord;
   attempts: number;
+};
+
+type PendingConversationStateRow = {
+  sender_phone_hash: string;
+  payload: JsonRecord;
 };
 
 type ContactMatchRow = {
@@ -669,7 +678,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.34';
+const SERVICE_VERSION = '0.5.35';
 const MODULE_KEY = 'miauw_whatsapp';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
@@ -708,6 +717,7 @@ const EVOLUTION_INTERACTIVE_CONFIRMATIONS_REQUESTED = boolEnv('MIAUW_WHATSAPP_EV
 const EVOLUTION_INTERACTIVE_CONFIRMATIONS = false;
 const CONFIRMED_ACTIONS_ENABLED = boolEnv('MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED', false);
 const CONFIRMATION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_CONFIRMATION_TTL_MINUTES', 15, 1, 120);
+const REPORT_DIALOG_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_REPORT_DIALOG_TTL_MINUTES', 15, 2, 120);
 const REPLY_ENGINE = replyEngineEnv();
 const GEMINI_API_KEY = textEnv('GEMINI_API_KEY') || textEnv('GOOGLE_AI_API_KEY') || textEnv('GOOGLE_API_KEY') || textEnv('MIAUW_WHATSAPP_GEMINI_API_KEY');
 const GEMINI_API_BASE_URL = trimTrailingSlash(textEnv('GEMINI_API_BASE_URL') || textEnv('MIAUW_WHATSAPP_GEMINI_API_BASE_URL') || 'https://generativelanguage.googleapis.com/v1beta');
@@ -990,6 +1000,7 @@ let providerSendChain: Promise<void> = Promise.resolve();
 let lastProviderSendAt = 0;
 let providerPausedUntil = 0;
 let providerPauseReason = '';
+let providerRecoveryReconciled = false;
 let geminiSpendGuardBlockedUntil = 0;
 let geminiSpendGuardReason = '';
 
@@ -2287,6 +2298,22 @@ async function ensureSchema(): Promise<void> {
       CHECK (status IN ('pending', 'confirmed', 'cancelled', 'expired', 'executed', 'failed'))
     );
 
+    CREATE TABLE IF NOT EXISTS miauw_whatsapp_conversation_states (
+      sender_phone_hash CHAR(64) NOT NULL,
+      state_key VARCHAR(80) NOT NULL,
+      sender_phone_mask VARCHAR(40) NOT NULL DEFAULT '',
+      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      source_event_id UUID NULL REFERENCES miauw_whatsapp_events(id) ON DELETE SET NULL,
+      trace_id CHAR(32) NOT NULL DEFAULT '',
+      expires_at TIMESTAMPTZ NOT NULL,
+      consumed_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (sender_phone_hash, state_key),
+      CHECK (status IN ('pending', 'consumed', 'cancelled', 'expired'))
+    );
+
     CREATE TABLE IF NOT EXISTS miauw_whatsapp_contact_modules (
       phone_hash CHAR(64) NOT NULL REFERENCES miauw_whatsapp_contacts(phone_hash) ON UPDATE CASCADE ON DELETE CASCADE,
       module_key VARCHAR(40) NOT NULL,
@@ -2378,6 +2405,9 @@ async function ensureSchema(): Promise<void> {
       ON miauw_whatsapp_outbox (status, next_attempt_at, created_at);
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_confirmations_pending
       ON miauw_whatsapp_confirmations (sender_phone_hash, expires_at, created_at)
+      WHERE status = 'pending';
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_conversation_states_pending
+      ON miauw_whatsapp_conversation_states (expires_at, sender_phone_hash)
       WHERE status = 'pending';
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_contact_modules_enabled
       ON miauw_whatsapp_contact_modules (module_key, phone_hash)
@@ -3281,14 +3311,20 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
   if (!bodyText && isPixReceiptMediaMessage && PIX_RECEIPT_IMAGE_ENABLED) bodyText = '[comprovante pix recebido]';
   if (!bodyText) ignoreReasons.push('empty_or_unsupported_message');
 
-  const hasPendingSelectionContext = Boolean(
+  const canUsePendingContext = Boolean(
     bodyText
       && message.senderPhone
       && senderAllowed
       && !message.fromMe
-      && (!message.isGroup || GROUPS_ENABLED)
-      && await hasPendingSelectionReplyContext(message.senderPhone),
+      && (!message.isGroup || GROUPS_ENABLED),
   );
+  const [hasPendingSelectionContext, hasPendingReportContext] = canUsePendingContext && message.senderPhone
+    ? await Promise.all([
+      hasPendingSelectionReplyContext(message.senderPhone),
+      hasPendingReportDialogReplyContext(message.senderPhone),
+    ])
+    : [false, false];
+  const hasPendingReplyContext = hasPendingSelectionContext || hasPendingReportContext;
   if (hasPendingSelectionContext) {
     message.payloadSummary = {
       ...message.payloadSummary,
@@ -3296,11 +3332,18 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
       activation_prefix_bypassed_for_pending_selection: true,
     };
   }
+  if (hasPendingReportContext) {
+    message.payloadSummary = {
+      ...message.payloadSummary,
+      pending_report_reply_context: true,
+      activation_prefix_bypassed_for_pending_report: true,
+    };
+  }
 
   if (
     bodyText
     && !isConfirmationDecision
-    && !hasPendingSelectionContext
+    && !hasPendingReplyContext
     && !(isPixReceiptMediaMessage && PIX_RECEIPT_IMAGE_ENABLED)
     && !((isAudioMessage || isPixReceiptMediaMessage) && !originalBodyText)
   ) {
@@ -3342,7 +3385,7 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
           && (!message.isGroup || GROUPS_ENABLED)
           && (
             acceptedActivationPrefix
-            || hasPendingSelectionContext
+            || hasPendingReplyContext
             || isConfirmationDecision
             || (isPixReceiptMediaMessage && PIX_RECEIPT_IMAGE_ENABLED)
             || (isAudioMessage && AUDIO_INPUT_ENABLED)
@@ -3696,6 +3739,16 @@ function actionableErrorLogsWhere(alias: string): string {
            AND recovered_event.status = 'replied'
       )
     )`;
+}
+
+async function resolveRecoveredProviderPauseWarnings(): Promise<void> {
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_error_logs
+        SET resolved_at = NOW()
+      WHERE resolved_at IS NULL
+        AND severity IN ('warn', 'error')
+        AND error_summary LIKE 'provider_paused:%'`,
+  );
 }
 
 async function resolveErrorLog(id: string): Promise<void> {
@@ -4273,11 +4326,13 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       };
       replyAsAudio = false;
     }
-    const taskSelectionReply = await maybeHandleTaskSelectionReply(row);
-    const pedidoSelectionReply = taskSelectionReply ? null : await maybeHandlePedidoSelectionReply(row);
-    const taskTargetSelectionReply = taskSelectionReply || pedidoSelectionReply ? null : await maybeHandleTaskTargetSelectionReply(row, whatsappUserContext);
-    const responsibleSelectionReply = taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply ? null : await maybeHandleResponsibleSelectionReply(row, whatsappUserContext);
-    const confirmationReply = taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply || responsibleSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
+    const reportDialogReply = await maybeHandleReportDialogReply(row, effectiveBodyText, senderModuleHashes, whatsappUserContext);
+    effectiveBodyText = row.body_text;
+    const taskSelectionReply = reportDialogReply ? null : await maybeHandleTaskSelectionReply(row);
+    const pedidoSelectionReply = reportDialogReply || taskSelectionReply ? null : await maybeHandlePedidoSelectionReply(row);
+    const taskTargetSelectionReply = reportDialogReply || taskSelectionReply || pedidoSelectionReply ? null : await maybeHandleTaskTargetSelectionReply(row, whatsappUserContext);
+    const responsibleSelectionReply = reportDialogReply || taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply ? null : await maybeHandleResponsibleSelectionReply(row, whatsappUserContext);
+    const confirmationReply = reportDialogReply || taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply || responsibleSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
     const reply = confirmationReply || audioFailureReply || mediaFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes, whatsappUserContext, row);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
@@ -4559,6 +4614,185 @@ async function hasPendingSelectionReplyContext(phone: string): Promise<boolean> 
     });
     return false;
   }
+}
+
+function reportDialogStateFromPayload(payload: unknown): ReportDialogState | null {
+  if (!isRecord(payload)) return null;
+  const module = safeText(payload.module, 20);
+  const date = safeText(payload.date, 10);
+  const validModules = new Set(['financeiro', 'cashback', 'tarefas', 'cotacao', 'codigos', 'calendario', 'geral', '']);
+  if (!validModules.has(module) || (date && !/^\d{4}-\d{2}-\d{2}$/.test(date))) return null;
+  return { module: module as ReportDialogState['module'], date };
+}
+
+async function hasPendingReportDialogReplyContext(phone: string): Promise<boolean> {
+  const hashes = phoneHashCandidates(sha256(phone), phone).map((hash) => safeText(hash, 64)).filter(Boolean);
+  if (!hashes.length) return false;
+  try {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_conversation_states
+          SET status = 'expired', updated_at = NOW()
+        WHERE state_key = 'report_dialog'
+          AND status = 'pending'
+          AND expires_at <= NOW()`,
+    );
+    const result = await pgPool.query<{ exists: string }>(
+      `SELECT '1' AS exists
+         FROM miauw_whatsapp_conversation_states
+        WHERE sender_phone_hash = ANY($1::text[])
+          AND state_key = 'report_dialog'
+          AND status = 'pending'
+          AND expires_at > NOW()
+        LIMIT 1`,
+      [hashes],
+    );
+    return Boolean(result.rows[0]);
+  } catch (error) {
+    await recordErrorLog('pending_report_context_lookup', 'warn', error, {
+      phoneMask: maskPhone(phone),
+      details: { hashes: hashes.length },
+    });
+    return false;
+  }
+}
+
+async function maybeHandleReportDialogReply(
+  row: QueueRow,
+  message: string,
+  senderHashes: string[],
+  userContext: WhatsappUserContext,
+): Promise<ReplyResult | null> {
+  const pendingFlag = row.payload_summary?.pending_report_reply_context === true;
+  if (!pendingFlag && advanceReportDialog(message, null).kind === 'none') return null;
+
+  const client = await pgPool.connect();
+  let rewrittenMessage = '';
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [row.sender_phone_hash]);
+    await client.query(
+      `UPDATE miauw_whatsapp_conversation_states
+          SET status = 'expired', updated_at = NOW()
+        WHERE sender_phone_hash = ANY($1::text[])
+          AND state_key = 'report_dialog'
+          AND status = 'pending'
+          AND expires_at <= NOW()`,
+      [senderHashes],
+    );
+    const stateResult = await client.query<PendingConversationStateRow>(
+      `SELECT sender_phone_hash, payload
+         FROM miauw_whatsapp_conversation_states
+        WHERE sender_phone_hash = ANY($1::text[])
+          AND state_key = 'report_dialog'
+          AND status = 'pending'
+          AND expires_at > NOW()
+        ORDER BY updated_at DESC
+        LIMIT 1
+        FOR UPDATE`,
+      [senderHashes],
+    );
+    const pendingRow = stateResult.rows[0] || null;
+    const pendingState = reportDialogStateFromPayload(pendingRow?.payload);
+    if (pendingRow && !pendingState) {
+      await client.query(
+        `UPDATE miauw_whatsapp_conversation_states
+            SET status = 'cancelled', updated_at = NOW()
+          WHERE sender_phone_hash = $1 AND state_key = 'report_dialog'`,
+        [pendingRow.sender_phone_hash],
+      );
+    }
+
+    const decision = advanceReportDialog(message, pendingState);
+    if (decision.kind === 'none') {
+      await client.query('COMMIT');
+      return null;
+    }
+
+    const stateHash = pendingRow?.sender_phone_hash || row.sender_phone_hash;
+    if (decision.kind === 'cancelled') {
+      await client.query(
+        `UPDATE miauw_whatsapp_conversation_states
+            SET status = 'cancelled', updated_at = NOW()
+          WHERE sender_phone_hash = $1 AND state_key = 'report_dialog'`,
+        [stateHash],
+      );
+      await client.query('COMMIT');
+      return { text: decision.reply, engine: 'local', reason: 'report_dialog_cancelled' };
+    }
+
+    if (decision.kind === 'pending') {
+      await client.query(
+        `INSERT INTO miauw_whatsapp_conversation_states (
+           sender_phone_hash, state_key, sender_phone_mask, payload, status,
+           source_event_id, trace_id, expires_at
+         ) VALUES ($1, 'report_dialog', $2, $3::jsonb, 'pending', $4, $5, NOW() + ($6::int * INTERVAL '1 minute'))
+         ON CONFLICT (sender_phone_hash, state_key) DO UPDATE SET
+           sender_phone_mask = EXCLUDED.sender_phone_mask,
+           payload = EXCLUDED.payload,
+           status = 'pending',
+           source_event_id = EXCLUDED.source_event_id,
+           trace_id = EXCLUDED.trace_id,
+           expires_at = EXCLUDED.expires_at,
+           consumed_at = NULL,
+           updated_at = NOW()`,
+        [stateHash, row.sender_phone_mask, JSON.stringify(decision.state), row.id, row.trace_id, REPORT_DIALOG_TTL_MINUTES],
+      );
+      await client.query('COMMIT');
+      return {
+        text: decision.reply,
+        engine: 'local',
+        reason: decision.invalidDate ? 'report_dialog_invalid_date' : 'report_dialog_pending',
+      };
+    }
+
+    rewrittenMessage = decision.rewrittenMessage;
+    await client.query(
+      `UPDATE miauw_whatsapp_conversation_states
+          SET status = 'consumed', consumed_at = NOW(), updated_at = NOW()
+        WHERE sender_phone_hash = $1 AND state_key = 'report_dialog'`,
+      [stateHash],
+    );
+    await client.query(
+      `UPDATE miauw_whatsapp_events
+          SET body_text = $2,
+              body_size = $3,
+              payload_summary = payload_summary || $4::jsonb,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [
+        row.id,
+        rewrittenMessage,
+        rewrittenMessage.length,
+        JSON.stringify({
+          report_dialog_resolved: true,
+          report_dialog_module: decision.state.module,
+          report_dialog_date: decision.state.date,
+        }),
+      ],
+    );
+    await client.query('COMMIT');
+    row.body_text = rewrittenMessage;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    await recordErrorLog('report_dialog', 'error', error, {
+      eventId: row.id,
+      traceId: row.trace_id,
+      phoneMask: row.sender_phone_mask,
+    });
+    const fallback = advanceReportDialog(message, null);
+    if (fallback.kind !== 'none') {
+      return {
+        text: 'Nao consegui guardar o contexto do relatorio agora. Tente novamente com: miauby relatorio financeiro de hoje.',
+        engine: 'blocked',
+        reason: 'report_dialog_storage_failed',
+      };
+    }
+    return null;
+  } finally {
+    client.release();
+  }
+
+  return requestWhatsappReply(rewrittenMessage, row.trace_id, row.sender_phone_mask, senderHashes, userContext, row);
 }
 
 async function findPendingConfirmation(senderHash: string, shortId?: string): Promise<PendingConfirmationRow | null> {
@@ -10038,6 +10272,7 @@ function maybePauseProvider(error: unknown): void {
   if (!shouldPauseProvider(error)) return;
   providerPausedUntil = Math.max(providerPausedUntil, Date.now() + PROVIDER_PAUSE_ON_ERROR_MS);
   providerPauseReason = safeError(error);
+  providerRecoveryReconciled = false;
 }
 
 async function waitForProviderSendGate(): Promise<void> {
@@ -10081,6 +10316,13 @@ async function withProviderSendGate<T>(operation: () => Promise<T>): Promise<T> 
     lastProviderSendAt = now;
     providerSendTimestamps.push(now);
     pruneProviderSendWindow(now);
+    if (!providerRecoveryReconciled) {
+      providerRecoveryReconciled = true;
+      void resolveRecoveredProviderPauseWarnings().catch((error) => {
+        providerRecoveryReconciled = false;
+        console.warn(`[miauw-whatsapp] provider recovery reconciliation failed: ${safeError(error)}`);
+      });
+    }
     return result;
   } catch (error) {
     maybePauseProvider(error);
