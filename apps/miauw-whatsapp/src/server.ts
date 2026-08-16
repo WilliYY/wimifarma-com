@@ -42,6 +42,7 @@ import {
   requiredModuleKeysForReport,
   type ReportDialogState,
 } from './report-dialog.js';
+import { resolveSemanticMessage } from './semantic-interpreter-client.js';
 
 const { Pool } = pg;
 
@@ -680,7 +681,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.38';
+const SERVICE_VERSION = '0.5.39';
 const MODULE_KEY = 'miauw_whatsapp';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
@@ -701,6 +702,9 @@ const META_WEBHOOK_VERIFY_TOKEN = textEnv('META_WHATSAPP_WEBHOOK_VERIFY_TOKEN') 
 const META_APP_SECRET = textEnv('META_WHATSAPP_APP_SECRET');
 const AGENT_RUN_URL = textEnv('MIAUW_WHATSAPP_AGENT_RUN_URL')
   || `${trimTrailingSlash(textEnv('MIAUW_AGENT_INTERNAL_BASE_URL') || 'http://wimifarma-miauw-agent:3100/miauw/agent')}/run`;
+const AGENT_INTERPRET_URL = textEnv('MIAUW_WHATSAPP_AGENT_INTERPRET_URL')
+  || AGENT_RUN_URL.replace(/\/run\/?$/i, '/interpret');
+const AGENT_INTERPRET_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_AGENT_INTERPRET_TIMEOUT_MS', 1200, 300, 5000);
 const AGENT_CONTEXT_URL = textEnv('MIAUW_WHATSAPP_CONTEXT_URL')
   || textEnv('MIAUW_AGENT_CONTEXT_URL')
   || 'http://wimifarma-com-web/miauw/agent-context.php';
@@ -7896,6 +7900,19 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       reason: 'missing_prefix_help_only',
     };
   }
+  const semantic = await resolveSemanticMessage(message, {
+    url: AGENT_INTERPRET_URL,
+    token: INTERNAL_TOKEN,
+    timeoutMs: AGENT_INTERPRET_TIMEOUT_MS,
+  });
+  if (semantic.status === 'ambiguous') {
+    return {
+      text: semantic.clarification,
+      engine: 'local',
+      reason: 'semantic_command_ambiguous',
+    };
+  }
+  message = semantic.message;
   if (mightBeFalteiroCommand(message)) {
     if (!moduleAllowed(allowedCards, 'cotacao')) {
       return {

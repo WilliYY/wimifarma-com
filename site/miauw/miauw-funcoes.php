@@ -209,6 +209,11 @@ if (!defined('MIAUW_AGENT_INTERNAL_BASE_URL')) {
     define('MIAUW_AGENT_INTERNAL_BASE_URL', $miauwAgentInternalBaseUrl !== '' ? $miauwAgentInternalBaseUrl : 'http://wimifarma-miauw-agent:3100/miauw/agent');
 }
 
+if (!defined('MIAUW_AGENT_INTERPRETER_TIMEOUT_MS')) {
+    $miauwAgentInterpreterTimeoutMs = (int) miauw_env_string(array('MIAUW_AGENT_INTERPRETER_TIMEOUT_MS'));
+    define('MIAUW_AGENT_INTERPRETER_TIMEOUT_MS', max(300, min(5000, $miauwAgentInterpreterTimeoutMs > 0 ? $miauwAgentInterpreterTimeoutMs : 1200)));
+}
+
 if (!defined('MIAUBY_CONTEXT_SHADOW_ENABLED')) {
     define('MIAUBY_CONTEXT_SHADOW_ENABLED', miauw_env_bool(array('MIAUBY_CONTEXT_SHADOW_ENABLED'), false));
 }
@@ -3760,6 +3765,55 @@ function miauw_agent_shadow_request(string $message, string $traceId, int $timeo
     return $decoded;
 }
 
+function miauw_agent_semantic_interpretation(string $message, string $channel = 'internal'): ?array
+{
+    if (isset($GLOBALS['miauw_semantic_interpreter_override']) && is_callable($GLOBALS['miauw_semantic_interpreter_override'])) {
+        $result = call_user_func($GLOBALS['miauw_semantic_interpreter_override'], $message, $channel);
+
+        return is_array($result) ? $result : null;
+    }
+
+    $baseUrl = miauw_constant_string('MIAUW_AGENT_INTERNAL_BASE_URL');
+    $token = miauw_constant_string('MIAUW_AGENT_INTERNAL_TOKEN');
+    if ($baseUrl === '' || $token === '' || !function_exists('curl_init')) {
+        return null;
+    }
+
+    $timeoutMs = miauw_constant_int('MIAUW_AGENT_INTERPRETER_TIMEOUT_MS', 1200);
+    $ch = curl_init(rtrim($baseUrl, '/') . '/interpret');
+    curl_setopt_array($ch, array(
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => array(
+            'Accept: application/json',
+            'Content-Type: application/json',
+            'X-Miauw-Agent-Token: ' . $token,
+        ),
+        CURLOPT_POSTFIELDS => json_encode(array(
+            'message' => miauw_substr($message, 0, 4000),
+            'channel' => $channel === 'whatsapp' ? 'whatsapp' : 'internal',
+        ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT_MS => min(500, max(150, $timeoutMs)),
+        CURLOPT_TIMEOUT_MS => max(300, $timeoutMs),
+    ));
+
+    $raw = curl_exec($ch);
+    $httpStatus = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+    if ($httpStatus < 200 || $httpStatus >= 300 || !is_array($decoded) || empty($decoded['ok'])) {
+        return null;
+    }
+
+    $status = (string) ($decoded['status'] ?? 'none');
+    if (!in_array($status, array('resolved', 'ambiguous', 'none'), true)) {
+        return null;
+    }
+
+    return $decoded;
+}
+
 function miauw_agent_shadow_text_similarity(string $a, string $b): float
 {
     $normalize = static function (string $text): array {
@@ -6867,6 +6921,31 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
             'fallback' => false,
             'model' => 'miauw-gestao-guide',
         );
+    }
+
+    $semantic = miauw_agent_semantic_interpretation($message, 'internal');
+    if (is_array($semantic) && (string) ($semantic['status'] ?? '') === 'ambiguous') {
+        return array(
+            'text' => trim((string) ($semantic['clarification'] ?? 'Qual acao voce quer executar?')),
+            'fallback' => false,
+            'model' => 'miauw-semantic-clarification',
+        );
+    }
+    if (is_array($semantic) && (string) ($semantic['status'] ?? '') === 'resolved') {
+        $canonicalMessage = trim((string) ($semantic['canonical_message'] ?? ''));
+        if ($canonicalMessage !== '') {
+            miauw_trace_record('interpretar_comando_miauby', 'resolved', array(
+                'type' => 'semantic_interpretation',
+                'risk' => (string) ($semantic['risk'] ?? 'baixo'),
+                'summary' => 'Comando reorganizado pela camada semantica central.',
+                'payload' => array(
+                    'intent' => (string) ($semantic['intent'] ?? ''),
+                    'module' => (string) ($semantic['module'] ?? ''),
+                    'confidence' => isset($semantic['confidence']) ? (float) $semantic['confidence'] : 0,
+                ),
+            ));
+            $message = $canonicalMessage;
+        }
     }
 
     $normalizedForGestaoAccess = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($message) : strtolower($message);

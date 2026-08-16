@@ -4,6 +4,12 @@
 
 Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A implementacao inicial cria um backend dedicado em Node.js/TypeScript, com Postgres 17 proprio, webhook para Evolution API ou Meta Cloud API, fila duravel, deduplicacao, allowlist, painel operacional e outbox. O repositorio nasce desligado por padrao; em producao, o canal pode ser ligado por `.env` quando token, cifragem e allowlist estiverem revisados.
 
+## Interpretacao global compartilhada
+
+Desde 2026-08-16, o Interno e o WhatsApp consultam o endpoint tokenizado e sem escrita `POST /miauw/agent/interpret` antes de iniciar novos comandos. O registro central em `apps/miauw-agent/src/semantic-command.ts` procura intencoes e sinonimos na mensagem completa, sem depender da posicao ou da caixa, extrai valores, datas, horarios, quantidades, dosagens, categorias e referencias de usuario, e devolve uma mensagem canonica para os parsers operacionais existentes.
+
+`resolved` segue para as mesmas permissoes, confirmacoes e executores anteriores; a camada central nunca grava diretamente. `ambiguous` interrompe o fluxo e pede somente a informacao que diferencia as acoes. `none`, timeout ou indisponibilidade mantem a mensagem original e o parser legado, garantindo compatibilidade. Respostas pendentes de confirmacao ou selecao continuam sendo tratadas antes de uma nova interpretacao.
+
 ## Comando Falteiro compartilhado
 
 Desde 2026-08-16, mensagens com intencao clara de falta de estoque ou necessidade de compra sao candidatas ao registro no Falteiro da Cotacao, sem diferenciar maiusculas/minusculas. A triagem reconhece tanto os comandos diretos `falteiro`, `falta`, `faltou` e `acabou` quanto expressoes como `esta faltando`, `estamos sem`, `sem estoque`, `nao tem mais`, `terminou`, `precisa comprar` e `coloca no falteiro`, inclusive quando o produto vem antes da intencao. No WhatsApp, a mensagem continua sujeita a prefixo/allowlist conforme a configuracao e exige o card `Cotacao`; no interno, exige que o usuario logado tenha acesso a Cotacao.

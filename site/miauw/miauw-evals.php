@@ -1085,6 +1085,74 @@ miauw_eval_add('falteiro_comando_compartilhado_case_insensitive', static functio
     miauw_eval_assert(!miauw_skill_falteiro_command_candidate('Miauby estamos sem internet'), 'Contexto sem estoque nao pode capturar indisponibilidade comum.');
 });
 
+miauw_eval_add('fase22_interpretador_semantico_compartilhado', static function (): void {
+    $GLOBALS['miauw_semantic_interpreter_override'] = static function (string $message, string $channel): array {
+        return array(
+            'ok' => true,
+            'status' => 'resolved',
+            'intent' => 'registrar_sangria',
+            'module' => 'financeiro',
+            'risk' => 'alto',
+            'confidence' => 0.91,
+            'canonical_message' => 'sangria 30 troco',
+            'original_message' => $message,
+            'channel' => $channel,
+        );
+    };
+
+    $result = miauw_agent_semantic_interpretation('Miauby troco 30 sangria', 'internal');
+    unset($GLOBALS['miauw_semantic_interpreter_override']);
+
+    miauw_eval_assert(is_array($result), 'Interpretador semantico nao retornou contrato.');
+    miauw_eval_assert_same('resolved', (string) ($result['status'] ?? ''), 'Status semantico incorreto.');
+    miauw_eval_assert_same('sangria 30 troco', (string) ($result['canonical_message'] ?? ''), 'Mensagem canonica nao foi preservada.');
+    miauw_eval_assert_same('internal', (string) ($result['channel'] ?? ''), 'Canal interno nao foi enviado ao interpretador.');
+});
+
+miauw_eval_add('fase22_mensagem_canonica_alimenta_parser_existente', static function (): void {
+    miauw_eval_reset_action_state();
+    miauw_trace_set_context(miauw_trace_new_id(), 0, 1, 0);
+    $GLOBALS['miauw_semantic_interpreter_override'] = static function (): array {
+        return array(
+            'ok' => true,
+            'status' => 'resolved',
+            'intent' => 'registrar_sangria',
+            'module' => 'financeiro',
+            'risk' => 'alto',
+            'confidence' => 0.91,
+            'canonical_message' => 'sangria 30 Maria',
+        );
+    };
+
+    $reply = miauw_try_controlled_action('Miauby Maria 30 sangria', 1, '', true);
+    unset($GLOBALS['miauw_semantic_interpreter_override']);
+
+    miauw_eval_assert(is_array($reply), 'Mensagem canonica deveria chegar ao parser financeiro existente.');
+    miauw_eval_assert(is_array($reply['confirmation'] ?? null), 'Sangria reorganizada precisa continuar exigindo confirmacao.');
+    miauw_eval_assert_contains('R$ 30,00', (string) ($reply['confirmation']['summary'] ?? ''), 'Valor da mensagem canonica nao chegou a confirmacao.');
+    miauw_eval_reset_action_state();
+});
+
+miauw_eval_add('fase22_ambiguidade_bloqueia_acao_legada', static function (): void {
+    miauw_eval_reset_state();
+    $GLOBALS['miauw_semantic_interpreter_override'] = static function (): array {
+        return array(
+            'ok' => true,
+            'status' => 'ambiguous',
+            'risk' => 'medio',
+            'clarification' => 'Voce quer cancelar o pedido ou a tarefa?',
+        );
+    };
+
+    $reply = miauw_try_controlled_action('Miauby cancelar o pedido e a tarefa', 1);
+    unset($GLOBALS['miauw_semantic_interpreter_override']);
+
+    miauw_eval_assert(is_array($reply), 'Ambiguidade deveria gerar resposta segura.');
+    miauw_eval_assert_same('miauw-semantic-clarification', (string) ($reply['model'] ?? ''), 'Ambiguidade passou para parser legado.');
+    miauw_eval_assert_contains('pedido ou a tarefa', (string) ($reply['text'] ?? ''), 'Pergunta de desambiguacao perdeu as opcoes.');
+    miauw_eval_assert(!isset($reply['confirmation']), 'Ambiguidade nao pode criar confirmacao.');
+});
+
 $passed = 0;
 $failed = 0;
 

@@ -1,0 +1,109 @@
+export type SemanticMessageResult = {
+  status: 'resolved' | 'ambiguous' | 'none' | 'fallback';
+  message: string;
+  intent: string;
+  module: string;
+  confidence: number;
+  clarification: string;
+};
+
+type ResolveOptions = {
+  url: string;
+  token: string;
+  timeoutMs: number;
+  fetchImpl?: typeof fetch;
+};
+
+type SemanticResponse = {
+  ok?: boolean;
+  status?: unknown;
+  intent?: unknown;
+  module?: unknown;
+  confidence?: unknown;
+  canonical_message?: unknown;
+  clarification?: unknown;
+};
+
+export async function resolveSemanticMessage(message: string, options: ResolveOptions): Promise<SemanticMessageResult> {
+  const original = String(message || '').trim();
+  if (!original || !options.url || !options.token) return fallback(original);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(100, options.timeoutMs));
+  const fetchImpl = options.fetchImpl || fetch;
+
+  try {
+    const response = await fetchImpl(options.url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Miauw-Agent-Token': options.token,
+      },
+      body: JSON.stringify({ message: original, channel: 'whatsapp' }),
+      signal: controller.signal,
+    });
+    const body = await response.json().catch(() => null) as SemanticResponse | null;
+    if (!response.ok || !body || body.ok !== true) return fallback(original);
+
+    const status = stringValue(body.status);
+    if (status === 'ambiguous') {
+      return {
+        status: 'ambiguous',
+        message: '',
+        intent: '',
+        module: '',
+        confidence: numberValue(body.confidence),
+        clarification: stringValue(body.clarification) || 'Qual acao voce quer executar?',
+      };
+    }
+    if (status === 'resolved') {
+      const canonical = stringValue(body.canonical_message);
+      if (!canonical) return fallback(original);
+      return {
+        status: 'resolved',
+        message: canonical,
+        intent: stringValue(body.intent),
+        module: stringValue(body.module),
+        confidence: numberValue(body.confidence),
+        clarification: '',
+      };
+    }
+    if (status === 'none') {
+      return {
+        status: 'none',
+        message: original,
+        intent: '',
+        module: '',
+        confidence: 0,
+        clarification: '',
+      };
+    }
+
+    return fallback(original);
+  } catch {
+    return fallback(original);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function fallback(message: string): SemanticMessageResult {
+  return {
+    status: 'fallback',
+    message,
+    intent: '',
+    module: '',
+    confidence: 0,
+    clarification: '',
+  };
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function numberValue(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
