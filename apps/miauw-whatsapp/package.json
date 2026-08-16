@@ -1,12 +1,12 @@
 {
   "name": "wimifarma-miauw-whatsapp",
-  "version": "0.5.36",
+  "version": "0.5.37",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test dist/report-dialog.test.js",
+    "test": "npm run build && node --test dist/*.test.js",
     "start": "node dist/server.js"
   },
   "dependencies": {

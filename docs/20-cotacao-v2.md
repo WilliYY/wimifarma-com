@@ -4,6 +4,14 @@
 
 A Cotacao V2 substitui a planilha PHP antiga em `/cotacao/` por um servico dedicado para edicao colaborativa de cotacao de farmacia. A meta e chegar perto do comportamento do Google Sheets: linhas estaveis, save por celula, presenca ao vivo, filtros locais, regras condicionais explicitas, ultima gravacao vencendo e historico para recuperacao.
 
+## Falteiro pelo Miauby
+
+Desde 2026-08-16, `apps/cotacao/src/falteiro-command.js` e a fonte unica de interpretacao dos comandos do Falteiro usados pelo Miauby Interno e pelo Miauby WhatsApp. O parser e case-insensitive, aceita somente comandos claros iniciados por `falteiro`, `falta`, `faltou` ou `acabou`, com `miauby`/`miauw` opcional na entrada interna, e rejeita perguntas ou frases em que o gatilho aparece fora da posicao de comando. Dosagem e apresentacao permanecem no produto; `urgente`, `urgencia` ou `prioridade urgente` no fim sao removidos do nome e gravados como categoria `Urgente`.
+
+O endpoint tokenizado `POST /cotacao/api/internal/falteiro/commands` recebe a frase bruta, `source`, `request_id` e ator. Ele procura a primeira linha ativa ordenada por posicao em que `values->>'produto'` esteja vazio, trava a operacao por cotacao e atualiza somente `produto` e, quando informada, `categoria`. Se nao houver linha vazia, responde conflito e nao cria nem sobrescreve linha. A transacao grava o evento `cells_batch_updated`, publica Socket.IO e registra a deduplicacao/auditoria em `cotacao_v2_miauby_falteiro_commands`; a chave unica `(source, request_id)` faz retry devolver o resultado original sem nova escrita.
+
+Exemplos: `Miauby falteiro losartana`, `miauby falta losartana 40mg` e `MIAUBY acabou losartana 40mg urgente`. A resposta curta vem do mesmo endpoint, por exemplo `✅ Losartana 40mg adicionada ao Falteiro como Urgente.`.
+
 ## Arquivos, rotas e servicos envolvidos
 
 Arquivos principais:

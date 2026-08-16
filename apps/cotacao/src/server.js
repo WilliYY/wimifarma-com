@@ -15,6 +15,7 @@ import {
   encomendaTextParts,
   hasEncomendaWord
 } from './encomendas.js';
+import { formatFalteiroConfirmation, parseFalteiroCommand } from './falteiro-command.js';
 
 const { Pool } = pg;
 
@@ -885,6 +886,28 @@ async function ensureSchema() {
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS cotacao_v2_events_quote_id_idx
     ON cotacao_v2_events (quote_id, id)
+  `);
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS cotacao_v2_miauby_falteiro_commands (
+      id bigserial PRIMARY KEY,
+      source text NOT NULL,
+      request_id text NOT NULL,
+      quote_id uuid NOT NULL REFERENCES cotacao_v2_quotes(id) ON DELETE CASCADE,
+      row_id uuid NULL REFERENCES cotacao_v2_rows(id) ON DELETE SET NULL,
+      event_id bigint NULL,
+      raw_message text NOT NULL,
+      trigger_word text NOT NULL,
+      product text NOT NULL,
+      category text NULL,
+      actor_user_id integer NULL,
+      actor_username text NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (source, request_id)
+    )
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS cotacao_v2_miauby_falteiro_quote_created_idx
+    ON cotacao_v2_miauby_falteiro_commands (quote_id, created_at DESC, id DESC)
   `);
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS cotacao_v2_rules (
@@ -3246,6 +3269,186 @@ app.get(`${BASE_PATH}/api/internal/search`, requireInternalToken, asyncRoute(asy
   }
 
   return res.json({ ok: true, query, items, total: items.length, quoteId: sheet.quote.id });
+}));
+
+app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, asyncRoute(async (req, res) => {
+  const rawMessage = normalizeInternalText(req.body?.message, 600);
+  const parsed = parseFalteiroCommand(rawMessage);
+  if (!parsed) {
+    return res.json({ ok: true, matched: false });
+  }
+  if (parsed.error === 'missing_product') {
+    return res.status(422).json({ ok: false, matched: true, error: 'Informe o produto que deve entrar no Falteiro.' });
+  }
+  if (parsed.error === 'product_too_long') {
+    return res.status(422).json({ ok: false, matched: true, error: 'O nome do produto e longo demais.' });
+  }
+
+  const requestId = normalizeInternalText(req.body?.request_id, 160);
+  if (!requestId) {
+    return res.status(422).json({ ok: false, matched: true, error: 'Identificador idempotente ausente.' });
+  }
+  const requestedSource = normalizeInternalSearch(req.body?.source);
+  const source = requestedSource === 'whatsapp' ? 'whatsapp' : 'interno';
+  const actor = internalActor(req.body);
+  const quote = await getOrCreateDefaultQuote();
+  const client = await pgPool.connect();
+  let result = null;
+  let event = null;
+  let updatedCells = [];
+  let replayed = false;
+
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_falteiro:${quote.id}`]);
+
+    const previous = await client.query(
+      `SELECT command.row_id AS "rowId",
+              command.product,
+              COALESCE(command.category, '') AS category,
+              command.event_id AS "eventId",
+              command.created_at AS "createdAt",
+              row_data.position
+         FROM cotacao_v2_miauby_falteiro_commands command
+         LEFT JOIN cotacao_v2_rows row_data ON row_data.id = command.row_id
+        WHERE command.source = $1
+          AND command.request_id = $2
+        LIMIT 1`,
+      [source, requestId]
+    );
+
+    if (previous.rows[0]) {
+      const stored = previous.rows[0];
+      replayed = true;
+      result = {
+        rowId: String(stored.rowId || ''),
+        line: Number(stored.position || 0),
+        product: String(stored.product || ''),
+        category: String(stored.category || ''),
+        eventId: Number(stored.eventId || 0),
+        createdAt: stored.createdAt
+      };
+      await client.query('COMMIT');
+    } else {
+      const available = await client.query(
+        `SELECT id, position, values, version, updated_at
+           FROM cotacao_v2_rows
+          WHERE quote_id = $1
+            AND deleted_at IS NULL
+            AND btrim(COALESCE(values->>'produto', '')) = ''
+          ORDER BY position ASC, id ASC
+          LIMIT 1
+          FOR UPDATE`,
+        [quote.id]
+      );
+      let row = available.rows[0];
+      if (!row) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          ok: false,
+          matched: true,
+          error: 'Nao encontrei linha vazia no Falteiro. Libere uma linha na Cotacao e tente novamente.'
+        });
+      }
+
+      const changes = [
+        { columnKey: 'produto', value: parsed.product },
+        ...(parsed.category ? [{ columnKey: 'categoria', value: parsed.category }] : [])
+      ];
+      for (const change of changes) {
+        const previousValue = String(row.values?.[change.columnKey] ?? '');
+        const updated = await client.query(
+          `UPDATE cotacao_v2_rows
+              SET values = jsonb_set(COALESCE(values, '{}'::jsonb), ARRAY[$2], to_jsonb($3::text), true),
+                  version = version + 1,
+                  updated_at = now()
+            WHERE id = $1
+              AND quote_id = $4
+            RETURNING id, position, values, version, updated_at`,
+          [row.id, change.columnKey, change.value, quote.id]
+        );
+        row = updated.rows[0];
+        updatedCells.push({
+          rowId: row.id,
+          columnKey: change.columnKey,
+          value: change.value,
+          previousValue,
+          expectedValue: '',
+          overwroteRemote: false,
+          version: Number(row.version),
+          updatedAt: row.updated_at
+        });
+      }
+
+      event = await appendEvent({
+        quoteId: quote.id,
+        type: 'cells_batch_updated',
+        payload: {
+          cells: updatedCells,
+          source: 'miauby_falteiro',
+          requestId,
+          trigger: parsed.trigger
+        },
+        user: actor,
+        clientId: INTERNAL_CLIENT_ID,
+        db: client
+      });
+      await client.query(
+        `INSERT INTO cotacao_v2_miauby_falteiro_commands
+          (source, request_id, quote_id, row_id, event_id, raw_message, trigger_word, product, category, actor_user_id, actor_username)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), $10, $11)`,
+        [
+          source,
+          requestId,
+          quote.id,
+          row.id,
+          Number(event.id),
+          rawMessage,
+          parsed.trigger,
+          parsed.product,
+          parsed.category,
+          actor.id,
+          actor.username
+        ]
+      );
+      await client.query('COMMIT');
+      result = {
+        rowId: row.id,
+        line: Number(row.position),
+        product: parsed.product,
+        category: parsed.category,
+        eventId: Number(event.id),
+        createdAt: event.created_at
+      };
+    }
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  if (!replayed) {
+    io.to(`quote:${quote.id}`).emit('cells:update', {
+      cells: updatedCells,
+      eventId: Number(event.id),
+      user: userPublic({ ...actor, role: 'user' }),
+      clientId: INTERNAL_CLIENT_ID
+    });
+    await syncEncomendaRemindersForRows(quote.id, [result.rowId], {
+      user: actor,
+      clientId: INTERNAL_CLIENT_ID,
+      source: 'miauby_falteiro'
+    });
+  }
+
+  return res.json({
+    ok: true,
+    matched: true,
+    replayed,
+    item: result,
+    confirmation: formatFalteiroConfirmation({ product: result.product, category: result.category })
+  });
 }));
 
 app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRoute(async (req, res) => {

@@ -4,6 +4,7 @@ import pg from 'pg';
 import {
   formatCotacaoEncomendasDailyMessage,
   formatCotacaoEncomendasMessage,
+  mightBeFalteiroCommand,
   parseCotacaoEncomendasCommand,
   type CotacaoEncomendaItem,
   type CotacaoEncomendasCommand,
@@ -7895,6 +7896,45 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       reason: 'missing_prefix_help_only',
     };
   }
+  if (mightBeFalteiroCommand(message)) {
+    if (!moduleAllowed(allowedCards, 'cotacao')) {
+      return {
+        text: forbiddenModuleReply('cotacao', allowedCards),
+        engine: 'blocked',
+        reason: 'blocked_module:cotacao_falteiro',
+      };
+    }
+    try {
+      const falteiro = await registerFalteiroCommand(message, traceId, userContext);
+      if (falteiro.matched) {
+        const falteiroItem = isRecord(falteiro.item) ? falteiro.item : {};
+        await mergeWhatsappEventSummaryByTrace(traceId, {
+          cotacao_falteiro_attempted: true,
+          cotacao_falteiro_outcome: 'registered',
+          cotacao_falteiro_row_id: safeText(falteiroItem.rowId, 80),
+          cotacao_falteiro_line: Number(falteiroItem.line || 0),
+          cotacao_falteiro_replayed: falteiro.replayed === true,
+        });
+        return {
+          text: safeText(falteiro.confirmation, 320) || 'Produto adicionado ao Falteiro.',
+          engine: 'local',
+          reason: falteiro.replayed === true ? 'cotacao_falteiro_replayed' : 'cotacao_falteiro_registered',
+        };
+      }
+    } catch (error) {
+      const errorText = safeError(error);
+      await mergeWhatsappEventSummaryByTrace(traceId, {
+        cotacao_falteiro_attempted: true,
+        cotacao_falteiro_outcome: 'error',
+        cotacao_falteiro_error: errorText,
+      });
+      return {
+        text: errorText || 'Nao consegui adicionar o produto ao Falteiro agora. Tente novamente.',
+        engine: 'local',
+        reason: `cotacao_falteiro_error:${errorText || 'unknown'}`,
+      };
+    }
+  }
   const cotacaoEncomendasCommand = parseCotacaoEncomendasCommand(message);
   if (cotacaoEncomendasCommand) {
     if (!moduleAllowed(allowedCards, 'cotacao')) {
@@ -14083,6 +14123,29 @@ async function fetchPedidosArrivalSummary(limit = 80): Promise<{ orders: Pedidos
     totalLabel: safeText(data.total_label, 60) || `${orders.length} pedido(s)`,
     count: Number(data.count || orders.length),
   };
+}
+
+async function registerFalteiroCommand(message: string, traceId: string, userContext: WhatsappUserContext): Promise<JsonRecord> {
+  if (!COTACAO_INTERNAL_TOKEN) throw new Error('Integracao com a Cotacao nao esta configurada.');
+  const response = await fetch(`${COTACAO_INTERNAL_BASE_URL}/api/internal/falteiro/commands`, {
+    method: 'POST',
+    headers: {
+      ...internalPhpJsonHeaders(COTACAO_INTERNAL_TOKEN),
+      'X-Internal-Token': COTACAO_INTERNAL_TOKEN,
+    },
+    body: JSON.stringify({
+      message,
+      request_id: `whatsapp:${safeText(traceId, 120)}`,
+      source: 'whatsapp',
+      usuario_id: userContext.id,
+      username: userContext.display_name || userContext.username || 'Miauby WhatsApp',
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !isRecord(data) || data.ok !== true) {
+    throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 220) || `cotacao_falteiro_http_${response.status}`);
+  }
+  return data;
 }
 
 async function fetchCotacaoEncomendasSummary(command: CotacaoEncomendasCommand, limit = 10): Promise<CotacaoEncomendasSummary> {

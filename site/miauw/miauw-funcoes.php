@@ -8627,6 +8627,58 @@ function miauw_fallback_reply(string $message, string $reason = ''): string
 
 function miauw_generate_reply(int $conversationId, string $message, bool $widgetMode = false): array
 {
+    if (function_exists('miauw_skill_falteiro_command_candidate') && miauw_skill_falteiro_command_candidate($message)) {
+        $user = function_exists('current_user') ? current_user() : null;
+        if (!is_array($user) || !miauw_user_can_access_module($user, 'cotacao')) {
+            return array(
+                'text' => 'Seu usuario nao tem acesso a Cotacao para registrar no Falteiro.',
+                'fallback' => false,
+                'model' => 'miauw-cotacao-falteiro',
+                'engine' => 'php_local',
+            );
+        }
+
+        try {
+            $requestId = 'interno:' . $conversationId . ':' . bin2hex(random_bytes(12));
+            $falteiro = miauw_skill_register_falteiro_command($message, $user, $requestId);
+            if (is_array($falteiro)) {
+                $confirmation = trim((string) ($falteiro['confirmation'] ?? ''));
+                miauw_trace_record('cotacao_falteiro', 'ok', array(
+                    'type' => 'write',
+                    'summary' => $confirmation !== '' ? $confirmation : 'Produto adicionado ao Falteiro.',
+                    'payload' => array(
+                        'row_id' => (string) ($falteiro['item']['rowId'] ?? ''),
+                        'line' => (int) ($falteiro['item']['line'] ?? 0),
+                        'replayed' => !empty($falteiro['replayed']),
+                    ),
+                ));
+
+                return array(
+                    'text' => $confirmation !== '' ? $confirmation : 'Produto adicionado ao Falteiro.',
+                    'fallback' => false,
+                    'model' => 'miauw-cotacao-falteiro',
+                    'engine' => 'php_local',
+                );
+            }
+        } catch (Throwable $error) {
+            error_log('Miauby Falteiro command failed: ' . $error->getMessage());
+            miauw_trace_record('cotacao_falteiro', 'error', array(
+                'type' => 'write',
+                'summary' => 'Falha ao adicionar produto ao Falteiro.',
+                'error' => $error->getMessage(),
+            ));
+
+            return array(
+                'text' => trim($error->getMessage()) !== ''
+                    ? $error->getMessage()
+                    : 'Nao consegui adicionar o produto ao Falteiro agora. Tente novamente.',
+                'fallback' => false,
+                'model' => 'miauw-cotacao-falteiro',
+                'engine' => 'php_local',
+            );
+        }
+    }
+
     if (function_exists('miauw_fp_message_matches') && miauw_fp_message_matches($message) && function_exists('miauw_fp_reply_for_message')) {
         try {
             $fpReply = miauw_fp_reply_for_message($message);

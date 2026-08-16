@@ -530,6 +530,17 @@ curl.exe -sS http://127.0.0.1:3002/cotacao/api/backups
 
 A Cotacao V2 usa API JSON com sessao e CSRF em meta tag. Para validar edicao por celula sem navegador, primeiro autentique em `/cotacao/login.php`, extraia o CSRF da pagina `/cotacao/` e chame `PATCH /cotacao/api/cells` ou `PATCH /cotacao/api/cells/batch`.
 
+Para validar o parser do Falteiro e o roteamento case-insensitive do WhatsApp sem escrever na Cotacao:
+
+```powershell
+npm.cmd run check --prefix apps/cotacao
+npm.cmd run test:falteiro --prefix apps/cotacao
+npm.cmd test --prefix apps/miauw-whatsapp
+docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php
+```
+
+O endpoint `/cotacao/api/internal/falteiro/commands` exige token interno e `request_id`. Nao versionar nem colar o token em comandos, logs ou documentacao; no VPS, leia-o somente dentro do container ao executar smoke controlado.
+
 ## Banco - inventario
 
 ```powershell

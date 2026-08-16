@@ -1071,6 +1071,14 @@ miauw_eval_add('fase9_manutencao_default_adm', static function (): void {
     }
 });
 
+miauw_eval_add('falteiro_comando_compartilhado_case_insensitive', static function (): void {
+    miauw_eval_assert(function_exists('miauw_skill_falteiro_command_candidate'), 'Detector compartilhado do Falteiro ausente.');
+    miauw_eval_assert(miauw_skill_falteiro_command_candidate('Miauby falteiro losartana'), 'Falteiro em caixa mista deveria ser candidato.');
+    miauw_eval_assert(miauw_skill_falteiro_command_candidate('MIAUBY ACABOU LOSARTANA'), 'Acabou em caixa alta deveria ser candidato.');
+    miauw_eval_assert(!miauw_skill_falteiro_command_candidate('Miauby cotacao losartana'), 'Consulta comum nao pode virar Falteiro.');
+    miauw_eval_assert(!miauw_skill_falteiro_command_candidate('qual produto faltou ontem?'), 'Pergunta sobre falta nao pode virar escrita.');
+});
+
 $passed = 0;
 $failed = 0;
 

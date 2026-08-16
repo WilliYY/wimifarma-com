@@ -31,6 +31,11 @@ export type CotacaoEncomendasSummary = {
 const WRITE_INTENT_PATTERN = /\b(criar|cria|adicionar|adiciona|registrar|registra|lancar|lançar|colocar|coloca|inserir|insere|nova|novo)\b/;
 const RECENT_PATTERN = /\b(recentes?|novas?|ultimas?|últimas?|ultima|última|mais recentes?|mais novas?)\b/;
 const OLD_PATTERN = /\b(antigas?|velhas?|paradas?|mais antigas?)\b/;
+const FALTEIRO_CANDIDATE_PATTERN = /^(?:por favor\s+)?(?:falteiro|falta|faltou|acabou)\b/i;
+
+export function mightBeFalteiroCommand(message: string): boolean {
+  return FALTEIRO_CANDIDATE_PATTERN.test(normalizeIntentText(stripActivationWord(message)));
+}
 
 export function parseCotacaoEncomendasCommand(message: string): CotacaoEncomendasCommand | null {
   const raw = stripActivationWord(message).replace(/[?!;]+$/g, '').trim();

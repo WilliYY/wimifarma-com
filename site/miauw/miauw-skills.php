@@ -3650,6 +3650,40 @@ function miauw_skill_cotacao_v2_internal_request(string $method, string $path, a
     return $data;
 }
 
+function miauw_skill_falteiro_command_candidate(string $message): bool
+{
+    $clean = preg_replace('/^(?:miauby|miauw)\b[\s,:;\-]*/iu', '', trim($message));
+    if (!is_string($clean)) {
+        return false;
+    }
+
+    return preg_match('/^(?:por\s+favor\s+)?(?:falteiro|falta|faltou|acabou)\b/iu', trim($clean)) === 1;
+}
+
+function miauw_skill_register_falteiro_command(string $message, array $user, string $requestId): ?array
+{
+    if (!miauw_skill_falteiro_command_candidate($message)) {
+        return null;
+    }
+    if (!miauw_skill_cotacao_v2_internal_configured()) {
+        throw new RuntimeException('Integracao com a Cotacao nao esta configurada.');
+    }
+
+    $payload = array(
+        'message' => $message,
+        'request_id' => miauw_substr(trim($requestId), 0, 160),
+        'source' => 'interno',
+        'usuario_id' => (int) ($user['id'] ?? 0),
+        'username' => trim((string) ($user['display_name'] ?? $user['username'] ?? 'Miauby Interno')),
+    );
+    $response = miauw_skill_cotacao_v2_internal_request('POST', '/api/internal/falteiro/commands', $payload);
+    if (!is_array($response) || empty($response['ok']) || empty($response['matched'])) {
+        return null;
+    }
+
+    return $response;
+}
+
 function miauw_skill_gestao_internal_token(): string
 {
     if (defined('GESTAO_INTERNAL_TOKEN') && trim((string) GESTAO_INTERNAL_TOKEN) !== '') {
