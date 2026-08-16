@@ -1134,7 +1134,7 @@ miauw_eval_add('fase22_mensagem_canonica_alimenta_parser_existente', static func
 });
 
 miauw_eval_add('fase22_ambiguidade_bloqueia_acao_legada', static function (): void {
-    miauw_eval_reset_state();
+    miauw_eval_reset_action_state();
     $GLOBALS['miauw_semantic_interpreter_override'] = static function (): array {
         return array(
             'ok' => true,
