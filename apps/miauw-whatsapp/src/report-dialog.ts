@@ -11,6 +11,11 @@ export type ReportDialogDecision =
   | { kind: 'pending'; state: ReportDialogState; reply: string; invalidDate: boolean }
   | { kind: 'complete'; state: ReportDialogState; rewrittenMessage: string };
 
+export function requiredModuleKeysForReport(module: ReportModule): string[] {
+  if (module === 'geral') return ['financeiro', 'cashback', 'tarefas'];
+  return [module];
+}
+
 const REPORT_TERMS = /\b(relatorio|resumo)\b/u;
 const CANCEL_TERMS = /^(cancelar|cancela|cancelado|sair|parar|deixa pra la)$/u;
 

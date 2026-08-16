@@ -38,6 +38,7 @@ import {
 } from './task-command.js';
 import {
   advanceReportDialog,
+  requiredModuleKeysForReport,
   type ReportDialogState,
 } from './report-dialog.js';
 
@@ -678,7 +679,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.35';
+const SERVICE_VERSION = '0.5.36';
 const MODULE_KEY = 'miauw_whatsapp';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
@@ -8265,6 +8266,23 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     };
   }
   const route = routeWhatsappReply(message);
+  const dailyReport = advanceReportDialog(route.message || message, null);
+  if (dailyReport.kind === 'complete' && dailyReport.state.module) {
+    const missingModules = requiredModuleKeysForReport(dailyReport.state.module)
+      .filter((moduleKey) => !moduleAllowed(allowedCards, moduleKey));
+    if (missingModules.length > 0) {
+      const missingLabels = missingModules
+        .map((moduleKey) => WHATSAPP_MODULE_CARDS.find((card) => card.key === moduleKey)?.label || moduleKey)
+        .join(', ');
+      return {
+        text: dailyReport.state.module === 'geral'
+          ? `O relatorio Geral diario combina Financeiro, Cashback e Tarefas. Este WhatsApp ainda nao tem acesso a: ${missingLabels}. Escolha um relatorio liberado ou ajuste os cards no painel Miauby WhatsApp.`
+          : forbiddenModuleReply(missingModules[0] || '', allowedCards),
+        engine: 'blocked',
+        reason: `blocked_report_modules:${missingModules.join(',')}`,
+      };
+    }
+  }
   const requestedModule = moduleKeyForText(route.message || message);
   if (route.useTools && !moduleAllowed(allowedCards, requestedModule)) {
     return {

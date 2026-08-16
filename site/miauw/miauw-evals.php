@@ -99,6 +99,38 @@ miauw_eval_add('periodo_mensal_preservado', static function (): void {
     miauw_eval_assert_same('2026-09-01', (string) ($period['end_exclusive'] ?? ''), 'Fim mensal mudou.');
 });
 
+miauw_eval_add('ponte_relatorio_diario_preserva_data', static function (): void {
+    miauw_eval_assert_same(
+        'relatorio financeiro do dia 15/08/2026',
+        miauw_agent_report_message_from_args('financeiro', array('data' => '2026-08-15')),
+        'Ponte do agente nao pode converter dia exato em mes inteiro.'
+    );
+    miauw_eval_assert_same(
+        'relatorio tarefas do dia 15/08/2026',
+        miauw_agent_report_message_from_args('tarefas', array('data' => '2026-08-15')),
+        'Ponte de tarefas deve preservar o dia exato.'
+    );
+});
+
+miauw_eval_add('ponte_relatorio_rejeita_data_impossivel', static function (): void {
+    $rejected = false;
+    try {
+        miauw_agent_report_message_from_args('cashback', array('data' => '2026-02-31'));
+    } catch (InvalidArgumentException $error) {
+        $rejected = true;
+    }
+    miauw_eval_assert($rejected, 'Data impossivel deve falhar em vez de consultar o mes inteiro.');
+});
+
+miauw_eval_add('contratos_relatorio_diario_exportados', static function (): void {
+    $tools = miauw_openai_tools_by_name();
+    foreach (array('resumo_financeiro', 'resumo_cashback', 'resumo_tarefas', 'resumo_geral') as $toolName) {
+        miauw_eval_assert(isset($tools[$toolName]), 'Contrato ausente: ' . $toolName);
+        $properties = (array) ($tools[$toolName]['parameters']['properties'] ?? array());
+        miauw_eval_assert(isset($properties['data']), 'Contrato diario sem campo data: ' . $toolName);
+    }
+});
+
 miauw_eval_add('agent_status_fase21', static function (): void {
     $status = miauw_agent_public_status();
 

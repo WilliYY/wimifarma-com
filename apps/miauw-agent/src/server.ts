@@ -4,8 +4,10 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
+import { hasInvalidDailyReportDate, inferDailyReportToolRequest, reportPeriodArgsFromMessage } from './report-routing.js';
+
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.16.1';
+const SERVICE_VERSION = '0.16.2';
 const AGENT_VERSION = '2.0-fase21';
 const PHASE = 'fase21-voice-playback-profile-selector';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
@@ -16,6 +18,8 @@ const DEFAULT_MODEL = 'gpt-5.4-mini';
 const NODE_LOW_RISK_READ_TOOLS = [
   'resumo_financeiro',
   'resumo_cashback',
+  'resumo_tarefas',
+  'resumo_geral',
   'resumo_codigos',
   'buscar_codigo_comissao',
   'buscar_cotacao',
@@ -23,6 +27,8 @@ const NODE_LOW_RISK_READ_TOOLS = [
 const NODE_TOOL_BRIDGE_FALLBACK_TOOLS = [
   'resumo_financeiro',
   'resumo_cashback',
+  'resumo_tarefas',
+  'resumo_geral',
   'resumo_codigos',
   'buscar_cliente',
   'buscar_codigo_comissao',
@@ -1076,25 +1082,17 @@ function extractSearchTerm(message: string, fallback = ''): string {
 }
 
 function periodArgsFromMessage(message: string): Record<string, unknown> {
-  const match = message.match(/\b([0-9]{1,2})[/-]([0-9]{4})\b/u);
-  if (!match) {
-    return {};
-  }
-
-  const mes = Number.parseInt(match[1] || '', 10);
-  const ano = Number.parseInt(match[2] || '', 10);
-
-  if (mes < 1 || mes > 12 || ano < 2020 || ano > 2100) {
-    return {};
-  }
-
-  return { mes, ano };
+  return reportPeriodArgsFromMessage(message);
 }
 
 function inferToolBridgeRequest(message: string): { tool: string; args: Record<string, unknown> } | null {
   const text = normalizeIntentText(message);
   const wantsLookup = /\b(busca|buscar|procura|procure|procurar|consulta|consultar|ache|achar|pesquisa|pesquisar)\b/u.test(text);
   const wantsSummary = /\b(resumo|relatorio|status|situacao|visao|geral)\b/u.test(text);
+  const dailyReport = inferDailyReportToolRequest(message);
+  if (dailyReport) {
+    return dailyReport;
+  }
   const moduleFromText = (): string => {
     if (text.includes('financeiro') || text.includes('caixa')) {
       return 'financeiro';
@@ -1379,6 +1377,9 @@ async function executeAgent(
   styleContext: SafeStyleContext,
 ): Promise<AgentExecutionResult> {
   const toolEvents: ToolBridgeEvent[] = [];
+  if (hasInvalidDailyReportDate(message)) {
+    return { text: 'Essa data nao existe. Envie uma data valida em DD/MM/AAAA.', toolEvents };
+  }
   const localReply = localStyleReply(message, styleContext);
   if (localReply !== '') {
     return { text: localReply, toolEvents };
@@ -1427,6 +1428,20 @@ async function streamAgent(
   styleContext: SafeStyleContext,
 ): Promise<void> {
   const toolEvents: ToolBridgeEvent[] = [];
+  if (hasInvalidDailyReportDate(message)) {
+    const text = 'Essa data nao existe. Envie uma data valida em DD/MM/AAAA.';
+    sendSse(res, 'delta', { text });
+    sendSse(res, 'done', {
+      ok: true,
+      mode: 'agent_controlado',
+      trace_id: traceId,
+      style_version: styleContext.version || STYLE_VERSION,
+      style_intent: styleContext.route.intent,
+      tool_events: toolEvents,
+      text,
+    });
+    return;
+  }
   const localReply = localStyleReply(message, styleContext);
   if (localReply !== '') {
     sendSse(res, 'delta', { text: localReply });

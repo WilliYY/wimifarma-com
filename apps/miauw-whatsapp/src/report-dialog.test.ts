@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { advanceReportDialog, type ReportDialogState } from './report-dialog.js';
+import { advanceReportDialog, requiredModuleKeysForReport, type ReportDialogState } from './report-dialog.js';
 
 const NOW = new Date('2026-08-16T12:00:00-03:00');
 
@@ -101,4 +101,9 @@ test('does not label current-only modules as daily reports', () => {
   assert.deepEqual(result.state, { module: '', date: '2026-08-16' });
   assert.match(result.reply, /nao possui fechamento por dia/);
   assert.equal(advanceReportDialog('relatorio cotacao', null, NOW).kind, 'none');
+});
+
+test('requires every temporal card for a general daily report', () => {
+  assert.deepEqual(requiredModuleKeysForReport('geral'), ['financeiro', 'cashback', 'tarefas']);
+  assert.deepEqual(requiredModuleKeysForReport('financeiro'), ['financeiro']);
 });

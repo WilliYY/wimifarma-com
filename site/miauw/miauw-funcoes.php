@@ -859,6 +859,8 @@ function miauw_agent_node_read_tool_names(): array
     return array(
         'resumo_financeiro',
         'resumo_cashback',
+        'resumo_tarefas',
+        'resumo_geral',
         'resumo_codigos',
         'resumo_gestao',
         'resumo_calendario',
@@ -7437,28 +7439,60 @@ function miauw_openai_tools(): array
         array(
             'type' => 'function',
             'name' => 'resumo_financeiro',
-            'description' => 'Consulta resumo financeiro por mes e ano: fechamentos, totais, total sistema, sobra/falta e categorias.',
+            'description' => 'Consulta resumo financeiro por dia exato ou por mes: fechamentos, totais, total sistema, sobra/falta e categorias. Para dia exato, use data em YYYY-MM-DD.',
             'parameters' => array(
                 'type' => 'object',
                 'properties' => array(
+                    'data' => array('type' => 'string', 'minLength' => 10, 'maxLength' => 10, 'description' => 'Data exata em YYYY-MM-DD.'),
                     'mes' => array('type' => 'integer', 'minimum' => 1, 'maximum' => 12),
                     'ano' => array('type' => 'integer', 'minimum' => 2020, 'maximum' => 2035),
                 ),
-                'required' => array('mes', 'ano'),
+                'required' => array(),
                 'additionalProperties' => false,
             ),
         ),
         array(
             'type' => 'function',
             'name' => 'resumo_cashback',
-            'description' => 'Consulta resumo de compras, cashback, resgates e saldo ativo por mes e ano.',
+            'description' => 'Consulta resumo de compras, cashback, resgates e saldo ativo por dia exato ou por mes. Para dia exato, use data em YYYY-MM-DD.',
             'parameters' => array(
                 'type' => 'object',
                 'properties' => array(
+                    'data' => array('type' => 'string', 'minLength' => 10, 'maxLength' => 10, 'description' => 'Data exata em YYYY-MM-DD.'),
                     'mes' => array('type' => 'integer', 'minimum' => 1, 'maximum' => 12),
                     'ano' => array('type' => 'integer', 'minimum' => 2020, 'maximum' => 2035),
                 ),
-                'required' => array('mes', 'ano'),
+                'required' => array(),
+                'additionalProperties' => false,
+            ),
+        ),
+        array(
+            'type' => 'function',
+            'name' => 'resumo_tarefas',
+            'description' => 'Consulta resumo de tarefas por dia exato ou por mes. Para dia exato, use data em YYYY-MM-DD.',
+            'parameters' => array(
+                'type' => 'object',
+                'properties' => array(
+                    'data' => array('type' => 'string', 'minLength' => 10, 'maxLength' => 10, 'description' => 'Data exata em YYYY-MM-DD.'),
+                    'mes' => array('type' => 'integer', 'minimum' => 1, 'maximum' => 12),
+                    'ano' => array('type' => 'integer', 'minimum' => 2020, 'maximum' => 2035),
+                ),
+                'required' => array(),
+                'additionalProperties' => false,
+            ),
+        ),
+        array(
+            'type' => 'function',
+            'name' => 'resumo_geral',
+            'description' => 'Consulta um resumo consolidado por dia exato ou por mes. No dia exato, combina Financeiro, Cashback e Tarefas.',
+            'parameters' => array(
+                'type' => 'object',
+                'properties' => array(
+                    'data' => array('type' => 'string', 'minLength' => 10, 'maxLength' => 10, 'description' => 'Data exata em YYYY-MM-DD.'),
+                    'mes' => array('type' => 'integer', 'minimum' => 1, 'maximum' => 12),
+                    'ano' => array('type' => 'integer', 'minimum' => 2020, 'maximum' => 2035),
+                ),
+                'required' => array(),
                 'additionalProperties' => false,
             ),
         ),
@@ -7867,6 +7901,36 @@ function miauw_agent_tool_contract_export(): array
     );
 }
 
+function miauw_agent_report_message_from_args(string $module, array $args): string
+{
+    $allowedModules = array('financeiro', 'cashback', 'tarefas', 'geral');
+    if (!in_array($module, $allowedModules, true)) {
+        throw new InvalidArgumentException('Modulo de relatorio invalido.');
+    }
+
+    $timezone = new DateTimeZone('America/Sao_Paulo');
+    $date = trim((string) ($args['data'] ?? ''));
+    if ($date !== '') {
+        $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date, $timezone);
+        $errors = DateTimeImmutable::getLastErrors();
+        $hasErrors = is_array($errors) && ((int) ($errors['warning_count'] ?? 0) > 0 || (int) ($errors['error_count'] ?? 0) > 0);
+        if (!$parsed || $hasErrors || $parsed->format('Y-m-d') !== $date) {
+            throw new InvalidArgumentException('Data de relatorio invalida. Use YYYY-MM-DD.');
+        }
+
+        return sprintf('relatorio %s do dia %s', $module, $parsed->format('d/m/Y'));
+    }
+
+    $now = new DateTimeImmutable('now', $timezone);
+    $month = array_key_exists('mes', $args) ? (int) $args['mes'] : (int) $now->format('n');
+    $year = array_key_exists('ano', $args) ? (int) $args['ano'] : (int) $now->format('Y');
+    if ($month < 1 || $month > 12 || $year < 2020 || $year > 2100) {
+        throw new InvalidArgumentException('Periodo mensal de relatorio invalido.');
+    }
+
+    return sprintf('relatorio %s %02d/%04d', $module, $month, $year);
+}
+
 function miauw_openai_tool_result(string $name, array $args): string
 {
     if (miauw_tool_requires_confirmation($name)) {
@@ -7909,11 +7973,19 @@ function miauw_openai_tool_result(string $name, array $args): string
     }
 
     if ($name === 'resumo_financeiro') {
-        return miauw_skill_context_for_message(sprintf('resumo financeiro %02d/%04d', (int) ($args['mes'] ?? date('n')), (int) ($args['ano'] ?? date('Y'))));
+        return miauw_skill_context_for_message(miauw_agent_report_message_from_args('financeiro', $args));
     }
 
     if ($name === 'resumo_cashback') {
-        return miauw_skill_context_for_message(sprintf('resumo cashback %02d/%04d', (int) ($args['mes'] ?? date('n')), (int) ($args['ano'] ?? date('Y'))));
+        return miauw_skill_context_for_message(miauw_agent_report_message_from_args('cashback', $args));
+    }
+
+    if ($name === 'resumo_tarefas') {
+        return miauw_skill_context_for_message(miauw_agent_report_message_from_args('tarefas', $args));
+    }
+
+    if ($name === 'resumo_geral') {
+        return miauw_skill_context_for_message(miauw_agent_report_message_from_args('geral', $args));
     }
 
     if ($name === 'resumo_codigos') {
