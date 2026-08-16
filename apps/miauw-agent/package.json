@@ -1,13 +1,13 @@
 {
   "name": "wimifarma-miauw-agent",
-  "version": "0.16.2",
+  "version": "0.17.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "check:persona": "node scripts/check-persona.mjs",
-    "test": "npm run build && node --test dist/report-routing.test.js && npm run check:persona",
+    "test": "npm run build && node --test dist/*.test.js && npm run check:persona",
     "start": "node dist/server.js"
   },
   "dependencies": {

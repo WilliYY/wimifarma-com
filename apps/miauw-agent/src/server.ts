@@ -5,11 +5,12 @@ import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
 import { hasInvalidDailyReportDate, inferDailyReportToolRequest, reportPeriodArgsFromMessage } from './report-routing.js';
+import { interpretSemanticCommand, type SemanticChannel } from './semantic-command.js';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.16.2';
-const AGENT_VERSION = '2.0-fase21';
-const PHASE = 'fase21-voice-playback-profile-selector';
+const SERVICE_VERSION = '0.17.0';
+const AGENT_VERSION = '2.1-fase22';
+const PHASE = 'fase22-semantic-command-layer';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
 const STYLE_VERSION = 'miauby-style-router-2026-05-16';
 const VOICE_PROFILE_VERSION = 'miauby-voice-profile-2026-05-17';
@@ -1552,6 +1553,28 @@ app.get(`${basePath}/health`, (_req, res) => {
 
 app.get(`${basePath}/status`, requireInternalToken, (_req, res) => {
   res.json(internalStatus());
+});
+
+app.post(`${basePath}/interpret`, requireInternalToken, (req, res) => {
+  const message = safeText(req.body?.message, 4000);
+  const channelValue = safeText(req.body?.channel, 20).toLowerCase();
+  const channel: SemanticChannel = channelValue === 'whatsapp' ? 'whatsapp' : 'internal';
+
+  if (message === '') {
+    res.status(400).json({
+      ok: false,
+      error: 'missing_message',
+      message: 'Informe a mensagem do operador.',
+    });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    side_effects: false,
+    interpreter_version: '1.0.0',
+    ...interpretSemanticCommand(message, { channel }),
+  });
 });
 
 app.post(`${basePath}/run`, requireInternalToken, async (req, res) => {
