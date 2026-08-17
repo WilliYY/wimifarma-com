@@ -2507,13 +2507,6 @@ function miauw_skill_pedidos_strip_miauby_prefix(string $message): string
 function miauw_skill_pedidos_cancel_query(string $message): string
 {
     $text = miauw_skill_pedidos_strip_miauby_prefix($message);
-    if (preg_match('/\b(?:relatorio|historico|qual|quais)\b/iu', $clean) === 1) {
-        return false;
-    }
-    if (preg_match('/\bfalta\s+(?:de\s+)?(?:chegar|chegando|chegada|chegadas)\b/iu', $clean) === 1) {
-        return false;
-    }
-
     $patterns = array(
         '/\b(?:cancelar|cancela|remover|remove|excluir|exclui|apagar|deletar)\s+(?:o\s+|a\s+)?(?:pedido|pedidos)\b/iu',
         '/\b(?:nao|não)\s+(?:precisa|preciso)\s+mais\s+(?:do\s+|da\s+|de\s+)?(?:pedido|pedidos)\b/iu',
@@ -3671,6 +3664,12 @@ function miauw_skill_falteiro_command_candidate(string $message): bool
 
     $clean = trim((string) preg_replace('/[^a-z0-9]+/iu', ' ', $clean));
     if ($clean === '' || preg_match('/^(?:estamos|estou|ficou|esta|ta)\s+sem\s+(?:internet|energia|tempo|sistema|acesso|sinal|conexao|dados)$/iu', $clean) === 1) {
+        return false;
+    }
+    if (preg_match('/\b(?:relatorio|historico|qual|quais)\b/iu', $clean) === 1) {
+        return false;
+    }
+    if (preg_match('/\bfalta\s+(?:de\s+)?(?:chegar|chegando|chegada|chegadas)\b/iu', $clean) === 1) {
         return false;
     }
 
