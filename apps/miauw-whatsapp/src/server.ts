@@ -4334,11 +4334,12 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     }
     const reportDialogReply = await maybeHandleReportDialogReply(row, effectiveBodyText, senderModuleHashes, whatsappUserContext);
     effectiveBodyText = row.body_text;
-    const taskSelectionReply = reportDialogReply ? null : await maybeHandleTaskSelectionReply(row);
-    const pedidoSelectionReply = reportDialogReply || taskSelectionReply ? null : await maybeHandlePedidoSelectionReply(row);
-    const taskTargetSelectionReply = reportDialogReply || taskSelectionReply || pedidoSelectionReply ? null : await maybeHandleTaskTargetSelectionReply(row, whatsappUserContext);
-    const responsibleSelectionReply = reportDialogReply || taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply ? null : await maybeHandleResponsibleSelectionReply(row, whatsappUserContext);
-    const confirmationReply = reportDialogReply || taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply || responsibleSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
+    const encomendaProductReply = reportDialogReply ? null : await maybeHandleEncomendaProductReply(row, whatsappUserContext, senderModuleHashes);
+    const taskSelectionReply = reportDialogReply || encomendaProductReply ? null : await maybeHandleTaskSelectionReply(row);
+    const pedidoSelectionReply = reportDialogReply || encomendaProductReply || taskSelectionReply ? null : await maybeHandlePedidoSelectionReply(row);
+    const taskTargetSelectionReply = reportDialogReply || encomendaProductReply || taskSelectionReply || pedidoSelectionReply ? null : await maybeHandleTaskTargetSelectionReply(row, whatsappUserContext);
+    const responsibleSelectionReply = reportDialogReply || encomendaProductReply || taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply ? null : await maybeHandleResponsibleSelectionReply(row, whatsappUserContext);
+    const confirmationReply = reportDialogReply || encomendaProductReply || taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply || responsibleSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
     const reply = confirmationReply || audioFailureReply || mediaFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes, whatsappUserContext, row);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
@@ -4592,6 +4593,7 @@ async function hasPendingSelectionReplyContext(phone: string): Promise<boolean> 
   const hashes = phoneHashCandidates(sha256(phone), phone).map((hash) => safeText(hash, 64)).filter(Boolean);
   if (!hashes.length) return false;
   const selectionTools = [
+    'completar_encomenda_whatsapp',
     'selecionar_responsavel_whatsapp',
     'selecionar_destino_tarefa_whatsapp',
     'selecionar_tarefa_whatsapp',
@@ -4607,7 +4609,11 @@ async function hasPendingSelectionReplyContext(phone: string): Promise<boolean> 
           AND tool = ANY($2::text[])
           AND (
             status = 'pending'
-            OR (status = 'expired' AND updated_at >= NOW() - INTERVAL '10 minutes')
+            OR (
+              tool <> 'completar_encomenda_whatsapp'
+              AND status = 'expired'
+              AND updated_at >= NOW() - INTERVAL '10 minutes'
+            )
           )
         LIMIT 1`,
       [hashes, selectionTools],
@@ -4837,6 +4843,21 @@ async function findPendingTaskSelection(senderHash: string): Promise<PendingConf
   return result.rows[0] || null;
 }
 
+async function findPendingEncomendaProduct(senderHash: string): Promise<PendingConfirmationRow | null> {
+  await expireOldConfirmations();
+  const result = await pgPool.query<PendingConfirmationRow>(
+    `SELECT id, short_id, tool, summary, risk, command_payload, attempts
+       FROM miauw_whatsapp_confirmations
+      WHERE sender_phone_hash = $1
+        AND status = 'pending'
+        AND tool = 'completar_encomenda_whatsapp'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [senderHash],
+  );
+  return result.rows[0] || null;
+}
+
 async function findPendingPedidoSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
   await expireOldConfirmations();
   const result = await pgPool.query<PendingConfirmationRow>(
@@ -4969,6 +4990,40 @@ async function createPendingTaskSelection(row: QueueRow, command: JsonRecord): P
       row.sender_phone_mask,
       row.instance_name || defaultInstanceName(),
       safeOutboundText('Selecionar tarefa para concluir/cancelar.', 500),
+      JSON.stringify(command),
+      CONFIRMATION_TTL_MINUTES,
+      row.trace_id,
+    ],
+  );
+}
+
+async function createPendingEncomendaProduct(row: QueueRow, command: JsonRecord): Promise<void> {
+  if (!whatsappConfirmationsReady()) return;
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_confirmations
+        SET status = 'expired',
+            error_summary = CASE WHEN error_summary = '' THEN 'replaced_by_encomenda_product_dialog' ELSE error_summary END,
+            updated_at = NOW()
+      WHERE sender_phone_hash = $1
+        AND status = 'pending'`,
+    [row.sender_phone_hash],
+  );
+  await pgPool.query(
+    `INSERT INTO miauw_whatsapp_confirmations (
+      id, short_id, event_id, sender_phone_hash, sender_phone_mask, instance_name,
+      tool, summary, risk, command_payload, expires_at, trace_id
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6,
+      'completar_encomenda_whatsapp', $7, 'baixo', $8::jsonb, NOW() + ($9::int * INTERVAL '1 minute'), $10
+    )`,
+    [
+      crypto.randomUUID(),
+      confirmationShortId(),
+      row.id,
+      row.sender_phone_hash,
+      row.sender_phone_mask,
+      row.instance_name || defaultInstanceName(),
+      safeOutboundText('Aguardando o produto da encomenda.', 500),
       JSON.stringify(command),
       CONFIRMATION_TTL_MINUTES,
       row.trace_id,
@@ -5719,6 +5774,87 @@ async function maybeHandleTaskTargetSelectionReply(row: QueueRow, userContext: W
   }
 }
 
+async function maybeHandleEncomendaProductReply(
+  row: QueueRow,
+  userContext: WhatsappUserContext,
+  senderHashes: string[],
+): Promise<ReplyResult | null> {
+  if (!whatsappConfirmationsReady()) return null;
+  const pending = await findPendingEncomendaProduct(row.sender_phone_hash);
+  if (!pending) return null;
+
+  const clean = normalizeIntentText(row.body_text);
+  if (/^(cancelar|cancela|nao|deixa|esquece|volta)(\s|$)/.test(clean)) {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND status = 'pending'`,
+      [pending.id],
+    );
+    return {
+      text: 'Encomenda cancelada. Nada foi gravado.',
+      engine: 'local',
+      reason: 'encomenda_product_dialog_cancelled',
+    };
+  }
+
+  if (/\b(?:sangria|pix|financeiro|tarefa|pedido|gestao|relatorio|calendario)\b/.test(clean)
+      && !/\b(?:encomenda|encomendar|produto)\b/.test(clean)) {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'expired',
+              error_summary = CASE WHEN error_summary = '' THEN 'replaced_by_another_command' ELSE error_summary END,
+              updated_at = NOW()
+        WHERE id = $1 AND status = 'pending'`,
+      [pending.id],
+    );
+    return null;
+  }
+
+  const product = safeText(stripActivationWord(row.body_text).replace(/^produto\s*[:\-]?\s*/i, ''), 220);
+  if (product.length < 2) {
+    return {
+      text: 'Qual produto devo registrar nessa encomenda?',
+      engine: 'local',
+      reason: 'encomenda_product_dialog_expected',
+    };
+  }
+
+  const partial = isRecord(pending.command_payload) ? pending.command_payload : {};
+  const client = safeText(partial.responsavel, 100);
+  const phone = safeText(partial.telefone, 32);
+  const extra = safeText(partial.categoria_extra, 160);
+  const composed = client
+    ? ['cliente', client, 'pediu', product, phone, extra].filter(Boolean).join(' ')
+    : ['encomenda', product, phone, extra].filter(Boolean).join(' ');
+  const allowedCards = await allowedModuleCardsForHashes(senderHashes);
+  const prepared = await requestWhatsappActionPrepare(
+    composed,
+    row.trace_id,
+    row.sender_phone_mask,
+    allowedCards,
+    userContext,
+    row,
+    false,
+  );
+  if (!prepared) {
+    return {
+      text: 'Nao consegui completar essa encomenda. Envie novamente em uma mensagem so.',
+      engine: 'blocked',
+      reason: 'encomenda_product_dialog_prepare_failed',
+    };
+  }
+  if (prepared.confirmation) {
+    await pgPool.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'executed', executed_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND status = 'pending'`,
+      [pending.id],
+    );
+  }
+  return prepared;
+}
+
 async function maybeHandleTaskSelectionReply(row: QueueRow): Promise<ReplyResult | null> {
   if (!whatsappConfirmationsReady()) return null;
   const pending = await findPendingTaskSelection(row.sender_phone_hash);
@@ -6003,15 +6139,24 @@ async function maybeHandleConfirmationReply(row: QueueRow, userContext: Whatsapp
     };
   }
 
-  await pgPool.query(
+  const claimed = await pgPool.query(
     `UPDATE miauw_whatsapp_confirmations
         SET status = 'confirmed',
             attempts = attempts + 1,
             confirmed_at = NOW(),
             updated_at = NOW()
-      WHERE id = $1`,
+      WHERE id = $1
+        AND status = 'pending'
+      RETURNING id`,
     [pending.id],
   );
+  if (!claimed.rowCount) {
+    return {
+      text: 'Essa confirmacao ja esta sendo processada ou foi concluida.',
+      engine: 'local',
+      reason: 'confirmation_already_claimed',
+    };
+  }
 
   try {
     const executed = await executeWhatsappAction(pending, row.trace_id, row.sender_phone_mask, userContext);
@@ -6029,18 +6174,21 @@ async function maybeHandleConfirmationReply(row: QueueRow, userContext: Whatsapp
       reason: 'confirmation_executed',
     };
   } catch (error) {
+    const retrySameConfirmation = pending.tool === 'criar_encomenda_cotacao';
     await pgPool.query(
       `UPDATE miauw_whatsapp_confirmations
-          SET status = 'failed',
-              error_summary = $2,
+          SET status = $2,
+              error_summary = $3,
               updated_at = NOW()
         WHERE id = $1`,
-      [pending.id, safeError(error)],
+      [pending.id, retrySameConfirmation ? 'pending' : 'failed', safeError(error)],
     );
     return {
-      text: `Nao consegui executar essa acao agora. ${safeError(error)}`,
+      text: retrySameConfirmation
+        ? 'Nao consegui confirmar a resposta da Cotacao. Envie confirmar novamente; a mesma confirmacao nao duplica a encomenda.'
+        : `Nao consegui executar essa acao agora. ${safeError(error)}`,
       engine: 'miauw',
-      reason: 'confirmation_execution_failed',
+      reason: retrySameConfirmation ? 'confirmation_execution_retryable' : 'confirmation_execution_failed',
     };
   }
 }
@@ -6962,7 +7110,15 @@ function confirmationDraftFromData(data: JsonRecord): WhatsappConfirmationDraft 
   };
 }
 
-async function requestWhatsappActionPrepare(message: string, traceId: string, senderMask: string, allowedCards: WhatsappModuleCard[], userContext: WhatsappUserContext): Promise<ReplyResult | null> {
+async function requestWhatsappActionPrepare(
+  message: string,
+  traceId: string,
+  senderMask: string,
+  allowedCards: WhatsappModuleCard[],
+  userContext: WhatsappUserContext,
+  row?: QueueRow,
+  rememberMissing = true,
+): Promise<ReplyResult | null> {
   if (!whatsappConfirmationsReady()) return null;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ACTIONS_TIMEOUT_MS);
@@ -6982,6 +7138,23 @@ async function requestWhatsappActionPrepare(message: string, traceId: string, se
     if (!response.ok || !isRecord(data) || data.ok !== true) return null;
     const status = safeText(data.status, 80);
     if (status === 'needs_input') {
+      const missing = Array.isArray(data.missing) ? data.missing.map((item) => safeText(item, 80)) : [];
+      const partialCommand = isRecord(data.command) ? data.command : null;
+      if (rememberMissing && row && missing.includes('produto') && partialCommand) {
+        try {
+          await createPendingEncomendaProduct(row, partialCommand);
+        } catch (error) {
+          await recordErrorLog('encomenda_product_dialog', 'warn', error, {
+            traceId,
+            phoneMask: senderMask,
+          });
+          return {
+            text: 'Nao consegui guardar essa encomenda incompleta. Envie novamente em uma mensagem so, por exemplo: miauby encomenda losartana 50mg para Maria.',
+            engine: 'blocked',
+            reason: 'encomenda_product_dialog_storage_failed',
+          };
+        }
+      }
       return {
         text: safeText(data.text, 1200) || 'Faltou dado para preparar essa acao.',
         engine: 'miauw',
@@ -8349,7 +8522,7 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     };
   }
   if (route.useTools) {
-    const prepared = await requestWhatsappActionPrepare(route.message, traceId, senderMask, allowedCards, userContext);
+    const prepared = await requestWhatsappActionPrepare(route.message, traceId, senderMask, allowedCards, userContext, row);
     if (prepared) return prepared;
   }
   if (route.engine === 'local' || route.engine === 'blocked') {

@@ -902,12 +902,56 @@ miauw_eval_add('intent_tarefa_criacao', static function (): void {
 });
 
 miauw_eval_add('intent_cotacao_encomenda', static function (): void {
-    $command = miauw_skill_cotacao_encomenda_command_from_message('encomenda losartana 50mg para Ana telefone 11999998888');
+    $cases = array(
+        array('Miauby encomenda losartana 50 Maria 44 4984894', 'Losartana 50', 'Maria', '44 4984894'),
+        array('Miauby losartana 50 encomenda Maria 44 4984894', 'Losartana 50', 'Maria', '44 4984894'),
+        array('Miauby Maria encomenda losartana 50 44 4984894', 'Losartana 50', 'Maria', '44 4984894'),
+        array('Miauby encomenda Maria Clara losartana 50mg 44 99848-9494', 'Losartana 50mg', 'Maria Clara', '44 99848-9494'),
+        array('Miauby cliente Joao pediu amoxicilina 500mg 44998489494', 'Amoxicilina 500mg', 'Joao', '44998489494'),
+        array('Miauby encomenda dipirona gotas 20ml Ana', 'Dipirona gotas 20ml', 'Ana', ''),
+        array('Miauby encomenda Bepantol', 'Bepantol', '', ''),
+        array('Miauby Bepantol encomenda', 'Bepantol', '', ''),
+        array('Miauby reserva para Maria Bepantol', 'Bepantol', 'Maria', ''),
+        array('Miauby reservar losartana 50 para Maria 44 4984894', 'Losartana 50', 'Maria', '44 4984894'),
+        array('Miauby separar losartana 50 para Maria', 'Losartana 50', 'Maria', ''),
+        array('Miauby encomenda Maria Losartana 50mg', 'Losartana 50mg', 'Maria', ''),
+        array('Miauby Maria quer losartana 50 de encomenda', 'Losartana 50', 'Maria', ''),
+        array('Miauby botar encomenda losartana 50mg Maria', 'Losartana 50mg', 'Maria', ''),
+        array('Miauby encomenda losartana 50mg atendente Maria', 'Losartana 50mg', 'Maria', ''),
+    );
 
-    miauw_eval_assert(is_array($command), 'Comando de encomenda nao foi detectado.');
-    miauw_eval_assert_contains('losartana', (string) ($command['produto'] ?? ''), 'Produto da encomenda incorreto.');
-    miauw_eval_assert_contains('Ana', (string) ($command['responsavel'] ?? ''), 'Responsavel da encomenda nao detectado.');
-    miauw_eval_assert_contains('telefone', (string) ($command['categoria_extra'] ?? ''), 'Sinal de telefone da encomenda nao foi preservado.');
+    foreach ($cases as $case) {
+        $command = miauw_skill_cotacao_encomenda_command_from_message((string) $case[0]);
+        miauw_eval_assert(is_array($command), 'Comando de encomenda nao detectado: ' . (string) $case[0]);
+        miauw_eval_assert_same(miauw_skill_normalized((string) $case[1]), miauw_skill_normalized((string) ($command['produto'] ?? '')), 'Produto incorreto: ' . (string) $case[0]);
+        miauw_eval_assert_same(miauw_skill_normalized((string) $case[2]), miauw_skill_normalized((string) ($command['responsavel'] ?? '')), 'Cliente incorreto: ' . (string) $case[0]);
+        miauw_eval_assert_same(preg_replace('/\D+/', '', (string) $case[3]), preg_replace('/\D+/', '', (string) ($command['telefone'] ?? '')), 'Telefone incorreto: ' . (string) $case[0]);
+    }
+
+    $natural = miauw_skill_cotacao_encomenda_command_from_message('Miauby coloca losartana 50mg de encomenda para Maria buscar sexta');
+    miauw_eval_assert(is_array($natural), 'Frase natural de encomenda nao foi detectada.');
+    miauw_eval_assert_same('losartana 50mg', miauw_skill_normalized((string) ($natural['produto'] ?? '')), 'Produto natural incorreto.');
+    miauw_eval_assert_same('maria', miauw_skill_normalized((string) ($natural['responsavel'] ?? '')), 'Cliente natural incorreto.');
+    miauw_eval_assert_contains('buscar sexta', miauw_skill_normalized((string) ($natural['categoria_extra'] ?? '')), 'Informacao extra nao foi preservada.');
+
+    $withPrice = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda losartana 50mg 20 reais');
+    miauw_eval_assert(is_array($withPrice), 'Encomenda com valor contextual nao foi detectada.');
+    miauw_eval_assert_same('losartana 50mg', miauw_skill_normalized((string) ($withPrice['produto'] ?? '')), 'Valor contextual contaminou o produto.');
+    miauw_eval_assert_same('', miauw_skill_normalized((string) ($withPrice['responsavel'] ?? '')), 'Valor contextual virou cliente.');
+    miauw_eval_assert_contains('20 reais', miauw_skill_normalized((string) ($withPrice['categoria_extra'] ?? '')), 'Valor contextual nao foi preservado nas informacoes extras.');
+
+    $ambiguous = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda Maria');
+    miauw_eval_assert(is_array($ambiguous), 'Encomenda ambigua deve ser reconhecida para pedir o produto.');
+    miauw_eval_assert_same('', (string) ($ambiguous['produto'] ?? ''), 'Maria nao pode ser gravada como produto em frase ambigua.');
+    miauw_eval_assert_same('maria', miauw_skill_normalized((string) ($ambiguous['responsavel'] ?? '')), 'Cliente da frase ambigua nao foi preservado.');
+
+    $ambiguousWithConnector = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda para Joao');
+    miauw_eval_assert(is_array($ambiguousWithConnector), 'Encomenda ambigua com conectivo deve pedir o produto.');
+    miauw_eval_assert_same('', (string) ($ambiguousWithConnector['produto'] ?? ''), 'Joao nao pode ser gravado como produto apos o conectivo para.');
+    miauw_eval_assert_same('joao', miauw_skill_normalized((string) ($ambiguousWithConnector['responsavel'] ?? '')), 'Cliente apos o conectivo para nao foi preservado.');
+    miauw_eval_assert(miauw_skill_cotacao_encomenda_command_from_message('Miauby ver encomenda recente') === null, 'Consulta de encomenda nao pode virar escrita no fallback PHP.');
+    miauw_eval_assert(miauw_skill_cotacao_encomenda_command_from_message('Miauby Joao pediu para abrir o financeiro') === null, 'Pedido generico nao pode virar encomenda.');
+    miauw_eval_assert(miauw_skill_cotacao_encomenda_command_from_message('Miauby separar dinheiro para o caixa') === null, 'Separacao financeira nao pode virar encomenda.');
 });
 
 miauw_eval_add('intent_cotacao_urgente', static function (): void {

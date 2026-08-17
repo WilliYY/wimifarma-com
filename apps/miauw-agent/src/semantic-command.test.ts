@@ -185,6 +185,50 @@ test('canoniza Gestao, Cotacao, relatorio e calendario', () => {
   assert.match(calendario.canonical_message, /^calendario\b/i);
 });
 
+test('reconhece Encomenda em ordem livre e em frases naturais', () => {
+  const messages = [
+    'Miauby encomenda losartana 50 Maria 44 4984894',
+    'Miauby losartana 50 encomenda Maria 44 4984894',
+    'Miauby Maria encomenda losartana 50 44 4984894',
+    'Miauby encomenda Maria Clara losartana 50mg 44 99848-9494',
+    'Miauby cliente Joao pediu amoxicilina 500mg 44998489494',
+    'Miauby encomenda dipirona gotas 20ml Ana',
+    'Miauby encomenda Bepantol',
+    'Miauby reserva para Maria nimesulida 100mg 12cp',
+    'Miauby falta encomendar omeprazol 20mg para Ana',
+    'Miauby Bepantol encomenda',
+    'Miauby reserva para Maria Bepantol',
+    'Miauby reservar losartana 50 para Maria 44 4984894',
+    'Miauby separar losartana 50 para Maria',
+    'Miauby encomenda Maria Losartana 50mg',
+  ];
+
+  for (const message of messages) {
+    const result = resolved(message);
+    assert.equal(result.intent, 'criar_encomenda_cotacao', message);
+    assert.match(result.canonical_message, /^encomenda\b/i, message);
+  }
+});
+
+test('preserva consultas de Encomenda sem transforma-las em escrita', () => {
+  const queries = [
+    'Miauby lista encomendas',
+    'Miauby o que tem de encomenda',
+    'Miauby pedidos encomenda',
+    'Miauby encomendas antigas',
+    'Miauby ver encomendas recentes',
+  ];
+
+  for (const message of queries) {
+    assert.notEqual(resolved(message).intent, 'criar_encomenda_cotacao', message);
+  }
+
+  const unrelatedRequest = interpretSemanticCommand('Miauby Joao pediu para abrir o financeiro');
+  assert.notEqual(unrelatedRequest.intent, 'criar_encomenda_cotacao');
+  const unrelatedSeparation = interpretSemanticCommand('Miauby separar dinheiro para o caixa');
+  assert.notEqual(unrelatedSeparation.intent, 'criar_encomenda_cotacao');
+});
+
 test('extrai entidades gerais sem executar nada', () => {
   const result = resolved('Miauby tarefa para Sueli comprar dipirona 500mg amanha 15h, quantidade 2');
   assert.equal(result.status, 'resolved');

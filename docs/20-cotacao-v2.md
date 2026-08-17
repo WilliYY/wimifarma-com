@@ -16,6 +16,14 @@ O endpoint tokenizado `POST /cotacao/api/internal/falteiro/commands` recebe a fr
 
 Exemplos: `Miauby falteiro losartana`, `Miauby estamos sem dipirona`, `Miauby precisa repor omeprazol 20mg`, `Miauby metformina urgente 850 popular falta` e `Miauby belfaren precisa cotar urgente porque acabou`. A resposta curta vem do mesmo endpoint e confirma a interpretacao oficial, por exemplo `✅ Belfaren adicionado ao Falteiro como Urgente Falta Cotar.`.
 
+## Encomenda contextual pelo Miauby
+
+Desde 2026-08-16, Miauby Interno e Miauby WhatsApp reutilizam `miauw_skill_cotacao_encomenda_command_from_message()` para interpretar Encomenda sem depender da ordem ou da caixa. A intencao aceita `encomenda`, `encomendar`, `encomendou`, `cliente pediu`, `pediram`, `reserva para` e `separa para`. Produto, dosagem e apresentacao permanecem em `produto`; nome composto, telefone e informacoes como `buscar sexta` ficam separados e formam `Encomenda <cliente> <telefone> <informacoes>` na coluna `categoria`. Cliente e telefone sao opcionais, mas produto e obrigatorio. Frase realmente ambigua, como `Miauby encomenda Maria`, pede somente o produto e nao grava.
+
+O `POST /cotacao/api/internal/encomendas` exige token, ator ativo com acesso ao card Cotacao e `request_id`. A linha, o evento e a auditoria em `cotacao_v2_miauby_encomenda_commands` sao gravados na mesma transacao; `(source, request_id)` impede duplicacao por retry ou confirmacao repetida. O cliente informado nunca e substituido pelo usuario autenticado: o primeiro pertence a categoria da Encomenda, enquanto o segundo fica como ator da auditoria. Ambos os canais continuam exigindo confirmacao humana antes da escrita.
+
+Exemplos equivalentes: `Miauby encomenda losartana 50 Maria 44 4984894`, `Miauby Maria encomenda losartana 50 44 4984894` e `Miauby cliente Joao pediu amoxicilina 500mg 44998489494`. `Miauby encomenda Bepantol` tambem e valido e salva somente `Encomenda` na categoria. Consultas como `lista encomendas`, `o que tem de encomenda` e `pedidos encomenda` continuam somente leitura.
+
 ## Arquivos, rotas e servicos envolvidos
 
 Arquivos principais:

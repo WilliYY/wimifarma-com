@@ -312,13 +312,27 @@ export interface InternalActorPayload {
   usuario?: string;
 }
 
-export interface InternalCreateItemPayload extends InternalActorPayload {
+export type InternalRequiredActorPayload = InternalActorPayload & (
+  | { usuario_id: number | string }
+  | { user_id: number | string }
+);
+
+export type InternalRequiredRequestPayload = (
+  | { request_id: string }
+  | { idempotency_key: string }
+);
+
+export type InternalCreateItemPayload = InternalRequiredActorPayload & InternalRequiredRequestPayload & {
   produto: string;
   responsavel?: string;
+  telefone?: string;
   observacao?: string;
   categoria?: string;
   categoria_extra?: string;
-}
+  request_id?: string;
+  idempotency_key?: string;
+  source?: "interno" | "whatsapp";
+};
 
 export type InternalCreateItemResponse = ApiResult<{
   item: JsonRecord;

@@ -82,6 +82,7 @@ Ele valida:
 - registry essencial de skills;
 - rotas de modelo `fast`, `smart` e `boss`;
 - intents de lancamento financeiro, tarefa, encomenda e urgente de Cotacao.
+- Encomenda contextual em ordens diferentes, com nome composto, telefone separado de dosagem, cliente opcional, informacao extra e pergunta somente pelo produto quando houver ambiguidade.
 - Fase 4 das tools core: sangria, tarefa, encomenda, resumo financeiro, consulta de Cotacao, cashback e codigos.
 - sangria sem valor nao vira escrita;
 - contrato das tools de Codigos (`resumo_codigos` e `buscar_codigo_comissao`).

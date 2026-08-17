@@ -914,6 +914,29 @@ async function ensureSchema() {
     ON cotacao_v2_miauby_falteiro_commands (quote_id, created_at DESC, id DESC)
   `);
   await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS cotacao_v2_miauby_encomenda_commands (
+      id bigserial PRIMARY KEY,
+      source text NOT NULL,
+      request_id text NOT NULL,
+      quote_id uuid NOT NULL REFERENCES cotacao_v2_quotes(id) ON DELETE CASCADE,
+      row_id uuid NULL REFERENCES cotacao_v2_rows(id) ON DELETE SET NULL,
+      event_id bigint NULL,
+      product text NOT NULL,
+      customer_name text NULL,
+      phone text NULL,
+      category text NOT NULL,
+      note text NULL,
+      actor_user_id integer NOT NULL,
+      actor_username text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (source, request_id)
+    )
+  `);
+  await pgPool.query(`
+    CREATE INDEX IF NOT EXISTS cotacao_v2_miauby_encomenda_quote_created_idx
+    ON cotacao_v2_miauby_encomenda_commands (quote_id, created_at DESC, id DESC)
+  `);
+  await pgPool.query(`
     CREATE TABLE IF NOT EXISTS cotacao_v2_rules (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       quote_id uuid NOT NULL REFERENCES cotacao_v2_quotes(id) ON DELETE CASCADE,
@@ -2243,7 +2266,12 @@ async function cancelEncomendaReminder(quoteId, rowId, reason, { user = null, cl
   return reminder;
 }
 
-async function syncEncomendaReminderForRow(quoteId, rowId, { user = null, clientId = null, source = 'cotacao' } = {}) {
+async function syncEncomendaReminderForRow(quoteId, rowId, {
+  user = null,
+  clientId = null,
+  source = 'cotacao',
+  preserveCanceled = false,
+} = {}) {
   const row = await rowForEncomendaReminder(quoteId, rowId);
   if (!row || row.deleted_at) {
     return cancelEncomendaReminder(quoteId, rowId, 'Linha removida antes do envio.', { user, clientId, source });
@@ -2256,6 +2284,9 @@ async function syncEncomendaReminderForRow(quoteId, rowId, { user = null, client
 
   const existing = await activeEncomendaReminderForRow(quoteId, rowId);
   if (existing && ['enviado', 'resolvido'].includes(existing.status)) {
+    return existing;
+  }
+  if (existing?.status === 'cancelado' && preserveCanceled) {
     return existing;
   }
 
@@ -3502,53 +3533,174 @@ app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, as
 app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRoute(async (req, res) => {
   const produto = normalizeInternalText(req.body?.produto, 220);
   const responsavel = normalizeInternalText(req.body?.responsavel, 70);
+  const telefone = normalizeInternalText(req.body?.telefone, 32);
   const observacao = normalizeInternalText(req.body?.observacao, 180);
   const categoriaExtra = normalizeInternalText(req.body?.categoria_extra, 80);
+  const requestId = normalizeInternalText(req.body?.request_id || req.body?.idempotency_key, 160);
+  const requestedSource = normalizeInternalSearch(req.body?.source);
+  const source = requestedSource === 'whatsapp' ? 'whatsapp' : 'interno';
   if (!produto) {
     return res.status(422).json({ ok: false, error: 'Informe o produto da encomenda.' });
   }
-  if (!responsavel) {
-    return res.status(422).json({ ok: false, error: 'Informe o responsavel ou cliente da encomenda.' });
+  if (!requestId) {
+    return res.status(422).json({ ok: false, error: 'Identificador idempotente ausente.' });
+  }
+
+  const requestedActor = internalActor(req.body);
+  if (!requestedActor.id) {
+    return res.status(403).json({ ok: false, error: 'Usuario responsavel pela acao nao identificado.' });
+  }
+  const actorResult = await corePgPool.query(
+    `SELECT id::text, username, role, active
+       FROM core_users
+      WHERE id = $1 AND active = true
+      LIMIT 1`,
+    [requestedActor.id]
+  );
+  const actorRow = actorResult.rows[0];
+  if (!actorRow) {
+    return res.status(403).json({ ok: false, error: 'Usuario inativo ou inexistente.' });
+  }
+  const actor = userPublic({ ...actorRow, id: Number(actorRow.id) });
+  if (!await canAccessModule(actor, 'cotacao')) {
+    return res.status(403).json({ ok: false, error: 'Usuario sem acesso a Cotacao.' });
   }
 
   const quote = await getOrCreateDefaultQuote();
-  const categoria = normalizeInternalText(`encomenda ${responsavel}${categoriaExtra ? ` ${categoriaExtra}` : ''}`, 120);
+  const categoryParts = ['Encomenda', responsavel, telefone, categoriaExtra].filter(Boolean);
+  const categoria = normalizeInternalText([...new Set(categoryParts)].join(' '), 300);
   const rowValues = {
     produto,
     quantidade: '1',
     categoria
   };
-  const rows = await addRows(quote.id, 1, [rowValues]);
-  const username = normalizeInternalText(req.body?.username, 80) || 'Miauby';
-  const userId = Number.parseInt(String(req.body?.usuario_id || ''), 10);
-  const event = await appendEvent({
-    quoteId: quote.id,
-    type: 'rows_added',
-    payload: {
-      rows,
-      source: 'miauby_encomenda',
-      produto,
-      responsavel,
-      observacao
-    },
-    user: { id: Number.isSafeInteger(userId) && userId > 0 ? userId : null, username },
-    clientId: INTERNAL_CLIENT_ID
-  });
-  io.to(`quote:${quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId: INTERNAL_CLIENT_ID });
-  await syncEncomendaRemindersForRows(quote.id, rows.map((row) => row.id), {
-    user: { id: Number.isSafeInteger(userId) && userId > 0 ? userId : null, username },
+  const client = await pgPool.connect();
+  let row = null;
+  let event = null;
+  let replayed = false;
+
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_encomenda:${quote.id}`]);
+    const previous = await client.query(
+      `SELECT command.row_id AS "rowId",
+              command.event_id AS "eventId",
+              command.product,
+              COALESCE(command.customer_name, '') AS "customerName",
+              COALESCE(command.phone, '') AS phone,
+              command.category,
+              COALESCE(command.note, '') AS note,
+              command.actor_user_id AS "actorUserId",
+              command.created_at AS "createdAt",
+              row_data.position,
+              row_data.values,
+              row_data.version,
+              row_data.updated_at AS "updatedAt",
+              row_data.deleted_at AS "deletedAt"
+         FROM cotacao_v2_miauby_encomenda_commands command
+         LEFT JOIN cotacao_v2_rows row_data ON row_data.id = command.row_id
+        WHERE command.source = $1 AND command.request_id = $2
+        LIMIT 1`,
+      [source, requestId]
+    );
+
+    if (previous.rows[0]) {
+      replayed = true;
+      const stored = previous.rows[0];
+      if (!stored.rowId || stored.deletedAt) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ ok: false, error: 'A encomenda original desta confirmacao nao esta mais disponivel.' });
+      }
+      if (stored.product !== produto
+          || stored.customerName !== responsavel
+          || stored.phone !== telefone
+          || stored.category !== categoria
+          || stored.note !== observacao
+          || Number(stored.actorUserId) !== Number(actor.id)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ ok: false, error: 'Identificador idempotente ja usado com outra encomenda.' });
+      }
+      row = {
+        id: stored.rowId,
+        position: Number(stored.position || 0),
+        values: stored.values || rowValues,
+        version: Number(stored.version || 1),
+        updatedAt: stored.updatedAt,
+      };
+      event = { id: Number(stored.eventId || 0), created_at: stored.createdAt };
+      await client.query('COMMIT');
+    } else {
+      await client.query('SELECT id FROM cotacao_v2_quotes WHERE id = $1 FOR UPDATE', [quote.id]);
+      const maxPosition = await client.query(
+        'SELECT COALESCE(MAX(position), 0)::int AS position FROM cotacao_v2_rows WHERE quote_id = $1 AND deleted_at IS NULL',
+        [quote.id]
+      );
+      const inserted = await client.query(
+        `INSERT INTO cotacao_v2_rows (quote_id, position, values)
+         VALUES ($1, $2, $3::jsonb)
+         RETURNING id, position, values, version, updated_at`,
+        [quote.id, Number(maxPosition.rows[0]?.position || 0) + 1, JSON.stringify(rowValues)]
+      );
+      const insertedRow = inserted.rows[0];
+      row = {
+        id: insertedRow.id,
+        position: Number(insertedRow.position),
+        values: insertedRow.values || {},
+        version: Number(insertedRow.version),
+        updatedAt: insertedRow.updated_at,
+      };
+      event = await appendEvent({
+        quoteId: quote.id,
+        type: 'rows_added',
+        payload: {
+          rows: [row],
+          source: 'miauby_encomenda',
+          requestId,
+          produto,
+          responsavel,
+          telefone,
+          observacao
+        },
+        user: actor,
+        clientId: INTERNAL_CLIENT_ID,
+        db: client,
+      });
+      await client.query(
+        `INSERT INTO cotacao_v2_miauby_encomenda_commands
+          (source, request_id, quote_id, row_id, event_id, product, customer_name, phone, category, note, actor_user_id, actor_username)
+         VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''), $9, NULLIF($10, ''), $11, $12)`,
+        [source, requestId, quote.id, row.id, Number(event.id), produto, responsavel, telefone, categoria, observacao, actor.id, actor.username]
+      );
+      await client.query('COMMIT');
+    }
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const rows = [row];
+  if (!replayed) {
+    io.to(`quote:${quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId: INTERNAL_CLIENT_ID });
+  }
+  await syncEncomendaRemindersForRows(quote.id, [row.id], {
+    user: actor,
     clientId: INTERNAL_CLIENT_ID,
-    source: 'miauby_encomenda'
+    source: 'miauby_encomenda',
+    preserveCanceled: replayed,
   });
 
   return res.json({
     ok: true,
+    replayed,
     item: {
-      id: rows[0]?.id || '',
-      rowId: rows[0]?.id || '',
-      position: rows[0]?.position || 0,
+      id: row?.id || '',
+      rowId: row?.id || '',
+      position: row?.position || 0,
       produto,
       responsavel,
+      telefone,
       categoria,
       status: 'aberta',
       registrada_em: event.created_at,

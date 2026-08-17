@@ -1160,14 +1160,12 @@ function miauw_agent_node_confirmation_text(string $name, array $args, ?array &$
 
     $actor = miauw_resolve_responsible_actor(array(
         'user_context' => $userContext,
-        'manual' => (string) ($command['responsavel'] ?? ''),
+        'manual' => $name === 'criar_encomenda_cotacao' ? '' : (string) ($command['responsavel'] ?? ''),
         'prefer_session' => true,
     ));
     $command = miauw_apply_actor_identity_to_command($command, $actor);
     if (in_array($name, array('registrar_sangria', 'criar_lancamento_financeiro'), true)) {
         $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
-    } elseif ($name === 'criar_encomenda_cotacao') {
-        $command = miauw_apply_responsible_actor_to_command($command, $actor, false);
     }
 
     $summary = miauw_confirmation_summary($name, $command);
@@ -4176,9 +4174,13 @@ function miauw_confirmation_summary(string $tool, array $command): string
     }
 
     if ($tool === 'criar_encomenda_cotacao') {
+        $details = array_values(array_filter(array(
+            trim((string) ($command['responsavel'] ?? '')),
+            trim((string) ($command['telefone'] ?? '')),
+        )));
         return 'Criar encomenda na Cotacao: '
             . trim((string) ($command['produto'] ?? 'produto nao informado'))
-            . ' para ' . trim((string) ($command['responsavel'] ?? 'responsavel nao informado')) . '.';
+            . ($details ? ' — ' . implode(' — ', $details) : '') . '.';
     }
 
     if ($tool === 'criar_conta_gestao') {
@@ -4232,19 +4234,17 @@ function miauw_queue_confirmation(string $tool, array $command, ?string $summary
     $meta = miauw_tool_public_meta($tool);
 
     $actor = miauw_resolve_responsible_actor(array(
-        'manual' => (string) ($command['responsavel'] ?? ''),
+        'manual' => $tool === 'criar_encomenda_cotacao' ? '' : (string) ($command['responsavel'] ?? ''),
         'prefer_session' => true,
     ));
     $command = miauw_apply_actor_identity_to_command($command, $actor);
     if (in_array($tool, array('registrar_sangria', 'criar_lancamento_financeiro'), true)) {
         $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
-    } elseif ($tool === 'criar_encomenda_cotacao') {
-        $command = miauw_apply_responsible_actor_to_command($command, $actor, false);
     }
     if ($userId === null && (int) ($actor['user_id'] ?? 0) > 0) {
         $userId = (int) $actor['user_id'];
     }
-    if (in_array($tool, array('registrar_sangria', 'criar_lancamento_financeiro'), true)
+    if (in_array($tool, array('registrar_sangria', 'criar_lancamento_financeiro', 'criar_encomenda_cotacao'), true)
         && trim((string) ($command['idempotency_key'] ?? '')) === '') {
         $command['idempotency_key'] = 'miauby-confirmation:' . $id . ':user-' . max(0, (int) $userId);
     }
@@ -4302,7 +4302,7 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
     $command = is_array($pending['command'] ?? null) ? $pending['command'] : array();
     $actor = miauw_resolve_responsible_actor(array(
         'user_context' => $command,
-        'manual' => (string) ($command['responsavel'] ?? ''),
+        'manual' => $tool === 'criar_encomenda_cotacao' ? '' : (string) ($command['responsavel'] ?? ''),
         'prefer_session' => true,
     ));
     if ($userId > 0 && empty($actor['user_id'])) {
@@ -4312,8 +4312,6 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
 
     if (in_array($tool, array('registrar_sangria', 'criar_lancamento_financeiro'), true)) {
         $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
-    } elseif ($tool === 'criar_encomenda_cotacao') {
-        $command = miauw_apply_responsible_actor_to_command($command, $actor, false);
     }
 
     if ($tool === 'criar_encomenda_cotacao') {
@@ -4521,6 +4519,10 @@ function miauw_try_confirmation_reply(string $message, int $userId): ?array
             'model' => 'miauw-action-confirmed',
         );
     } catch (Throwable $error) {
+        if ($tool === 'criar_encomenda_cotacao') {
+            // Repetir a mesma confirmacao e seguro: o request_id continua igual e a Cotacao deduplica o POST.
+            $_SESSION['miauw_pending_confirm_action'] = $pending;
+        }
         $trace = miauw_trace_context();
         miauw_trace_record($tool, 'error', array(
             'type' => 'acao',
@@ -6839,13 +6841,13 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
         if (is_array($command)) {
             $actor = miauw_resolve_responsible_actor(array(
                 'user_context' => $command,
-                'manual' => (string) ($command['responsavel'] ?? ''),
+                'manual' => '',
                 'prefer_session' => true,
             ));
-            $command = miauw_apply_responsible_actor_to_command($command, $actor, false);
+            $command = miauw_apply_actor_identity_to_command($command, $actor);
         }
 
-        if (is_array($command) && trim((string) ($command['produto'] ?? '')) !== '' && trim((string) ($command['responsavel'] ?? '')) !== '') {
+        if (is_array($command) && trim((string) ($command['produto'] ?? '')) !== '') {
             unset($_SESSION[$pendingOrderKey]);
 
             return miauw_confirmation_request_reply('criar_encomenda_cotacao', $command, $userId);
@@ -7093,11 +7095,11 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
         if (is_array($command)) {
             $actor = miauw_resolve_responsible_actor(array(
                 'user_context' => $command,
-                'manual' => (string) ($command['responsavel'] ?? ''),
+                'manual' => '',
                 'prefer_session' => true,
             ));
-            $command = miauw_apply_responsible_actor_to_command($command, $actor, false);
-            if (trim((string) ($command['produto'] ?? '')) === '' || trim((string) ($command['responsavel'] ?? '')) === '') {
+            $command = miauw_apply_actor_identity_to_command($command, $actor);
+            if (trim((string) ($command['produto'] ?? '')) === '') {
                 $_SESSION[$pendingOrderKey] = $command;
 
                 return array(
@@ -7720,15 +7722,17 @@ function miauw_openai_tools(): array
         array(
             'type' => 'function',
             'name' => 'criar_encomenda_cotacao',
-            'description' => 'Cria encomenda controlada na Cotacao Geral quando houver produto e responsavel/cliente. Exemplo: "encomenda losartana 50mg Isadora". Nao use para consulta; use buscar_cotacao para procurar.',
+            'description' => 'Cria encomenda controlada na Cotacao Geral quando houver produto. Cliente, telefone e informacoes extras sao opcionais. Nao use para consulta; use buscar_cotacao para procurar.',
             'parameters' => array(
                 'type' => 'object',
                 'properties' => array(
                     'produto' => array('type' => 'string', 'minLength' => 2, 'maxLength' => 220),
-                    'responsavel' => array('type' => 'string', 'minLength' => 2, 'maxLength' => 70),
-                    'observacao' => array('type' => 'string', 'maxLength' => 160),
+                    'responsavel' => array('type' => 'string', 'minLength' => 2, 'maxLength' => 100),
+                    'telefone' => array('type' => 'string', 'maxLength' => 32),
+                    'categoria_extra' => array('type' => 'string', 'maxLength' => 160),
+                    'observacao' => array('type' => 'string', 'maxLength' => 260),
                 ),
-                'required' => array('produto', 'responsavel'),
+                'required' => array('produto'),
                 'additionalProperties' => false,
             ),
         ),
@@ -8041,8 +8045,6 @@ function miauw_openai_tool_result(string $name, array $args): string
         $command = miauw_apply_actor_identity_to_command($command, $actor);
         if (in_array($name, array('registrar_sangria', 'criar_lancamento_financeiro'), true)) {
             $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
-        } elseif ($name === 'criar_encomenda_cotacao') {
-            $command = miauw_apply_responsible_actor_to_command($command, $actor, false);
         }
 
         $user = function_exists('current_user') ? current_user() : null;

@@ -211,9 +211,19 @@ const INTENTS: IntentSpec[] = [
     groups: [['gestao'], ['abrir', 'acessar', 'entrar']],
   },
   {
-    intent: 'criar_encomenda_cotacao', module: 'cotacao', risk: 'alto', prefix: 'encomenda', priority: 55,
-    groups: [['encomenda', 'encomendar', 'encomendado']], optional: ['criar', 'registrar', 'cotacao'],
-    blockers: ['relatorio', 'resumo', 'listar', ...FALTEIRO_CONTEXT_CUES], requiredPayload: 'produto',
+    intent: 'criar_encomenda_cotacao', module: 'cotacao', risk: 'alto', prefix: 'encomenda', priority: 85,
+    groups: [[
+      'encomenda', 'encomendar', 'encomendado', 'encomendou', 'pedido cliente', 'pedido para cliente',
+      'cliente pediu', 'pediu', 'pediram', 'separa', 'separar', 'reserva', 'reservar',
+    ]],
+    optional: ['criar', 'registrar', 'adicionar', 'colocar', 'cotacao'],
+    blockers: [
+      'relatorio', 'resumo', 'historico', 'listar', 'lista', 'consultar', 'mostrar', 'ver encomendas',
+      'o que tem', 'o que ha', 'o que existe', 'pedidos encomenda', 'encomendas antigas',
+      'encomendas recentes', 'encomendas atuais', 'ver encomenda', 'encomenda recente',
+      'encomenda antiga', 'encomenda atual', 'tarefa',
+    ],
+    requiredPayload: 'produto',
   },
   {
     intent: 'criar_cotacao_urgente', module: 'cotacao', risk: 'alto', prefix: 'cotacao urgente', priority: 55,
@@ -369,6 +379,22 @@ function candidateFor(
     evidence.push(matched.phrase);
     fuzzyCount += matched.fuzzyCount;
     matched.indexes.forEach((index) => consumed.add(index));
+  }
+
+  if (spec.intent === 'criar_encomenda_cotacao'
+      && evidence.includes('pediu')
+      && !/\bcliente\b(?:\s+[a-z0-9'\-]+){1,5}\s+pediu\b/.test(normalized)) {
+    return null;
+  }
+  if (spec.intent === 'criar_encomenda_cotacao') {
+    const hasExplicitOrderCue = /\b(?:encomenda|encomendar|encomendado|encomendou|pediram)\b/.test(normalized)
+      || /\bpedido\s+(?:para\s+)?cliente\b/.test(normalized)
+      || /\bcliente\b(?:\s+[a-z0-9'\-]+){1,5}\s+pediu\b/.test(normalized);
+    const hasReservationCue = /\b(?:separa|separar|reserva|reservar)\b/.test(normalized);
+    if (!hasExplicitOrderCue && hasReservationCue) {
+      if (!/\bpara\b/.test(normalized)) return null;
+      if (/\b(?:caixa|calendario|dinheiro|financeiro|gestao|pix|relatorio|sangria|tarefa)\b/.test(normalized)) return null;
+    }
   }
 
   const optional = (spec.optional || [])

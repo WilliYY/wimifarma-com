@@ -62,6 +62,16 @@ Novos comandos devem adicionar uma especificacao ao registro central e testes de
 - A mensagem original permanece em auditoria. A mensagem canonica serve apenas para roteamento e extracao pelos parsers existentes.
 - Permissoes, allowlists, identificacao do ator, CSRF, locks, transacoes e idempotencia permanecem nos donos atuais.
 
+### Encomenda
+
+- A intencao `criar_encomenda_cotacao` reconhece termos de Encomenda em qualquer posicao e preserva os comandos historicos de consulta.
+- O parser PHP compartilhado pelos dois canais separa `produto`, `responsavel` (cliente), `telefone` e `categoria_extra`; numeros de dosagem/apresentacao nao viram telefone.
+- Cliente e telefone sao opcionais. Produto e obrigatorio, e ambiguidade real pede somente esse dado.
+- No WhatsApp, quando apenas o produto estiver faltando, o bridge preserva temporariamente cliente, telefone e contexto da Encomenda. A proxima resposta pode informar somente o produto; `cancelar` encerra a pendencia e um novo comando Miauby substitui o contexto antigo.
+- Se a resposta da Cotacao falhar ou expirar depois da confirmacao, os dois canais preservam a mesma confirmacao para retry. O mesmo `request_id` e reutilizado, portanto uma resposta perdida depois do `COMMIT` nao cria outra Encomenda.
+- O ator autenticado/vinculado e usado apenas para permissao e auditoria. Ele nunca substitui o cliente informado.
+- A confirmacao gera chave idempotente enviada ao endpoint da Cotacao; retries da mesma confirmacao devolvem o registro original.
+
 ## Testes
 
 Para cada familia, cobrir:

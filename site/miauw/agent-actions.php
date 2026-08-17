@@ -47,7 +47,7 @@ function miauw_agent_actions_allowlist(): array
 {
     $raw = miauw_env_string(array('MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ALLOWLIST'));
     if ($raw === '') {
-        $raw = 'registrar_sangria,criar_lancamento_financeiro,criar_conta_gestao';
+        $raw = 'registrar_sangria,criar_lancamento_financeiro,criar_conta_gestao,criar_encomenda_cotacao';
     }
 
     $items = preg_split('/[,\s;]+/', $raw) ?: array();
@@ -260,11 +260,56 @@ function miauw_agent_actions_prepare_gestao(string $message): ?array
     return miauw_agent_actions_confirmation('criar_conta_gestao', $command);
 }
 
+function miauw_agent_actions_prepare_encomenda(string $message, array $userContext = array()): ?array
+{
+    if (!function_exists('miauw_skill_cotacao_encomenda_command_from_message')) {
+        return null;
+    }
+
+    $command = miauw_skill_cotacao_encomenda_command_from_message($message);
+    if (!is_array($command)) {
+        return null;
+    }
+    if (trim((string) ($command['produto'] ?? '')) === '') {
+        return array(
+            'ok' => true,
+            'status' => 'needs_input',
+            'text' => function_exists('miauw_skill_cotacao_encomenda_missing_reply')
+                ? miauw_skill_cotacao_encomenda_missing_reply($command)
+                : 'Qual produto devo registrar na encomenda?',
+            'missing' => array('produto'),
+            'command' => $command,
+        );
+    }
+    if (!miauw_agent_actions_tool_allowed('criar_encomenda_cotacao')) {
+        return null;
+    }
+
+    $userId = miauw_agent_actions_context_user_id($userContext);
+    $username = miauw_agent_actions_context_username($userContext);
+    if ($userId > 0) {
+        $command['usuario_id'] = $userId;
+        $command['actor_user_id'] = $userId;
+    }
+    if ($username !== '') {
+        $command['username'] = $username;
+    }
+    $command['source'] = 'whatsapp';
+    $command['raw_message'] = 'whatsapp_action_prepare_encomenda: ' . miauw_substr($message, 0, 600);
+
+    return miauw_agent_actions_confirmation('criar_encomenda_cotacao', $command);
+}
+
 function miauw_agent_actions_prepare(string $message, array $userContext = array()): array
 {
     $message = trim($message);
     if ($message === '') {
         return array('ok' => true, 'status' => 'no_action');
+    }
+
+    $encomenda = miauw_agent_actions_prepare_encomenda($message, $userContext);
+    if (is_array($encomenda)) {
+        return $encomenda;
     }
 
     $gestao = miauw_agent_actions_prepare_gestao($message);
@@ -315,9 +360,21 @@ function miauw_agent_actions_execute(array $body): array
     $userContext = miauw_agent_actions_user_context($body);
     $contextUserId = miauw_agent_actions_context_user_id($userContext);
     $contextUsername = miauw_agent_actions_context_username($userContext);
-    $actor = miauw_agent_actions_resolve_actor($userContext, (string) ($command['responsavel'] ?? ''));
+    if ($tool === 'criar_encomenda_cotacao' && $contextUserId <= 0) {
+        miauw_agent_actions_json(403, array(
+            'ok' => false,
+            'error' => 'whatsapp_user_not_linked',
+            'message' => 'Vincule este WhatsApp a um usuario ativo antes de criar encomendas.',
+        ));
+    }
+    $actor = miauw_agent_actions_resolve_actor(
+        $userContext,
+        $tool === 'criar_encomenda_cotacao' ? '' : (string) ($command['responsavel'] ?? '')
+    );
     if (function_exists('miauw_apply_responsible_actor_to_command')) {
-        $command = miauw_apply_responsible_actor_to_command($command, $actor, true);
+        $command = $tool === 'criar_encomenda_cotacao'
+            ? miauw_apply_actor_identity_to_command($command, $actor)
+            : miauw_apply_responsible_actor_to_command($command, $actor, true);
     }
     $userId = $contextUserId > 0 ? $contextUserId : (int) MIAUW_WHATSAPP_ACTOR_USER_ID;
     if ($userId > 0) {
@@ -326,6 +383,12 @@ function miauw_agent_actions_execute(array $body): array
     }
     if ($contextUsername !== '') {
         $command['username'] = $contextUsername;
+    }
+    if ($tool === 'criar_encomenda_cotacao') {
+        $command['source'] = 'whatsapp';
+        $command['idempotency_key'] = 'miauby-whatsapp-confirmation:'
+            . ($confirmationId !== '' ? $confirmationId : substr(miauw_trace_new_id(), 0, 8))
+            . ':user-' . $userId;
     }
     if ($traceId !== '' && function_exists('miauw_trace_set_context')) {
         miauw_trace_set_context($traceId, null, $userId);
