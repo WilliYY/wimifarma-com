@@ -151,6 +151,62 @@ test('prefere a categoria real mais especifica e aceita ordem, acento e pontuaca
   }
 });
 
+test('interpreta categorias por conceitos e preserva produto e apresentacao fora de ordem', () => {
+  const cases = [
+    ['Miauby falta metformina 850 urgente popular', 'Metformina 850', 'Urgente Popular'],
+    ['Miauby metformina 850 falta urgente popular', 'Metformina 850', 'Urgente Popular'],
+    ['Miauby popular metformina falta 850 urgente', 'Metformina 850', 'Urgente Popular'],
+    ['Miauby belfaren cp urgente falta cotar', 'Belfaren cp', 'Urgente Falta Cotar'],
+    ['Miauby urgente belfaren falta cotar cp', 'Belfaren cp', 'Urgente Falta Cotar'],
+    ['Miauby belfaren precisa cotar urgente porque acabou', 'Belfaren', 'Urgente Falta Cotar'],
+    ['Miauby acabou bepantol urgente', 'Bepantol', 'Urgente'],
+    ['Miauby bepantol acabou urgente', 'Bepantol', 'Urgente'],
+    ['Miauby losartana 50mg falta', 'Losartana 50mg', ''],
+    ['Miauby falta losartana 50mg', 'Losartana 50mg', ''],
+  ];
+
+  for (const [message, product, category] of cases) {
+    const parsed = parse(message);
+    assert.equal(parsed?.product, product, message);
+    assert.equal(parsed?.category, category, message);
+    assert.equal(parsed?.error, '', message);
+  }
+});
+
+test('entende aliases de categoria sem gravar linguagem natural no produto', () => {
+  const cases = [
+    ['Miauby belfaren cp urgencia faltando cotacao', 'Belfaren cp', 'Urgente Falta Cotar'],
+    ['Miauby belfaren precisa cotar urgente porque acabou', 'Belfaren', 'Urgente Falta Cotar'],
+    ['Miauby linha popular dipirona 500 mg acabou', 'Dipirona 500 mg', 'Popular'],
+    ['Miauby com urgencia belfaren cp precisa cotar porque faltou', 'Belfaren cp', 'Urgente Falta Cotar'],
+    ['Miauby prioridade belfaren cp para cotar porque acabou', 'Belfaren cp', 'Urgente Falta Cotar'],
+  ];
+
+  for (const [message, product, category] of cases) {
+    const parsed = parse(message);
+    assert.equal(parsed?.product, product, message);
+    assert.equal(parsed?.category, category, message);
+    assert.equal(parsed?.error, '', message);
+  }
+});
+
+test('entende necessidade de reposicao como intencao de Falteiro', () => {
+  const cases = [
+    ['Miauby precisa repor losartana 50mg', 'Losartana 50mg'],
+    ['Miauby reposicao de dipirona 500mg', 'Dipirona 500mg'],
+    ['Miauby comprar omeprazol 20mg', 'Omeprazol 20mg'],
+    ['Miauby losartana 50mg esta acabando', 'Losartana 50mg'],
+    ['Miauby nao temos amoxicilina 500mg', 'Amoxicilina 500mg'],
+  ];
+
+  for (const [message, product] of cases) {
+    const parsed = parse(message);
+    assert.equal(parsed?.product, product, message);
+    assert.equal(parsed?.category, '', message);
+    assert.equal(parsed?.error, '', message);
+  }
+});
+
 test('nao ignora contexto de categoria sem correspondencia cadastrada', () => {
   const parsed = parse('Miauby falta dipirona 500mg popular', ['Urgente']);
   assert.equal(parsed?.product, 'Dipirona 500mg');

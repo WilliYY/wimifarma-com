@@ -5,21 +5,46 @@ const QUESTION_PATTERN = /\?\s*$/u;
 const BLOCKED_PRODUCT_PATTERN = /^(?:a\s+|o\s+)?(?:internet|energia|tempo|sistema|acesso|sinal|resposta|conex[aã]o|dados)$/iu;
 const CATEGORY_HINT_PATTERN = /^(?:prioridade\s+)?(?:urgente|urg[êe]ncia|popular|falta)(?:\s+(?:urgente|urg[êe]ncia|popular|falta))*$/iu;
 const CATEGORY_ALIASES = new Map([
+  ['acabando', 'falta'],
+  ['acabou', 'falta'],
+  ['cota', 'cotar'],
+  ['cotacao', 'cotar'],
+  ['cotacoes', 'cotar'],
+  ['faltando', 'falta'],
+  ['faltam', 'falta'],
+  ['faltou', 'falta'],
   ['urgencia', 'urgente'],
   ['urgencias', 'urgente'],
   ['urgentes', 'urgente'],
+  ['prioridade', 'urgente'],
+  ['prioritaria', 'urgente'],
+  ['prioritarias', 'urgente'],
+  ['prioritario', 'urgente'],
+  ['prioritarios', 'urgente'],
   ['populares', 'popular'],
   ['faltas', 'falta'],
 ]);
-const CATEGORY_HINT_TOKENS = new Set(['urgente', 'popular', 'falta']);
+const CATEGORY_PHRASE_ALIASES = [
+  { concept: 'urgente', phrases: ['com urgencia'] },
+  { concept: 'popular', phrases: ['linha popular'] },
+  { concept: 'cotar', phrases: ['precisa cotar', 'precisamos cotar', 'preciso cotar', 'para cotar', 'pra cotar'] },
+  { concept: 'falta', phrases: ['sem estoque'] },
+].flatMap((rule) => rule.phrases.map((phrase) => ({
+  concept: rule.concept,
+  parts: normalized(phrase).split(' ').filter(Boolean),
+}))).sort((left, right) => right.parts.length - left.parts.length);
+const CATEGORY_HINT_TOKENS = new Set(['urgente', 'popular', 'falta', 'cotar']);
 const CATEGORY_CONTROL_TOKENS = new Set([
-  'adiciona', 'adicione', 'categoria', 'coloca', 'coloque', 'como', 'prioridade',
+  'adiciona', 'adicione', 'adicionar', 'categoria', 'coloca', 'coloque', 'colocar', 'como',
+  'porque', 'pois',
 ]);
 const INTENT_FILLER_TOKENS = new Set(['por', 'favor']);
 const ANYWHERE_INTENTS = [
-  { trigger: 'sem_estoque', phrases: ['nao tem mais', 'sem estoque', 'estamos sem', 'ficou sem', 'estou sem'] },
-  { trigger: 'faltando', phrases: ['esta faltando', 'ta faltando', 'estao faltando', 'tao faltando'] },
-  { trigger: 'comprar', phrases: ['precisamos comprar', 'precisa comprar', 'preciso comprar'] },
+  { trigger: 'sem_estoque', phrases: ['nao tem mais', 'nao temos', 'nao tem', 'sem estoque', 'estamos sem', 'ficou sem', 'estou sem', 'sem'] },
+  { trigger: 'faltando', phrases: ['esta faltando', 'ta faltando', 'estao faltando', 'tao faltando', 'faltando'] },
+  { trigger: 'acabando', phrases: ['esta acabando', 'ta acabando', 'acabando'] },
+  { trigger: 'comprar', phrases: ['precisamos comprar', 'precisa comprar', 'preciso comprar', 'comprar'] },
+  { trigger: 'repor', phrases: ['precisamos repor', 'precisa repor', 'preciso repor', 'reposicao', 'repor'] },
   { trigger: 'falteiro', phrases: ['no falteiro', 'falteiro'] },
   { trigger: 'falta', phrases: ['faltou', 'falta', 'faltam'] },
   { trigger: 'acabou', phrases: ['acabou'] },
@@ -111,23 +136,52 @@ function categoryHintOnly(value) {
 }
 
 function findCategoryTokenIndexes(tokens, categoryTokens, supplementalTokens = []) {
-  const available = [
-    ...tokens.map((token, index) => ({ canonical: token.canonical, index })),
-    ...supplementalTokens.map((canonical) => ({ canonical, index: -1 })),
-  ];
-  const used = new Set();
+  const available = categoryOccurrences(tokens, supplementalTokens);
+  const usedIndexes = new Set();
+  const usedOccurrences = new Set();
   const indexes = [];
   let usedSupplemental = false;
 
   for (const required of categoryTokens) {
-    const found = available.findIndex((token, index) => token.canonical === required && !used.has(index));
+    const found = available.findIndex((occurrence, index) => (
+      occurrence.concept === required
+      && !usedOccurrences.has(index)
+      && occurrence.indexes.every((tokenIndex) => tokenIndex < 0 || !usedIndexes.has(tokenIndex))
+    ));
     if (found < 0) return null;
-    used.add(found);
-    if (available[found].index >= 0) indexes.push(available[found].index);
-    else usedSupplemental = true;
+    usedOccurrences.add(found);
+    for (const tokenIndex of available[found].indexes) {
+      if (tokenIndex >= 0) {
+        usedIndexes.add(tokenIndex);
+        indexes.push(tokenIndex);
+      } else {
+        usedSupplemental = true;
+      }
+    }
   }
 
   return { indexes, usedSupplemental };
+}
+
+function categoryOccurrences(tokens, supplementalTokens = []) {
+  const occurrences = [];
+
+  for (let start = 0; start < tokens.length; start += 1) {
+    for (const rule of CATEGORY_PHRASE_ALIASES) {
+      if (!rule.parts.every((part, offset) => tokens[start + offset]?.key === part)) continue;
+      occurrences.push({
+        concept: rule.concept,
+        indexes: rule.parts.map((_part, offset) => start + offset),
+      });
+    }
+    occurrences.push({ concept: tokens[start].canonical, indexes: [start] });
+  }
+
+  for (const concept of supplementalTokens) {
+    occurrences.push({ concept, indexes: [-1] });
+  }
+
+  return occurrences.sort((left, right) => right.indexes.length - left.indexes.length);
 }
 
 function categoryMatches(tokens, catalog, supplementalTokens = []) {
@@ -173,6 +227,15 @@ function extractCategory(productText, catalog, initialHint = '', overlapHint = '
   const ambiguous = sameSpecificity.length > 1 && !exact;
   const selected = ambiguous ? null : (exact || best);
   const selectedIndexes = new Set(selected?.indexes || []);
+  if (selected) {
+    const selectedConcepts = new Set(selected.tokens);
+    for (const occurrence of categoryOccurrences(tokens)) {
+      if (!selectedConcepts.has(occurrence.concept)) continue;
+      occurrence.indexes.forEach((index) => {
+        if (index >= 0) selectedIndexes.add(index);
+      });
+    }
+  }
   const contextTokens = categoryHintFromTokens(tokens, catalog);
   const unresolvedContext = tokens.filter((token, index) => (
     categoryHintFromTokens([token], catalog).length > 0 && !selectedIndexes.has(index)
@@ -261,6 +324,7 @@ function extractIntent(commandText, catalog) {
         trigger: normalized(triggerMatch?.[1] || item.trigger),
         productText: cleanCommandText(match[1]),
         categoryHint: '',
+        overlapCategoryHint: 'falta',
       };
     }
     if (item.categoryBeforeProduct) {
@@ -272,6 +336,7 @@ function extractIntent(commandText, catalog) {
         trigger: item.trigger === 'acabou' ? normalized(match[2] || item.trigger) : item.trigger,
         productText: cleanCommandText(match[1]).replace(/^(?:o\s+)?estoque\s+de\s+/iu, ''),
         categoryHint: cleanCommandText(match[item.categoryIndex || 3]),
+        overlapCategoryHint: 'falta',
       };
     }
     return { trigger: item.trigger, productText: cleanCommandText(match[1]), categoryHint: '' };
@@ -290,7 +355,7 @@ function extractIntent(commandText, catalog) {
     trigger: intent.trigger,
     productText,
     categoryHint: '',
-    overlapCategoryHint: intent.phrase === 'falta' ? 'falta' : '',
+    overlapCategoryHint: 'falta',
   };
 }
 

@@ -81,6 +81,30 @@ test('preserva todos os termos de categoria composta para o parser autoritativo 
   }
 });
 
+test('prioriza Falteiro por ruptura de estoque e preserva aliases para a Cotacao', () => {
+  const messages = [
+    'Miauby belfaren precisa cotar urgente porque acabou',
+    'Miauby belfaren cp urgencia faltando cotacao',
+    'Miauby precisa repor losartana 50mg',
+    'Miauby reposicao de dipirona 500mg',
+    'Miauby comprar omeprazol 20mg',
+    'Miauby losartana 50mg esta acabando',
+    'Miauby nao temos amoxicilina 500mg',
+  ];
+
+  for (const message of messages) {
+    const result = resolved(message);
+    assert.equal(result.status, 'resolved', message);
+    assert.equal(result.intent, 'registrar_falteiro', message);
+    assert.match(result.canonical_message, /^falta\b/i, message);
+  }
+
+  const compound = resolved(messages[0]);
+  assert.match(compound.canonical_message, /belfaren/i);
+  assert.match(compound.canonical_message, /cotar/i);
+  assert.match(compound.canonical_message, /urgente/i);
+});
+
 test('canoniza comandos financeiros com valor em qualquer posicao', () => {
   const sangria = [
     'Miauby sangria 30 troco do caixa',
@@ -206,6 +230,8 @@ test('pede confirmacao quando a frase apenas pergunta sobre uma acao', () => {
     'Miauby como faco uma sangria de 30?',
     'Miauby posso fechar o caixa hoje?',
     'Miauby tem como cancelar o pedido da ANB?',
+    'Miauby acabou losartana 50mg?',
+    'Miauby coloca losartana 50mg no falteiro?',
   ]) {
     const result = resolved(message);
     assert.equal(result.status, 'ambiguous', message);

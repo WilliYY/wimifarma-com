@@ -98,18 +98,21 @@ const CATEGORY_WORDS = new Set([
   'alta', 'baixa', 'critica', 'critico', 'encomenda', 'falta', 'geral', 'grave', 'importante',
   'normal', 'popular', 'urgente',
 ]);
+const FALTEIRO_CONTEXT_CUES = [
+  'falteiro', 'falta', 'faltou', 'acabou', 'acabando', 'esta acabando', 'ta acabando',
+  'esta faltando', 'ta faltando', 'ficou sem', 'estamos sem', 'sem estoque', 'nao tem mais',
+  'nao temos', 'nao tem', 'terminou', 'precisa comprar', 'precisamos comprar', 'preciso comprar',
+  'comprar', 'precisa repor', 'precisamos repor', 'preciso repor', 'repor', 'reposicao', 'no falteiro',
+  'preciso urgente de', 'preciso de', 'precisamos de', 'esta em falta', 'ta em falta', 'em falta',
+  'estao faltando', 'tao faltando', 'faltando', 'faltam',
+];
 
 const INTENTS: IntentSpec[] = [
   {
     intent: 'registrar_falteiro', module: 'cotacao', risk: 'medio', prefix: 'falta', priority: 40,
-    groups: [[
-      'falteiro', 'falta', 'faltou', 'acabou', 'esta faltando', 'ta faltando', 'ficou sem', 'estamos sem',
-      'sem estoque', 'nao tem mais', 'terminou', 'precisa comprar', 'precisamos comprar', 'no falteiro',
-      'preciso urgente de', 'preciso de', 'precisamos de', 'esta em falta', 'ta em falta', 'em falta',
-      'estao faltando', 'tao faltando', 'faltam',
-    ]],
+    groups: [FALTEIRO_CONTEXT_CUES],
     optional: ['coloca', 'adiciona', 'joga'],
-    blockers: ['qual faltou', 'o que faltou', 'relatorio', 'historico'],
+    blockers: ['qual faltou', 'o que faltou', 'relatorio', 'historico', 'tarefa', 'tarefas', 'pedido', 'pedidos'],
     requiredPayload: 'produto',
   },
   {
@@ -210,24 +213,27 @@ const INTENTS: IntentSpec[] = [
   {
     intent: 'criar_encomenda_cotacao', module: 'cotacao', risk: 'alto', prefix: 'encomenda', priority: 55,
     groups: [['encomenda', 'encomendar', 'encomendado']], optional: ['criar', 'registrar', 'cotacao'],
-    blockers: ['relatorio', 'resumo', 'listar'], requiredPayload: 'produto',
+    blockers: ['relatorio', 'resumo', 'listar', ...FALTEIRO_CONTEXT_CUES], requiredPayload: 'produto',
   },
   {
     intent: 'criar_cotacao_urgente', module: 'cotacao', risk: 'alto', prefix: 'cotacao urgente', priority: 55,
-    groups: [['cotacao', 'cotar'], ['urgente']], optional: ['criar', 'colocar', 'adicionar'], requiredPayload: 'produto',
+    groups: [['cotacao', 'cotar'], ['urgente']], optional: ['criar', 'colocar', 'adicionar'],
+    blockers: FALTEIRO_CONTEXT_CUES, requiredPayload: 'produto',
   },
   {
     intent: 'criar_planilha_cotacao', module: 'cotacao', risk: 'alto', prefix: 'planilha cotacao', priority: 55,
-    groups: [['planilha'], ['cotacao', 'cotar']], optional: ['criar', 'montar', 'gerar'], requiredPayload: 'itens',
+    groups: [['planilha'], ['cotacao', 'cotar']], optional: ['criar', 'montar', 'gerar'],
+    blockers: FALTEIRO_CONTEXT_CUES, requiredPayload: 'itens',
   },
   {
     intent: 'criar_cotacao_rapida', module: 'cotacao', risk: 'alto', prefix: 'cotacao rapida', priority: 42,
-    groups: [['cotacao rapida', 'cotar rapido', 'cotar rapida']], optional: ['criar', 'fazer'], requiredPayload: 'produto',
+    groups: [['cotacao rapida', 'cotar rapido', 'cotar rapida']], optional: ['criar', 'fazer'],
+    blockers: FALTEIRO_CONTEXT_CUES, requiredPayload: 'produto',
   },
   {
     intent: 'consultar_cotacao', module: 'cotacao', risk: 'baixo', prefix: 'cotacao', priority: 20,
     groups: [['cotacao', 'cotar', 'preco na cotacao']], optional: ['buscar', 'consultar', 'mostrar', 'ver'],
-    blockers: ['urgente', 'planilha', 'encomenda', 'rapida', 'rapido'], requiredPayload: 'item',
+    blockers: ['urgente', 'planilha', 'encomenda', 'rapida', 'rapido', ...FALTEIRO_CONTEXT_CUES], requiredPayload: 'item',
   },
   ...reportSpecs(),
   {
@@ -293,6 +299,21 @@ export function interpretSemanticCommand(message: string, _options: SemanticOpti
       canonical_message: '',
       missing: [],
       clarification: ambiguityQuestion(top.spec, second.spec),
+    };
+  }
+
+  if (top.spec.risk !== 'baixo' && question) {
+    return {
+      status: 'ambiguous',
+      intent: top.spec.intent,
+      module: top.spec.module,
+      risk: top.spec.risk,
+      confidence: round(Math.max(0.5, top.confidence - 0.08)),
+      evidence: top.evidence,
+      entities: extractEntities(original, tokens, top.spec, top.consumed),
+      canonical_message: '',
+      missing: [],
+      clarification: `Voce quer ${intentLabel(top.spec)}?`,
     };
   }
 

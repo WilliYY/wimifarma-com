@@ -3681,6 +3681,9 @@ function miauw_skill_falteiro_command_candidate(string $message): bool
         '/^(?:por\s+favor\s+)?nao\s+tem\s+mais\b/iu',
         '/^(?:por\s+favor\s+)?terminou\b/iu',
         '/^(?:por\s+favor\s+)?(?:precisa|precisamos|preciso)\s+(?:comprar\b|(?:urgente|urgencia|popular|falta)(?:\s+(?:urgente|urgencia|popular|falta))*\s+de\b)/iu',
+        '/^(?:por\s+favor\s+)?(?:precisa|precisamos|preciso)?\s*(?:repor|reposicao)\b/iu',
+        '/^(?:por\s+favor\s+)?comprar\b/iu',
+        '/^(?:por\s+favor\s+)?(?:nao\s+temos|nao\s+tem|sem)\b/iu',
         '/^(?:por\s+favor\s+)?(?:coloca|coloque|adiciona|adicione|joga|jogue)\b.*\bno\s+falteiro\b/iu',
         '/\b(?:acabou|terminou)(?:\s+(?:urgente|urgencia|popular|falta))*$/iu',
         '/\b(?:esta|ta)\s+(?:em\s+falta|faltando|sem\s+estoque)(?:\s+(?:urgente|urgencia|popular|falta))*$/iu',
@@ -3692,7 +3695,7 @@ function miauw_skill_falteiro_command_candidate(string $message): bool
     }
 
     return preg_match(
-        '/\b(?:falteiro|falta|faltou|faltam|acabou|terminou|faltando)\b|\b(?:sem\s+estoque|nao\s+tem\s+mais|precis(?:a|amos|o)\s+comprar)\b/iu',
+        '/\b(?:falteiro|falta|faltou|faltam|acabou|acabando|terminou|faltando|comprar|repor|reposicao)\b|\b(?:sem\s+estoque|nao\s+tem\s+mais|nao\s+temos|nao\s+tem|precis(?:a|amos|o)\s+(?:comprar|repor))\b/iu',
         $clean
     ) === 1;
 }
