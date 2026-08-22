@@ -64,6 +64,15 @@ Novos comandos devem adicionar uma especificacao ao registro central e testes de
 - A mensagem original permanece em auditoria. A mensagem canonica serve apenas para roteamento e extracao pelos parsers existentes.
 - Permissoes, allowlists, identificacao do ator, CSRF, locks, transacoes e idempotencia permanecem nos donos atuais.
 
+### Falteiro em lote
+
+- A intencao `registrar_falteiro` preserva na mensagem canonica virgulas, ponto e virgulas e quebras de linha para o parser autoritativo da Cotacao.
+- Uma mensagem pode produzir de um a 50 itens. A intencao global e herdada sem exigir `falta` em cada segmento, mas produto, categoria e contexto sao calculados separadamente; acima do limite, a mensagem inteira e recusada sem escrita.
+- Dosagem, concentracao, volume, apresentacao, quantidade da embalagem e marca obrigatoria continuam no produto. Contexto operacional segue para `Categoria`; sem contexto, a categoria fica vazia.
+- Categoria oficial e validada contra o catalogo real. Um erro simples no produto so e corrigido quando ha correspondencia unica em produtos ja conhecidos; ambiguidade preserva o texto recebido.
+- O endpoint valida o lote inteiro antes da escrita, exige linhas vazias suficientes, usa lock e `FOR UPDATE`, e grava todos os itens ou nenhum. `detected_count` precisa ser igual a `created_count`.
+- A idempotencia e auditada por `(source, request_id, item_index)`. Um retry devolve o mesmo conjunto e cada segmento gera exatamente um registro.
+
 ### Encomenda
 
 - A intencao `criar_encomenda_cotacao` reconhece termos de Encomenda em qualquer posicao, incluindo pedido/reserva/separacao em linguagem natural, e preserva os comandos historicos de consulta.

@@ -11,14 +11,16 @@ import pg from 'pg';
 import { createClient } from 'redis';
 import { Server } from 'socket.io';
 import {
+  MAX_FALTEIRO_BATCH_ITEMS,
   buildEncomendaRowValues,
   encomendaContextFromValues,
   encomendaTextParts,
   hasEncomendaWord
 } from './encomendas.js';
 import {
+  formatFalteiroBatchConfirmation,
   formatFalteiroConfirmation,
-  parseFalteiroCommand,
+  parseFalteiroCommands,
   sanitizeFalteiroCategories,
 } from './falteiro-command.js';
 
@@ -415,6 +417,16 @@ function normalizeInternalText(value, maxLength = 180) {
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/[<>]/g, '')
     .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function normalizeInternalMultilineText(value, maxLength = 1600) {
+  return String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[<>]/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
     .trim()
     .slice(0, maxLength);
 }
@@ -906,9 +918,15 @@ async function ensureSchema() {
       category text NULL,
       actor_user_id integer NULL,
       actor_username text NULL,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      UNIQUE (source, request_id)
+      item_index integer NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT now()
     )
+  `);
+  await pgPool.query('ALTER TABLE cotacao_v2_miauby_falteiro_commands ADD COLUMN IF NOT EXISTS item_index integer NOT NULL DEFAULT 0');
+  await pgPool.query('ALTER TABLE cotacao_v2_miauby_falteiro_commands DROP CONSTRAINT IF EXISTS cotacao_v2_miauby_falteiro_commands_source_request_id_key');
+  await pgPool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS cotacao_v2_miauby_falteiro_request_item_uidx
+    ON cotacao_v2_miauby_falteiro_commands (source, request_id, item_index)
   `);
   await pgPool.query(`
     CREATE INDEX IF NOT EXISTS cotacao_v2_miauby_falteiro_quote_created_idx
@@ -3329,9 +3347,23 @@ async function falteiroCategoriesForQuote(quoteId, db = pgPool) {
   return sanitizeFalteiroCategories(result.rows.map((row) => row.category));
 }
 
+async function falteiroKnownProductsForQuote(quoteId, db = pgPool) {
+  const result = await db.query(
+    `SELECT DISTINCT btrim(values->>'produto') AS product
+       FROM cotacao_v2_rows
+      WHERE quote_id = $1
+        AND deleted_at IS NULL
+        AND btrim(COALESCE(values->>'produto', '')) <> ''
+      ORDER BY product ASC
+      LIMIT 2000`,
+    [quoteId]
+  );
+  return result.rows.map((row) => normalizeInternalText(row.product, 220)).filter(Boolean);
+}
+
 app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, asyncRoute(async (req, res) => {
-  const rawMessage = normalizeInternalText(req.body?.message, 600);
-  const preflight = parseFalteiroCommand(rawMessage);
+  const rawMessage = normalizeInternalMultilineText(req.body?.message, 1600);
+  const preflight = parseFalteiroCommands(rawMessage);
   if (!preflight) {
     return res.json({ ok: true, matched: false });
   }
@@ -3344,36 +3376,53 @@ app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, as
   const source = requestedSource === 'whatsapp' ? 'whatsapp' : 'interno';
   const actor = internalActor(req.body);
   const quote = await getOrCreateDefaultQuote();
-  const categories = await falteiroCategoriesForQuote(quote.id);
-  const parsed = parseFalteiroCommand(rawMessage, { categories });
+  const [categories, knownProducts] = await Promise.all([
+    falteiroCategoriesForQuote(quote.id),
+    falteiroKnownProductsForQuote(quote.id),
+  ]);
+  const parsed = parseFalteiroCommands(rawMessage, { categories, knownProducts });
   if (!parsed) {
     return res.json({ ok: true, matched: false });
   }
-  if (parsed.error === 'missing_product') {
-    return res.status(422).json({ ok: false, matched: true, error: 'Informe o produto que deve entrar no Falteiro.' });
-  }
-  if (parsed.error === 'product_too_long') {
-    return res.status(422).json({ ok: false, matched: true, error: 'O nome do produto e longo demais.' });
-  }
-  if (parsed.error === 'category_not_found' || parsed.error === 'category_ambiguous') {
-    const categoryHint = normalizeInternalText(parsed.categoryHint, 160) || 'categoria informada';
-    const available = categories.slice(0, 8).join(', ');
-    const more = categories.length > 8 ? ` e mais ${categories.length - 8}` : '';
-    const options = available ? `${available}${more}` : 'nenhuma categoria cadastrada';
-    const error = parsed.error === 'category_ambiguous'
-      ? `A categoria "${categoryHint}" ficou ambigua. Categorias disponiveis: ${options}. Envie novamente com o nome exato.`
-      : `Nao encontrei a categoria "${categoryHint}" no Falteiro. Categorias disponiveis: ${options}. Envie novamente com uma categoria cadastrada.`;
+  const invalidItemIndex = parsed.items.findIndex((item) => item.error);
+  const invalidItem = invalidItemIndex >= 0 ? parsed.items[invalidItemIndex] : null;
+  if (parsed.error === 'too_many_items') {
     return res.status(422).json({
       ok: false,
       matched: true,
-      code: parsed.error,
+      code: 'too_many_items',
+      error: `Envie no maximo ${MAX_FALTEIRO_BATCH_ITEMS} itens por mensagem. Nenhum item foi gravado.`,
+      detected_count: parsed.detectedCount,
+      max_items: MAX_FALTEIRO_BATCH_ITEMS,
+    });
+  }
+  if (invalidItem?.error === 'missing_product') {
+    return res.status(422).json({ ok: false, matched: true, error: 'Informe o produto que deve entrar no Falteiro.' });
+  }
+  if (invalidItem?.error === 'product_too_long') {
+    return res.status(422).json({ ok: false, matched: true, error: 'O nome do produto e longo demais.' });
+  }
+  if (invalidItem?.error === 'category_not_found' || invalidItem?.error === 'category_ambiguous') {
+    const categoryHint = normalizeInternalText(invalidItem.categoryHint, 160) || 'categoria informada';
+    const available = categories.slice(0, 8).join(', ');
+    const more = categories.length > 8 ? ` e mais ${categories.length - 8}` : '';
+    const options = available ? `${available}${more}` : 'nenhuma categoria cadastrada';
+    const itemLabel = parsed.detectedCount > 1 ? ` no item ${invalidItemIndex + 1}` : '';
+    const error = invalidItem.error === 'category_ambiguous'
+      ? `A categoria "${categoryHint}"${itemLabel} ficou ambigua. Categorias disponiveis: ${options}. Envie novamente com o nome exato.`
+      : `Nao encontrei a categoria "${categoryHint}"${itemLabel} no Falteiro. Categorias disponiveis: ${options}. Envie novamente com uma categoria cadastrada.`;
+    return res.status(422).json({
+      ok: false,
+      matched: true,
+      code: invalidItem.error,
       error,
       category_hint: categoryHint,
+      item_index: invalidItemIndex,
       available_categories: categories,
     });
   }
   const client = await pgPool.connect();
-  let result = null;
+  let results = [];
   let event = null;
   let updatedCells = [];
   let replayed = false;
@@ -3388,75 +3437,90 @@ app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, as
               COALESCE(command.category, '') AS category,
               command.event_id AS "eventId",
               command.created_at AS "createdAt",
+              command.item_index AS "itemIndex",
               row_data.position
          FROM cotacao_v2_miauby_falteiro_commands command
          LEFT JOIN cotacao_v2_rows row_data ON row_data.id = command.row_id
         WHERE command.source = $1
           AND command.request_id = $2
-        LIMIT 1`,
+        ORDER BY command.item_index ASC, command.id ASC`,
       [source, requestId]
     );
 
-    if (previous.rows[0]) {
-      const stored = previous.rows[0];
+    if (previous.rows.length) {
       replayed = true;
-      result = {
+      results = previous.rows.map((stored) => ({
         rowId: String(stored.rowId || ''),
         line: Number(stored.position || 0),
         product: String(stored.product || ''),
         category: String(stored.category || ''),
         eventId: Number(stored.eventId || 0),
+        itemIndex: Number(stored.itemIndex || 0),
         createdAt: stored.createdAt
-      };
+      }));
       await client.query('COMMIT');
     } else {
       const available = await client.query(
         `SELECT id, position, values, version, updated_at
            FROM cotacao_v2_rows
-          WHERE quote_id = $1
-            AND deleted_at IS NULL
-            AND btrim(COALESCE(values->>'produto', '')) = ''
-          ORDER BY position ASC, id ASC
-          LIMIT 1
-          FOR UPDATE`,
-        [quote.id]
+           WHERE quote_id = $1
+             AND deleted_at IS NULL
+             AND btrim(COALESCE(values->>'produto', '')) = ''
+           ORDER BY position ASC, id ASC
+           LIMIT $2
+           FOR UPDATE`,
+        [quote.id, parsed.detectedCount]
       );
-      let row = available.rows[0];
-      if (!row) {
+      if (available.rows.length < parsed.detectedCount) {
         await client.query('ROLLBACK');
         return res.status(409).json({
           ok: false,
           matched: true,
-          error: 'Nao encontrei linha vazia no Falteiro. Libere uma linha na Cotacao e tente novamente.'
+          code: 'insufficient_empty_rows',
+          error: `O Falteiro tem ${available.rows.length} linha(s) vazia(s), mas a mensagem possui ${parsed.detectedCount} item(ns). Libere mais linhas e tente novamente.`,
+          detected_count: parsed.detectedCount,
+          available_rows: available.rows.length,
         });
       }
 
-      const changes = [
-        { columnKey: 'produto', value: parsed.product },
-        ...(parsed.category ? [{ columnKey: 'categoria', value: parsed.category }] : [])
-      ];
-      for (const change of changes) {
-        const previousValue = String(row.values?.[change.columnKey] ?? '');
-        const updated = await client.query(
-          `UPDATE cotacao_v2_rows
-              SET values = jsonb_set(COALESCE(values, '{}'::jsonb), ARRAY[$2], to_jsonb($3::text), true),
-                  version = version + 1,
-                  updated_at = now()
-            WHERE id = $1
-              AND quote_id = $4
-            RETURNING id, position, values, version, updated_at`,
-          [row.id, change.columnKey, change.value, quote.id]
-        );
-        row = updated.rows[0];
-        updatedCells.push({
+      for (let itemIndex = 0; itemIndex < parsed.items.length; itemIndex += 1) {
+        const parsedItem = parsed.items[itemIndex];
+        let row = available.rows[itemIndex];
+        const changes = [
+          { columnKey: 'produto', value: parsedItem.product },
+          { columnKey: 'categoria', value: parsedItem.category }
+        ];
+        for (const change of changes) {
+          const previousValue = String(row.values?.[change.columnKey] ?? '');
+          const updated = await client.query(
+            `UPDATE cotacao_v2_rows
+                SET values = jsonb_set(COALESCE(values, '{}'::jsonb), ARRAY[$2], to_jsonb($3::text), true),
+                    version = version + 1,
+                    updated_at = now()
+              WHERE id = $1
+                AND quote_id = $4
+              RETURNING id, position, values, version, updated_at`,
+            [row.id, change.columnKey, change.value, quote.id]
+          );
+          row = updated.rows[0];
+          updatedCells.push({
+            rowId: row.id,
+            columnKey: change.columnKey,
+            value: change.value,
+            previousValue,
+            expectedValue: '',
+            overwroteRemote: false,
+            version: Number(row.version),
+            updatedAt: row.updated_at
+          });
+        }
+        results.push({
           rowId: row.id,
-          columnKey: change.columnKey,
-          value: change.value,
-          previousValue,
-          expectedValue: '',
-          overwroteRemote: false,
-          version: Number(row.version),
-          updatedAt: row.updated_at
+          line: Number(row.position),
+          product: parsedItem.product,
+          category: parsedItem.category,
+          itemIndex,
+          createdAt: row.updated_at,
         });
       }
 
@@ -3464,42 +3528,45 @@ app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, as
         quoteId: quote.id,
         type: 'cells_batch_updated',
         payload: {
-          cells: updatedCells,
-          source: 'miauby_falteiro',
-          requestId,
-          trigger: parsed.trigger
-        },
+           cells: updatedCells,
+           source: 'miauby_falteiro',
+           requestId,
+           trigger: parsed.trigger,
+           detectedCount: parsed.detectedCount,
+           createdCount: results.length,
+           items: results.map((item) => ({ rowId: item.rowId, line: item.line, product: item.product, category: item.category }))
+         },
         user: actor,
         clientId: INTERNAL_CLIENT_ID,
         db: client
       });
-      await client.query(
-        `INSERT INTO cotacao_v2_miauby_falteiro_commands
-          (source, request_id, quote_id, row_id, event_id, raw_message, trigger_word, product, category, actor_user_id, actor_username)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), $10, $11)`,
-        [
-          source,
-          requestId,
-          quote.id,
-          row.id,
-          Number(event.id),
-          rawMessage,
-          parsed.trigger,
-          parsed.product,
-          parsed.category,
-          actor.id,
-          actor.username
-        ]
-      );
+      if (results.length !== parsed.detectedCount) {
+        throw new Error(`Falteiro batch count mismatch: detected=${parsed.detectedCount} created=${results.length}`);
+      }
+      for (const result of results) {
+        await client.query(
+          `INSERT INTO cotacao_v2_miauby_falteiro_commands
+            (source, request_id, quote_id, row_id, event_id, raw_message, trigger_word, product, category, actor_user_id, actor_username, item_index)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), $10, $11, $12)`,
+          [
+            source,
+            requestId,
+            quote.id,
+            result.rowId,
+            Number(event.id),
+            rawMessage,
+            parsed.trigger,
+            result.product,
+            result.category,
+            actor.id,
+            actor.username,
+            result.itemIndex,
+          ]
+        );
+        result.eventId = Number(event.id);
+        result.createdAt = event.created_at;
+      }
       await client.query('COMMIT');
-      result = {
-        rowId: row.id,
-        line: Number(row.position),
-        product: parsed.product,
-        category: parsed.category,
-        eventId: Number(event.id),
-        createdAt: event.created_at
-      };
     }
   } catch (error) {
     await client.query('ROLLBACK');
@@ -3515,7 +3582,7 @@ app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, as
       user: userPublic({ ...actor, role: 'user' }),
       clientId: INTERNAL_CLIENT_ID
     });
-    await syncEncomendaRemindersForRows(quote.id, [result.rowId], {
+    await syncEncomendaRemindersForRows(quote.id, results.map((result) => result.rowId), {
       user: actor,
       clientId: INTERNAL_CLIENT_ID,
       source: 'miauby_falteiro'
@@ -3526,8 +3593,13 @@ app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, as
     ok: true,
     matched: true,
     replayed,
-    item: result,
-    confirmation: formatFalteiroConfirmation({ product: result.product, category: result.category })
+    item: results[0] || null,
+    items: results,
+    detected_count: parsed.detectedCount,
+    created_count: results.length,
+    confirmation: results.length === 1
+      ? formatFalteiroConfirmation(results[0])
+      : formatFalteiroBatchConfirmation(results)
   });
 }));
 

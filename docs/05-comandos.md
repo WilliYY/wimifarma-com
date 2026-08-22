@@ -540,11 +540,12 @@ Para validar o parser do Falteiro e o roteamento case-insensitive do WhatsApp se
 ```powershell
 npm.cmd run check --prefix apps/cotacao
 npm.cmd run test:falteiro --prefix apps/cotacao
+npm.cmd test --prefix apps/miauw-agent
 npm.cmd test --prefix apps/miauw-whatsapp
 docker exec wimifarma-com-web php /var/www/html/miauw/miauw-evals.php
 ```
 
-O endpoint `/cotacao/api/internal/falteiro/commands` exige token interno e `request_id`. Nao versionar nem colar o token em comandos, logs ou documentacao; no VPS, leia-o somente dentro do container ao executar smoke controlado.
+O endpoint `/cotacao/api/internal/falteiro/commands` exige token interno e `request_id`. Ele aceita de um a 50 produtos separados por virgula, ponto e virgula ou quebra de linha e responde com `items`, `detected_count` e `created_count`. O lote e atomico e o retry e deduplicado por `(source, request_id, item_index)`; acima de 50 itens, retorna `too_many_items` sem gravar nenhum deles. Nao versionar nem colar o token em comandos, logs ou documentacao; no VPS, leia-o somente dentro do container ao executar smoke controlado.
 
 ## Banco - inventario
 

@@ -40,6 +40,8 @@ const CATEGORY_CONTROL_TOKENS = new Set([
 ]);
 const INTENT_FILLER_TOKENS = new Set(['por', 'favor']);
 const PRODUCT_EDGE_TOKENS = new Set(['e', 'mas', 'porque', 'pois', 'para']);
+export const MAX_FALTEIRO_BATCH_ITEMS = 50;
+const BATCH_CONTROL_ONLY_PATTERN = /^(?:(?:por\s+favor\s+)?(?:miauby|miauw)\s+)?(?:falta|faltou|faltando|falteiro|acabou|comprar|repor|reposicao|coloca(?:r)?\s+no\s+falteiro|adiciona(?:r)?\s+no\s+falteiro|joga(?:r)?\s+no\s+falteiro)$/iu;
 const NUMBER_TOKEN_SOURCE = '(?:\\d+(?:[.,]\\d+)?|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)';
 const ORDER_UNIT_SOURCE = '(?:caixas?|pacotes?|frascos?|ampolas?|unidades?|itens?)';
 const ANYWHERE_INTENTS = [
@@ -186,6 +188,10 @@ function collectFalteiroContexts(value) {
   addMatches(/\b(?:muita\s+gente\s+(?:esta\s+)?procurando|muita\s+gente\s+perguntou|muita\s+procura|cliente\s+esta\s+procurando|ja\s+pediram\s+varias\s+vezes|vende\s+muito|sai\s+muito|produto\s+de\s+giro|vende\s+pouco|nao\s+pode\s+faltar)\b/giu, 30, (match) => ({ label: match[0] }));
 
   addMatches(/\b(?:o\s+quanto\s+antes|nao\s+pode\s+esperar|sem\s+pressa|pode\s+esperar|proxima\s+cotacao|preciso\s+(?:hoje|amanha))\b/giu, 50, (match) => ({ label: match[0] }));
+  addMatches(/\b(?:comprar|compre|pegar|pega|pegue|repor)\s+(?:hoje|amanha|segunda|terca|quarta|quinta|sexta|sabado|domingo)\b/giu, 50, (match) => ({
+    label: match[0],
+    extraRemovals: [match[0].replace(/^(?:comprar|compre|pegar|pega|pegue|repor)\s+/iu, '')],
+  }));
   addMatches(/\b(?:para|pra)\s+(?:hoje|amanha|segunda|terca|quarta|quinta|sexta|sabado|domingo)\b/giu, 50, (match) => ({ label: match[0] }));
   addMatches(/\b(?:hoje|amanha)\b/giu, 50, (match) => ({ label: match[0] }));
 
@@ -531,7 +537,100 @@ function displayProduct(value) {
   while (tokens.length && PRODUCT_EDGE_TOKENS.has(tokens[tokens.length - 1].key)) tokens = tokens.slice(0, -1);
   clean = tokens.map((token) => token.value).join(' ').trim();
   if (!clean) return '';
+  clean = clean
+    .replace(/\bda\s+l['’]?or[eé]al\b/giu, "L'Oreal")
+    .replace(/\beno\b/giu, 'Eno');
   return clean.charAt(0).toLocaleUpperCase('pt-BR') + clean.slice(1);
+}
+
+function oneEditApart(left, right) {
+  if (left === right) return true;
+  if (Math.abs(left.length - right.length) > 1) return false;
+  let leftIndex = 0;
+  let rightIndex = 0;
+  let edits = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    if (left[leftIndex] === right[rightIndex]) {
+      leftIndex += 1;
+      rightIndex += 1;
+      continue;
+    }
+    edits += 1;
+    if (edits > 1) return false;
+    if (left.length > right.length) leftIndex += 1;
+    else if (right.length > left.length) rightIndex += 1;
+    else {
+      leftIndex += 1;
+      rightIndex += 1;
+    }
+  }
+  return edits + Number(leftIndex < left.length || rightIndex < right.length) <= 1;
+}
+
+function knownProductTokenCatalog(knownProducts) {
+  const knownTokens = new Map();
+  for (const product of Array.isArray(knownProducts) ? knownProducts : []) {
+    for (const token of textTokens(product)) {
+      if (!/^[\p{L}'’]+$/u.test(token.value) || token.key.length < 6) continue;
+      if (!knownTokens.has(token.key)) knownTokens.set(token.key, token.value);
+    }
+  }
+  return knownTokens;
+}
+
+function correctProductFromCatalog(value, knownProducts, preparedTokens) {
+  const knownTokens = preparedTokens instanceof Map ? preparedTokens : knownProductTokenCatalog(knownProducts);
+  if (!knownTokens.size) return value;
+
+  const clean = cleanCommandText(value);
+  const replacements = [];
+  for (const token of textTokens(clean)) {
+    if (!/^[\p{L}'’]+$/u.test(token.value) || token.key.length < 6) continue;
+    let replacement = knownTokens.get(token.key) || '';
+    if (!replacement) {
+      const candidates = [...knownTokens.entries()]
+        .filter(([key]) => key[0] === token.key[0] && oneEditApart(token.key, key));
+      replacement = candidates.length === 1 ? candidates[0][1] : '';
+    }
+    if (replacement && replacement !== token.value) {
+      replacements.push({ start: token.start, end: token.end, value: replacement });
+    }
+  }
+
+  if (!replacements.length) return value;
+  let corrected = clean;
+  for (const replacement of replacements.reverse()) {
+    corrected = `${corrected.slice(0, replacement.start)}${replacement.value}${corrected.slice(replacement.end)}`;
+  }
+  return displayProduct(corrected);
+}
+
+function splitFalteiroSegments(value) {
+  const text = String(value || '').replace(/\r\n?/g, '\n');
+  const segments = [];
+  let current = '';
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    const previous = text[index - 1] || '';
+    const next = text[index + 1] || '';
+    const decimalComma = character === ',' && /\d/.test(previous) && /\d/.test(next);
+    if (character === '\n' || character === ';' || (character === ',' && !decimalComma)) {
+      if (current.trim()) segments.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += character;
+  }
+  if (current.trim()) segments.push(current.trim());
+
+  return segments
+    .map((segment) => segment.replace(/^\s*(?:[-*]+|\d+[.)])\s*/u, '').trim())
+    .filter(Boolean);
+}
+
+function isBatchControlOnly(value) {
+  return BATCH_CONTROL_ONLY_PATTERN.test(cleanCommandText(value));
 }
 
 export function parseFalteiroCommand(message, options = {}) {
@@ -548,7 +647,11 @@ export function parseFalteiroCommand(message, options = {}) {
 
   const productWithoutContext = removeContextSegments(intent.productText, contexts);
   const extracted = extractCategory(productWithoutContext, catalog, intent.categoryHint, intent.overlapCategoryHint);
-  const product = displayProduct(extracted.productText);
+  const product = correctProductFromCatalog(
+    displayProduct(extracted.productText),
+    options.knownProducts,
+    options.knownProductTokens,
+  );
   if (BLOCKED_PRODUCT_PATTERN.test(product)) return null;
 
   let error = '';
@@ -576,10 +679,93 @@ export function parseFalteiroCommand(message, options = {}) {
   return result;
 }
 
+export function parseFalteiroCommands(message, options = {}) {
+  const raw = String(message || '').trim();
+  if (!raw || QUESTION_PATTERN.test(raw)) return null;
+
+  const parseOptions = {
+    ...options,
+    knownProductTokens: knownProductTokenCatalog(options.knownProducts),
+  };
+  const wholeMessage = parseFalteiroCommand(raw, parseOptions);
+  if (!wholeMessage) return null;
+
+  const segments = splitFalteiroSegments(raw);
+  if (segments.length <= 1) {
+    return {
+      matched: true,
+      trigger: wholeMessage.trigger,
+      items: [wholeMessage],
+      detectedCount: 1,
+      error: wholeMessage.error,
+    };
+  }
+
+  const itemSegments = segments.filter((segment) => !isBatchControlOnly(segment));
+  if (itemSegments.length > MAX_FALTEIRO_BATCH_ITEMS) {
+    return {
+      matched: true,
+      trigger: wholeMessage.trigger,
+      items: [],
+      detectedCount: itemSegments.length,
+      error: 'too_many_items',
+    };
+  }
+
+  const items = [];
+  for (const segment of itemSegments) {
+    const direct = parseFalteiroCommand(segment, parseOptions);
+    const inheritedSegment = segment.replace(ACTIVATION_PATTERN, '').trim();
+    const parsed = direct || parseFalteiroCommand(`falta ${inheritedSegment}`, parseOptions);
+    if (parsed) {
+      items.push(parsed);
+      continue;
+    }
+    items.push({
+      matched: true,
+      trigger: wholeMessage.trigger,
+      product: '',
+      category: '',
+      error: 'missing_product',
+    });
+  }
+
+  if (!items.length) {
+    return {
+      matched: true,
+      trigger: wholeMessage.trigger,
+      items: [wholeMessage],
+      detectedCount: 1,
+      error: wholeMessage.error,
+    };
+  }
+
+  return {
+    matched: true,
+    trigger: wholeMessage.trigger,
+    items,
+    detectedCount: items.length,
+    error: items.find((item) => item.error)?.error || '',
+  };
+}
+
 export function formatFalteiroConfirmation({ product, category }) {
   const cleanProduct = displayProduct(product);
   const cleanCategory = cleanCommandText(category);
   return cleanCategory
     ? `✅ ${cleanProduct} adicionada ao Falteiro como ${cleanCategory}.`
     : `✅ ${cleanProduct} adicionada ao Falteiro.`;
+}
+
+export function formatFalteiroBatchConfirmation(items) {
+  const cleanItems = Array.isArray(items) ? items.filter((item) => item && item.product) : [];
+  if (cleanItems.length === 1) return formatFalteiroConfirmation(cleanItems[0]);
+  if (!cleanItems.length) return '';
+
+  const lines = cleanItems.map((item) => {
+    const product = displayProduct(item.product);
+    const category = cleanCommandText(item.category);
+    return category ? `- ${product} — ${category}` : `- ${product}`;
+  });
+  return `✅ ${cleanItems.length} itens adicionados ao Falteiro:\n${lines.join('\n')}`;
 }

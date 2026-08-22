@@ -3735,6 +3735,7 @@ function miauw_skill_falteiro_command_candidate(string $message): bool
         return false;
     }
 
+    $activated = preg_match('/\b(?:miauby|miauw)\b/iu', $message) === 1;
     $clean = miauw_skill_normalized($message);
     $clean = preg_replace('/^(?:miauby|miauw)\b[\s,:;\-]*/iu', '', trim($clean));
     if (!is_string($clean)) {
@@ -3772,6 +3773,12 @@ function miauw_skill_falteiro_command_candidate(string $message): bool
         if (preg_match($pattern, $clean) === 1) {
             return true;
         }
+    }
+
+    if ($activated
+        && preg_match('/\burgente\b/iu', $clean) === 1
+        && preg_match('/\b(?:cashback|cotacao|encomenda|financeiro|gestao|pedido|sangria|tarefa)\b/iu', $clean) !== 1) {
+        return true;
     }
 
     return preg_match(

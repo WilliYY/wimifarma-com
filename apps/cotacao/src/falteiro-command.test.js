@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  MAX_FALTEIRO_BATCH_ITEMS,
+  formatFalteiroBatchConfirmation,
   formatFalteiroConfirmation,
   parseFalteiroCommand,
+  parseFalteiroCommands,
   sanitizeFalteiroCategories,
 } from './falteiro-command.js';
 
@@ -361,4 +364,113 @@ test('monta confirmacao curta sem perder a prioridade', () => {
     formatFalteiroConfirmation({ product: 'Losartana', category: '' }),
     '✅ Losartana adicionada ao Falteiro.',
   );
+});
+
+test('separa varios produtos por virgula ponto e virgula e quebra de linha', () => {
+  const cases = [
+    'Miauby falta losartana 50mg, amitriptilina, sal de fruta eno, creme de pentear da loreal',
+    'Miauby falta losartana 50mg; amitriptilina; sal de fruta eno; creme de pentear da loreal',
+    'Miauby falta\nlosartana 50mg\namitriptilina\nsal de fruta eno\ncreme de pentear da loreal',
+  ];
+
+  for (const message of cases) {
+    const parsed = parseFalteiroCommands(message, { categories: CATEGORIES });
+    assert.equal(parsed?.detectedCount, 4, message);
+    assert.deepEqual(
+      parsed?.items.map((item) => [item.product, item.category, item.error]),
+      [
+        ['Losartana 50mg', '', ''],
+        ['Amitriptilina', '', ''],
+        ['Sal de fruta Eno', '', ''],
+        ["Creme de pentear L'Oreal", '', ''],
+      ],
+      message,
+    );
+  }
+});
+
+test('herda a intencao global sem exigir comando em cada item', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby losartana 50mg urgente, amitriptilina urgente falta',
+    { categories: CATEGORIES },
+  );
+
+  assert.deepEqual(
+    parsed?.items.map((item) => [item.product, item.category]),
+    [
+      ['Losartana 50mg', 'Urgente'],
+      ['Amitriptilina', 'Urgente'],
+    ],
+  );
+});
+
+test('mantem apresentacao e marca no produto e contexto proprio em cada item', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby falta\nlosartana 50mg urgente\ndipirona 500mg 20 comprimidos\nlimpador de vidro comprar amanha\nfralda Pampers Confort Sec G 36 unidades',
+    { categories: CATEGORIES },
+  );
+
+  assert.deepEqual(
+    parsed?.items.map((item) => [item.product, item.category]),
+    [
+      ['Losartana 50mg', 'Urgente'],
+      ['Dipirona 500mg 20 comprimidos', ''],
+      ['Limpador de vidro', 'Comprar amanha'],
+      ['Fralda Pampers Confort Sec G 36 unidades', ''],
+    ],
+  );
+});
+
+test('nao separa virgula decimal e nao duplica item unico', () => {
+  const batch = parseFalteiroCommands('Miauby falta omeprazol 20mg se estiver ate 4,50 reais', { categories: CATEGORIES });
+  assert.equal(batch?.detectedCount, 1);
+  assert.equal(batch?.items.length, 1);
+  assert.equal(batch?.items[0].product, 'Omeprazol 20mg');
+  assert.equal(batch?.items[0].category, 'Ate R$ 4,50');
+
+  const single = parseFalteiroCommands('Miauby falta losartana 50mg', { categories: CATEGORIES });
+  assert.equal(single?.detectedCount, 1);
+  assert.equal(single?.items.length, 1);
+  assert.equal(single?.items[0].product, 'Losartana 50mg');
+});
+
+test('preserva erro por item para impedir conclusao parcial do lote', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby falta losartana 50mg urgente, dipirona 500mg popular',
+    { categories: ['Urgente'] },
+  );
+
+  assert.equal(parsed?.detectedCount, 2);
+  assert.equal(parsed?.items[0].error, '');
+  assert.equal(parsed?.items[1].error, 'category_not_found');
+  assert.equal(parsed?.error, 'category_not_found');
+});
+
+test('monta uma confirmacao unica e legivel para o lote', () => {
+  assert.equal(
+    formatFalteiroBatchConfirmation([
+      { product: 'Losartana 50mg', category: 'Urgente' },
+      { product: 'Amitriptilina', category: '' },
+    ]),
+    '✅ 2 itens adicionados ao Falteiro:\n- Losartana 50mg — Urgente\n- Amitriptilina',
+  );
+});
+
+test('corrige apenas erro simples quando o produto conhecido tem correspondencia unica', () => {
+  const parsed = parseFalteiroCommands("Miauby falta amitriptlina, produto inventadoo, creme de pentear da loreal", {
+    categories: CATEGORIES,
+    knownProducts: ['Amitriptilina 25mg', 'Amoxicilina 500mg'],
+  });
+
+  assert.equal(parsed?.items[0].product, 'Amitriptilina');
+  assert.equal(parsed?.items[1].product, 'Produto inventadoo');
+  assert.equal(parsed?.items[2].product, "Creme de pentear L'Oreal");
+});
+
+test('rejeita lote excessivo inteiro antes de qualquer escrita', () => {
+  const products = Array.from({ length: MAX_FALTEIRO_BATCH_ITEMS + 1 }, (_value, index) => `produto ${index + 1}`);
+  const parsed = parseFalteiroCommands(`Miauby falta ${products.join(', ')}`, { categories: CATEGORIES });
+  assert.equal(parsed?.detectedCount, MAX_FALTEIRO_BATCH_ITEMS + 1);
+  assert.equal(parsed?.error, 'too_many_items');
+  assert.deepEqual(parsed?.items, []);
 });

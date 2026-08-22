@@ -50,6 +50,7 @@ const FALTEIRO_CANDIDATE_PATTERNS = [
 
 export function mightBeFalteiroCommand(message: string): boolean {
   if (/\?\s*$/.test(String(message || ''))) return false;
+  const activated = /\b(?:miauby|miauw)\b/i.test(String(message || ''));
   const normalized = normalizeIntentText(stripActivationWord(message));
   if (!normalized || /^(?:estamos|estou|ficou|esta|ta)\s+sem\s+(?:internet|energia|tempo|sistema|acesso|sinal|conexao|dados)$/.test(normalized)) {
     return false;
@@ -57,6 +58,11 @@ export function mightBeFalteiroCommand(message: string): boolean {
   if (/\b(?:relatorio|historico|qual|quais)\b/.test(normalized)) return false;
   if (/\bfalta\s+(?:de\s+)?(?:chegar|chegando|chegada|chegadas)\b/.test(normalized)) return false;
   if (FALTEIRO_CANDIDATE_PATTERNS.some((pattern) => pattern.test(normalized))) return true;
+  if (activated
+      && /\burgente\b/.test(normalized)
+      && !/\b(?:cashback|cotacao|encomenda|financeiro|gestao|pedido|sangria|tarefa)\b/.test(normalized)) {
+    return true;
+  }
   return /\b(?:falteiro|falta|faltou|faltam|acabou|zerou|acabando|terminou|faltando|comprar|repor|reposicao)\b|\b(?:sem\s+estoque|estoque\s+baixo|tem\s+pouco|so\s+(?:tem|temos)|tem\s+(?:so|meia\s+caixa)|restou|ultima\s+(?:caixa|unidade)|vai\s+acabar|nao\s+pode\s+faltar|nao\s+tem\s+mais|nao\s+temos|nao\s+tem|precis(?:a|amos|o)\s+(?:comprar|repor))\b/.test(normalized);
 }
 

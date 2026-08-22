@@ -9055,18 +9055,29 @@ function miauw_generate_reply(int $conversationId, string $message, bool $widget
             $falteiro = miauw_skill_register_falteiro_command($message, $user, $requestId);
             if (is_array($falteiro)) {
                 $confirmation = trim((string) ($falteiro['confirmation'] ?? ''));
+                $items = isset($falteiro['items']) && is_array($falteiro['items'])
+                    ? array_values(array_filter($falteiro['items'], 'is_array'))
+                    : array();
+                if (!$items && isset($falteiro['item']) && is_array($falteiro['item'])) {
+                    $items = array($falteiro['item']);
+                }
+                $itemCount = count($items);
+                $defaultSummary = $itemCount > 1
+                    ? $itemCount . ' itens adicionados ao Falteiro.'
+                    : 'Produto adicionado ao Falteiro.';
                 miauw_trace_record('cotacao_falteiro', 'ok', array(
                     'type' => 'write',
-                    'summary' => $confirmation !== '' ? $confirmation : 'Produto adicionado ao Falteiro.',
+                    'summary' => $confirmation !== '' ? $confirmation : $defaultSummary,
                     'payload' => array(
-                        'row_id' => (string) ($falteiro['item']['rowId'] ?? ''),
-                        'line' => (int) ($falteiro['item']['line'] ?? 0),
+                        'item_count' => $itemCount,
+                        'row_ids' => array_values(array_map(static fn(array $item): string => (string) ($item['rowId'] ?? ''), $items)),
+                        'lines' => array_values(array_map(static fn(array $item): int => (int) ($item['line'] ?? 0), $items)),
                         'replayed' => !empty($falteiro['replayed']),
                     ),
                 ));
 
                 return array(
-                    'text' => $confirmation !== '' ? $confirmation : 'Produto adicionado ao Falteiro.',
+                    'text' => $confirmation !== '' ? $confirmation : $defaultSummary,
                     'fallback' => false,
                     'model' => 'miauw-cotacao-falteiro',
                     'engine' => 'php_local',

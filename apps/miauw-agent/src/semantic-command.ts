@@ -111,16 +111,9 @@ const FALTEIRO_CONTEXT_CUES = [
   'preciso urgente de', 'preciso de', 'precisamos de', 'esta em falta', 'ta em falta', 'em falta',
   'estao faltando', 'tao faltando', 'faltando', 'faltam', 'estoque baixo', 'tem pouco', 'so tem',
   'so temos', 'tem so', 'tem meia caixa', 'restou', 'ultima caixa', 'ultima unidade', 'vai acabar', 'nao pode faltar',
+  'urgente',
 ];
-const FALTEIRO_PRESERVED_CUES = new Set([
-  'acabou', 'zerou', 'esta acabando', 'ta acabando', 'esta faltando', 'ta faltando', 'ficou sem',
-  'estamos sem', 'sem estoque', 'nao tem mais', 'nao temos', 'terminou', 'precisa comprar',
-  'precisamos comprar', 'preciso comprar', 'comprar', 'precisa repor', 'precisamos repor',
-  'preciso repor', 'repor', 'reposicao', 'esta em falta', 'ta em falta', 'estoque baixo', 'tem pouco',
-  'so tem', 'so temos', 'tem so', 'tem meia caixa', 'restou', 'ultima caixa', 'ultima unidade', 'vai acabar',
-  'nao pode faltar',
-]);
-
+const FALTEIRO_BLOCKING_CUES = FALTEIRO_CONTEXT_CUES.filter((cue) => cue !== 'urgente');
 const INTENTS: IntentSpec[] = [
   {
     intent: 'criar_cashback_rapido', module: 'cashback', risk: 'medio', prefix: 'cashback', priority: 78,
@@ -255,22 +248,22 @@ const INTENTS: IntentSpec[] = [
   {
     intent: 'criar_cotacao_urgente', module: 'cotacao', risk: 'alto', prefix: 'cotacao urgente', priority: 55,
     groups: [['cotacao', 'cotar'], ['urgente']], optional: ['criar', 'colocar', 'adicionar'],
-    blockers: FALTEIRO_CONTEXT_CUES, requiredPayload: 'produto',
+    blockers: FALTEIRO_BLOCKING_CUES, requiredPayload: 'produto',
   },
   {
     intent: 'criar_planilha_cotacao', module: 'cotacao', risk: 'alto', prefix: 'planilha cotacao', priority: 55,
     groups: [['planilha'], ['cotacao', 'cotar']], optional: ['criar', 'montar', 'gerar'],
-    blockers: FALTEIRO_CONTEXT_CUES, requiredPayload: 'itens',
+    blockers: FALTEIRO_BLOCKING_CUES, requiredPayload: 'itens',
   },
   {
     intent: 'criar_cotacao_rapida', module: 'cotacao', risk: 'alto', prefix: 'cotacao rapida', priority: 42,
     groups: [['cotacao rapida', 'cotar rapido', 'cotar rapida']], optional: ['criar', 'fazer'],
-    blockers: FALTEIRO_CONTEXT_CUES, requiredPayload: 'produto',
+    blockers: FALTEIRO_BLOCKING_CUES, requiredPayload: 'produto',
   },
   {
     intent: 'consultar_cotacao', module: 'cotacao', risk: 'baixo', prefix: 'cotacao', priority: 20,
     groups: [['cotacao', 'cotar', 'preco na cotacao']], optional: ['buscar', 'consultar', 'mostrar', 'ver'],
-    blockers: ['urgente', 'planilha', 'encomenda', 'rapida', 'rapido', ...FALTEIRO_CONTEXT_CUES], requiredPayload: 'item',
+    blockers: ['urgente', 'planilha', 'encomenda', 'rapida', 'rapido', ...FALTEIRO_BLOCKING_CUES], requiredPayload: 'item',
   },
   ...reportSpecs(),
   {
@@ -370,7 +363,7 @@ export function interpretSemanticCommand(message: string, _options: SemanticOpti
   }
 
   const entities = extractEntities(original, tokens, top.spec, top.consumed);
-  const canonical = canonicalMessage(top, tokens, entities);
+  const canonical = canonicalMessage(top, tokens, entities, original);
   const missing = missingFields(top.spec, canonical, entities);
 
   if (top.spec.intent === 'criar_cashback_rapido' && missing.length) {
@@ -454,6 +447,11 @@ function candidateFor(
   }
 
   if (spec.intent === 'registrar_falteiro' && question && !activated) return null;
+  if (spec.intent === 'registrar_falteiro'
+      && evidence.every((cue) => normalizeText(cue) === 'urgente')
+      && (!activated || /\b(?:cashback|cotacao|encomenda|financeiro|gestao|pedido|sangria|tarefa)\b/.test(normalized))) {
+    return null;
+  }
   if (spec.intent === 'criar_conta_gestao' && !containsMoneyLike(tokens) && !hasPhrase(tokens, 'conta')) return null;
 
   const specificity = evidence.reduce((total, phrase) => total + phrase.split(' ').length, 0);
@@ -468,20 +466,22 @@ function candidateFor(
   return { spec, score, confidence, evidence: unique(evidence), consumed };
 }
 
-function canonicalMessage(candidate: Candidate, tokens: MessageToken[], entities: SemanticEntity[]): string {
+function canonicalMessage(candidate: Candidate, tokens: MessageToken[], entities: SemanticEntity[], original: string): string {
   if (candidate.spec.intent === 'criar_cashback_rapido') {
     const money = entities.find((entity) => entity.type === 'money');
     return money ? `cashback ${cashbackAmountValue(money.value)}` : 'cashback';
   }
 
-  const consumed = new Set(candidate.consumed);
   if (candidate.spec.intent === 'registrar_falteiro') {
-    for (const cue of candidate.evidence) {
-      if (!FALTEIRO_PRESERVED_CUES.has(normalizeText(cue))) continue;
-      const match = bestPhrase(tokens, [cue]);
-      match?.indexes.forEach((index) => consumed.delete(index));
-    }
+    const preserved = original
+      .replace(/\b(?:miauby|miauw)\b/giu, '')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/ *\n */g, '\n')
+      .trim();
+    return /^falta\b/iu.test(preserved) ? preserved : `falta ${preserved}`;
   }
+
+  const consumed = new Set(candidate.consumed);
   tokens.forEach((token, index) => {
     if (ACTIVATION_WORDS.has(token.normalized)) consumed.add(index);
   });

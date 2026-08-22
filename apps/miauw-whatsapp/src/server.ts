@@ -8336,16 +8336,23 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     try {
       const falteiro = await registerFalteiroCommand(message, traceId, userContext);
       if (falteiro.matched) {
-        const falteiroItem = isRecord(falteiro.item) ? falteiro.item : {};
+        const falteiroItems = Array.isArray(falteiro.items)
+          ? falteiro.items.filter(isRecord)
+          : (isRecord(falteiro.item) ? [falteiro.item] : []);
+        const falteiroItem = falteiroItems[0] || {};
+        const itemCount = falteiroItems.length;
         await mergeWhatsappEventSummaryByTrace(traceId, {
           cotacao_falteiro_attempted: true,
           cotacao_falteiro_outcome: 'registered',
           cotacao_falteiro_row_id: safeText(falteiroItem.rowId, 80),
           cotacao_falteiro_line: Number(falteiroItem.line || 0),
+          cotacao_falteiro_item_count: itemCount,
+          cotacao_falteiro_row_ids: falteiroItems.map((item) => safeText(item.rowId, 80)).filter(Boolean),
           cotacao_falteiro_replayed: falteiro.replayed === true,
         });
         return {
-          text: safeText(falteiro.confirmation, 320) || 'Produto adicionado ao Falteiro.',
+          text: safeText(falteiro.confirmation, 1200)
+            || (itemCount > 1 ? `${itemCount} itens adicionados ao Falteiro.` : 'Produto adicionado ao Falteiro.'),
           engine: 'local',
           reason: falteiro.replayed === true ? 'cotacao_falteiro_replayed' : 'cotacao_falteiro_registered',
         };

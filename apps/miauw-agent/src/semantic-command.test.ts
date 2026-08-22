@@ -488,3 +488,30 @@ test('cobre todas as familias operacionais registradas', () => {
     assert.equal(result.intent, intent, message);
   }
 });
+
+test('Falteiro preserva delimitadores para o parser autoritativo criar varios itens', () => {
+  const messages = [
+    'Miauby falta losartana 50mg, amitriptilina, eno',
+    'MIAUBY falta losartana 50mg; amitriptilina; eno',
+    'Miauby falta\nlosartana 50mg\namitriptilina\neno',
+  ];
+
+  for (const message of messages) {
+    const result = resolved(message);
+    assert.equal(result.status, 'resolved', message);
+    assert.equal(result.intent, 'registrar_falteiro', message);
+    assert.ok(result.canonical_message.includes(message.includes(';') ? ';' : message.includes('\n') ? '\n' : ','), message);
+    assert.doesNotMatch(result.canonical_message, /miauby/i, message);
+  }
+});
+
+test('urgente isolado ajuda a identificar Falteiro somente com ativacao e sem conflito de modulo', () => {
+  const result = resolved('Miauby losartana 50mg urgente');
+  assert.equal(result.status, 'resolved');
+  assert.equal(result.intent, 'registrar_falteiro');
+  assert.match(result.canonical_message, /^falta\b/i);
+
+  assert.notEqual(resolved('losartana 50mg urgente').intent, 'registrar_falteiro');
+  assert.notEqual(resolved('Miauby tarefa urgente conferir caixa').intent, 'registrar_falteiro');
+  assert.notEqual(resolved('Miauby cotacao urgente losartana').intent, 'registrar_falteiro');
+});
