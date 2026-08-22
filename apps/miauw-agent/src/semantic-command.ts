@@ -8,7 +8,12 @@ export type SemanticEntityType =
   | 'quantity'
   | 'dosage'
   | 'category'
-  | 'user';
+  | 'user'
+  | 'customer_name'
+  | 'customer_id'
+  | 'phone'
+  | 'document'
+  | 'note';
 
 export type SemanticEntity = {
   type: SemanticEntityType;
@@ -117,6 +122,17 @@ const FALTEIRO_PRESERVED_CUES = new Set([
 ]);
 
 const INTENTS: IntentSpec[] = [
+  {
+    intent: 'criar_cashback_rapido', module: 'cashback', risk: 'medio', prefix: 'cashback', priority: 78,
+    groups: [['cashback', 'cash back']],
+    optional: ['faz', 'fazer', 'gera', 'gerar', 'cria', 'criar', 'imprime', 'imprimir'],
+    blockers: [
+      'relatorio', 'resumo', 'historico', 'saldo', 'consultar', 'consulta', 'mostrar', 'ver cashback',
+      'quanto cashback', 'cashback usado', 'cashback gerado',
+    ],
+    moneyFirst: true,
+    requiredPayload: 'valor',
+  },
   {
     intent: 'registrar_falteiro', module: 'cotacao', risk: 'medio', prefix: 'falta', priority: 40,
     groups: [FALTEIRO_CONTEXT_CUES],
@@ -357,6 +373,21 @@ export function interpretSemanticCommand(message: string, _options: SemanticOpti
   const canonical = canonicalMessage(top, tokens, entities);
   const missing = missingFields(top.spec, canonical, entities);
 
+  if (top.spec.intent === 'criar_cashback_rapido' && missing.length) {
+    return {
+      status: 'ambiguous',
+      intent: top.spec.intent,
+      module: top.spec.module,
+      risk: top.spec.risk,
+      confidence: round(top.confidence),
+      evidence: top.evidence,
+      entities,
+      canonical_message: '',
+      missing,
+      clarification: 'Qual foi o valor da compra para gerar o Cashback?',
+    };
+  }
+
   return {
     status: 'resolved',
     intent: top.spec.intent,
@@ -438,6 +469,11 @@ function candidateFor(
 }
 
 function canonicalMessage(candidate: Candidate, tokens: MessageToken[], entities: SemanticEntity[]): string {
+  if (candidate.spec.intent === 'criar_cashback_rapido') {
+    const money = entities.find((entity) => entity.type === 'money');
+    return money ? `cashback ${cashbackAmountValue(money.value)}` : 'cashback';
+  }
+
   const consumed = new Set(candidate.consumed);
   if (candidate.spec.intent === 'registrar_falteiro') {
     for (const cue of candidate.evidence) {
@@ -475,6 +511,9 @@ function canonicalMessage(candidate: Candidate, tokens: MessageToken[], entities
 
 function missingFields(spec: IntentSpec, canonical: string, entities: SemanticEntity[]): string[] {
   if (!spec.requiredPayload) return [];
+  if (spec.intent === 'criar_cashback_rapido' && !entities.some((entity) => entity.type === 'money')) {
+    return ['valor'];
+  }
   if (spec.moneyFirst && !entities.some((entity) => entity.type === 'money') && !/\b\d+(?:[.,]\d{1,2})?\b/.test(canonical)) {
     return ['valor'];
   }
@@ -637,6 +676,22 @@ function extractEntities(
   collectMatches(entities, message, 'quantity', /\b\d+\s*(?:ampolas?|caixas?|comprimidos?|frascos?|itens?|pacotes?|unidades?)\b/gi);
   collectMatches(entities, message, 'money', /(?:R\$\s*\d+(?:\.\d{3})*(?:,\d{1,2})?|\b\d+(?:[.,]\d{1,2})?\s*(?:reais?|real))\b/gi);
 
+  if (spec?.intent === 'criar_cashback_rapido') {
+    const specific = extractCashbackEntities(message);
+    entities.push(...specific);
+    const protectedRanges = specific.filter((entity) => entity.type === 'phone' || entity.type === 'document');
+    for (let index = entities.length - 1; index >= 0; index -= 1) {
+      const entity = entities[index];
+      if (entity.type !== 'money') continue;
+      if (protectedRanges.some((protectedEntity) => rangesOverlap(
+        entity.start,
+        entity.end,
+        protectedEntity.start,
+        protectedEntity.end,
+      ))) entities.splice(index, 1);
+    }
+  }
+
   for (const [index, token] of tokens.entries()) {
     if (RELATIVE_DATE_WORDS.has(token.normalized)) entities.push(entityFromToken('date', token));
     const numericWord = NUMBER_WORDS.get(token.normalized);
@@ -653,10 +708,10 @@ function extractEntities(
   }
 
   if (spec?.moneyFirst && !entities.some((entity) => entity.type === 'money')) {
-    const plain = tokens.find((token) => MONEY_TOKEN_PATTERN.test(token.normalized)
-      && !entities.some((entity) => ['date', 'time', 'dosage', 'quantity'].includes(entity.type)
-        && rangesOverlap(token.start, token.end, entity.start, entity.end)));
-    if (plain) entities.push(entityFromToken('money', plain));
+    const plain = spec.intent === 'criar_cashback_rapido'
+      ? cashbackMoneyEntity(tokens, entities)
+      : plainMoneyEntity(tokens, entities);
+    if (plain) entities.push(plain);
   }
 
   for (const [index, token] of tokens.entries()) {
@@ -697,9 +752,90 @@ function entityFromToken(type: SemanticEntityType, token: MessageToken): Semanti
   return { type, value: token.value, normalized: token.normalized, start: token.start, end: token.end };
 }
 
-function plainMoneyEntity(tokens: MessageToken[]): SemanticEntity | null {
-  const token = tokens.find((item) => MONEY_TOKEN_PATTERN.test(item.normalized));
+function plainMoneyEntity(tokens: MessageToken[], entities: SemanticEntity[] = []): SemanticEntity | null {
+  const token = tokens.find((item) => MONEY_TOKEN_PATTERN.test(item.normalized)
+    && !entities.some((entity) => ['date', 'time', 'dosage', 'quantity', 'phone', 'document'].includes(entity.type)
+      && rangesOverlap(item.start, item.end, entity.start, entity.end)));
   return token ? entityFromToken('money', token) : null;
+}
+
+function cashbackMoneyEntity(tokens: MessageToken[], entities: SemanticEntity[]): SemanticEntity | null {
+  const cashbackIndexes = tokens
+    .map((token, index) => (token.normalized === 'cashback' ? index : -1))
+    .filter((index) => index >= 0);
+  const candidates = tokens
+    .map((token, index) => ({ token, index }))
+    .filter(({ token }) => MONEY_TOKEN_PATTERN.test(token.normalized))
+    .filter(({ token }) => token.normalized.replace(/\D/g, '').length <= 7)
+    .filter(({ token }) => !entities.some((entity) => ['date', 'time', 'dosage', 'quantity', 'phone', 'document'].includes(entity.type)
+      && rangesOverlap(token.start, token.end, entity.start, entity.end)))
+    .map(({ token, index }) => {
+      const previous = tokens[index - 1]?.normalized || '';
+      const distance = cashbackIndexes.length
+        ? Math.min(...cashbackIndexes.map((cashbackIndex) => Math.abs(cashbackIndex - index)))
+        : 99;
+      const labelBonus = ['valor', 'de', 'r', 'rs'].includes(previous) ? 6 : 0;
+      return { token, score: labelBonus + Math.max(0, 5 - distance) };
+    })
+    .sort((left, right) => right.score - left.score || left.token.start - right.token.start);
+  return candidates[0] ? entityFromToken('money', candidates[0].token) : null;
+}
+
+function extractCashbackEntities(message: string): SemanticEntity[] {
+  const entities: SemanticEntity[] = [];
+  collectCapturedEntity(
+    entities,
+    message,
+    'customer_id',
+    /\b(?:codigo\s+do\s+cliente|código\s+do\s+cliente|id\s+do\s+cliente|id|cliente)\s*[:=#-]?\s*(\d{1,9})\b/giu,
+  );
+  collectCapturedEntity(
+    entities,
+    message,
+    'document',
+    /\bcpf\s*[:=-]?\s*(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\b/giu,
+  );
+  collectCapturedEntity(
+    entities,
+    message,
+    'phone',
+    /\b(?:telefone|fone|whatsapp|zap)\s*[:=-]?\s*(\(?\d{2}\)?[\s.-]*9?\d{4}[\s.-]*\d{4})\b/giu,
+  );
+  collectCapturedEntity(
+    entities,
+    message,
+    'customer_name',
+    /\b(?:cliente|nome|para)\s*[:=-]?\s*([\p{L}][\p{L}'-]*(?:\s+[\p{L}][\p{L}'-]*){0,3}?)(?=\s+(?:telefone|fone|whatsapp|zap|cpf|obs|observacao|observação|valor)\b|$)/giu,
+  );
+  collectCapturedEntity(
+    entities,
+    message,
+    'note',
+    /\b(?:obs|observacao|observação)\s*[:=-]?\s*(.+)$/giu,
+  );
+  return entities;
+}
+
+function collectCapturedEntity(
+  entities: SemanticEntity[],
+  message: string,
+  type: SemanticEntityType,
+  pattern: RegExp,
+): void {
+  for (const match of message.matchAll(pattern)) {
+    const value = String(match[1] || '').trim();
+    if (!value) continue;
+    const relative = match[0].lastIndexOf(value);
+    const start = (match.index || 0) + Math.max(0, relative);
+    entities.push({ type, value, normalized: normalizeText(value), start, end: start + value.length });
+  }
+}
+
+function cashbackAmountValue(value: string): string {
+  return String(value || '')
+    .replace(/R\$/gi, '')
+    .replace(/\b(?:reais?|real)\b/gi, '')
+    .trim();
 }
 
 function containsMoneyLike(tokens: MessageToken[]): boolean {

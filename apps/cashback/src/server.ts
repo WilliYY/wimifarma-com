@@ -27,6 +27,11 @@ import {
   clientCreationXpReward,
   quickVoucherIssueXpReward,
 } from './xpReward.js';
+import {
+  normalizeMiaubyQuickCashbackCustomer,
+  shouldAwardMiaubyQuickCashbackXp,
+  type MiaubyQuickCashbackCustomer,
+} from './miaubyQuickCashback.js';
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -92,6 +97,7 @@ type QuickVoucherIssue = {
   grossCents: number;
   cashbackCents: number;
   expiresAt: string;
+  replayed: boolean;
 };
 
 type QuickVoucherRedemption = {
@@ -662,6 +668,10 @@ router.get('/autoteste.php', clearSensitive, async (req: Request, res: Response)
 router.get('/internal/migration-status', requireInternalToken, async (_req: Request, res: Response) => {
   await ensureSchema();
   res.json({ ok: true, counts: await tableCounts(), migration: migrationStats });
+});
+
+router.post('/api/internal/miauby/quick-vouchers', requireInternalToken, async (req: Request, res: Response) => {
+  await createQuickVoucherFromMiauby(req, res);
 });
 
 router.get('/api/internal/summary', requireInternalToken, async (req: Request, res: Response) => {
@@ -1932,6 +1942,7 @@ async function issueQuickVoucher(
         grossCents: num(row.gross_cents),
         cashbackCents: num(row.cashback_cents),
         expiresAt: isoDate(row.expires_at),
+        replayed: true,
       };
     }
   }
@@ -1972,6 +1983,7 @@ async function issueQuickVoucher(
     grossCents: num(row.gross_cents),
     cashbackCents: num(row.cashback_cents),
     expiresAt: isoDate(row.expires_at),
+    replayed: false,
   };
 }
 
@@ -1981,10 +1993,13 @@ async function quickVoucherReceipt(voucherId: number): Promise<DbRow | null> {
   const result = await pgPool.query(
     `SELECT q.*,
             a.name AS attendant_name,
+            c.name AS client_name,
+            c.phone AS client_phone,
             TO_CHAR(q.expires_at, 'DD/MM/YYYY') AS receipt_expires_at,
             TO_CHAR(q.issued_at AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') AS receipt_issued_at
        FROM cashback_quick_vouchers q
        LEFT JOIN cashback_attendants a ON a.id = q.issued_attendant_id
+       LEFT JOIN cashback_clients c ON c.id = q.issued_client_id
       WHERE q.id = $1
       LIMIT 1`,
     [voucherId],
@@ -2874,6 +2889,201 @@ async function createQuickVoucherFromDashboard(req: Request, res: Response): Pro
   } finally {
     client.release();
   }
+}
+
+async function createQuickVoucherFromMiauby(req: Request, res: Response): Promise<void> {
+  const settings = await loadSettings();
+  const grossCents = moneyToCents(req.body?.gross_amount ?? req.body?.amount ?? req.body?.value);
+  if (grossCents <= 0) {
+    res.status(400).json({ ok: false, code: 'invalid_amount', message: 'Informe um valor de compra valido para o Cashback.' });
+    return;
+  }
+  const cashbackCents = Math.round((grossCents * settings.cashbackPercentBps) / 10000);
+  if (cashbackCents <= 0) {
+    res.status(400).json({ ok: false, code: 'cashback_below_minimum', message: 'O valor precisa gerar pelo menos R$ 0,01 de Cashback.' });
+    return;
+  }
+
+  const actorUserId = num(req.body?.actor_user_id);
+  const actor = await cashbackCoreUserById(actorUserId);
+  if (!actor) {
+    res.status(403).json({ ok: false, code: 'actor_not_allowed', message: 'Usuario sem acesso ao Cashback.' });
+    return;
+  }
+  req.session.user = actor;
+
+  const source = cleanText(req.body?.source, 20).toLowerCase() === 'whatsapp' ? 'whatsapp' : 'internal';
+  const rawRequestId = cleanText(req.body?.request_id, 180);
+  if (!rawRequestId) {
+    res.status(400).json({ ok: false, code: 'missing_request_id', message: 'Identificador idempotente ausente.' });
+    return;
+  }
+  const requestToken = `miauby:${crypto.createHash('sha256').update(`${source}:${rawRequestId}`).digest('hex')}`;
+  const customerInput = normalizeMiaubyQuickCashbackCustomer({
+    clientId: req.body?.customer?.client_id,
+    name: req.body?.customer?.name,
+    phone: req.body?.customer?.phone,
+    document: req.body?.customer?.document,
+    note: req.body?.customer?.note,
+  });
+  const requestPrint = source === 'internal' && req.body?.request_print !== false;
+  const attendant = await ensureAttendantForCoreUser(actor, 'Sincronizado pelo Miauby para emissao de Cashback.');
+
+  const db = await pgPool.connect();
+  let voucher: QuickVoucherIssue | null = null;
+  let clientId: number | null = null;
+  try {
+    await db.query('BEGIN');
+    await db.query('SELECT pg_advisory_xact_lock($1)', [QUICK_VOUCHER_ADVISORY_LOCK]);
+    const existing = await db.query(
+      `SELECT id, code, gross_cents, cashback_cents, expires_at, issued_client_id
+         FROM cashback_quick_vouchers
+        WHERE request_token = $1
+        LIMIT 1`,
+      [requestToken],
+    );
+    const existingRow = existing.rows[0] as DbRow | undefined;
+    if (existingRow) {
+      clientId = intOrNull(existingRow.issued_client_id);
+      voucher = {
+        id: num(existingRow.id),
+        code: String(existingRow.code || ''),
+        grossCents: num(existingRow.gross_cents),
+        cashbackCents: num(existingRow.cashback_cents),
+        expiresAt: isoDate(existingRow.expires_at),
+        replayed: true,
+      };
+    } else {
+      clientId = await resolveMiaubyQuickCashbackClient(db, customerInput, attendant.id);
+      voucher = await issueQuickVoucher(db, {
+        grossCents,
+        cashbackCents,
+        percentBps: settings.cashbackPercentBps,
+        attendantId: attendant.id,
+        userId: actor.id,
+        requestToken,
+        clientId,
+      });
+    }
+    await db.query('COMMIT');
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => undefined);
+    res.status(400).json({ ok: false, code: 'quick_cashback_failed', message: errorMessage(error) });
+    return;
+  } finally {
+    db.release();
+  }
+
+  if (!voucher) {
+    res.status(500).json({ ok: false, code: 'quick_cashback_missing', message: 'Cashback nao foi gerado.' });
+    return;
+  }
+
+  const receipt = await quickVoucherReceipt(voucher.id);
+  if (!receipt) {
+    res.status(500).json({ ok: false, code: 'receipt_missing', message: 'Cashback gerado, mas o comprovante nao foi localizado.' });
+    return;
+  }
+  if (requestPrint) {
+    await pgPool.query(
+      `UPDATE cashback_quick_vouchers
+          SET print_requests = print_requests + 1,
+              last_print_requested_at = NOW()
+        WHERE id = $1`,
+      [voucher.id],
+    );
+  }
+
+  const xpResult = shouldAwardMiaubyQuickCashbackXp(clientId)
+    ? await awardXpForQuickVoucherIssue(req, voucher.id, attendant.id)
+    : { awarded: false, message: 'XP nao aplicado: Cashback anonimo.' };
+  await logAction(
+    req,
+    voucher.replayed ? 'cashback_rapido_miauby_repetido' : 'cashback_rapido_miauby_emitido',
+    'cashback_quick_voucher',
+    voucher.id,
+    `Cashback rapido ${voucher.code} solicitado pelo Miauby.`,
+    {
+      source,
+      attendant_id: attendant.id,
+      client_id: clientId,
+      gross_cents: voucher.grossCents,
+      cashback_cents: voucher.cashbackCents,
+      expires_at: voucher.expiresAt,
+      request_print: requestPrint,
+      replayed: voucher.replayed,
+      xp_awarded: xpResult.awarded === true,
+      document_received_without_storage: customerInput.documentProvided,
+    },
+  );
+
+  res.json({
+    ok: true,
+    replayed: voucher.replayed,
+    voucher: {
+      id: voucher.id,
+      code: voucher.code,
+      gross_amount: centsToMoney(voucher.grossCents),
+      cashback_amount: centsToMoney(voucher.cashbackCents),
+      expires_at: voucher.expiresAt,
+    },
+    customer: clientId ? {
+      id: clientId,
+      name: cleanText(receipt.client_name, 160),
+    } : null,
+    xp: {
+      awarded: xpResult.awarded === true,
+      already_awarded: xpResult.alreadyAwarded === true,
+      points: xpResult.awarded || xpResult.alreadyAwarded ? XP_QUICK_VOUCHER_ISSUE_POINTS : 0,
+      message: xpResult.message,
+    },
+    print: {
+      requested: requestPrint,
+      receipt_type: 'quick_voucher',
+      entity_id: voucher.id,
+      html: requestPrint ? renderQuickVoucherPrintDocument(receipt) : '',
+    },
+  });
+}
+
+async function resolveMiaubyQuickCashbackClient(
+  db: pg.PoolClient,
+  customer: MiaubyQuickCashbackCustomer,
+  attendantId: number,
+): Promise<number | null> {
+  if (!customer.identified) return null;
+  if (customer.clientId) {
+    const byId = await db.query("SELECT id FROM cashback_clients WHERE id = $1 AND status = 'ativo' LIMIT 1", [customer.clientId]);
+    if ((byId.rowCount ?? 0) === 0) throw new Error('Codigo do cliente nao encontrado ou inativo.');
+    return num(byId.rows[0]?.id);
+  }
+  if (customer.phone) {
+    const byPhone = await db.query(
+      `SELECT id
+         FROM cashback_clients
+        WHERE status = 'ativo'
+          AND REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g') = $1
+        ORDER BY id DESC
+        LIMIT 1`,
+      [customer.phone],
+    );
+    if ((byPhone.rowCount ?? 0) > 0) return num(byPhone.rows[0]?.id);
+  }
+  if (customer.name) {
+    const byName = await db.query(
+      `SELECT id FROM cashback_clients WHERE status = 'ativo' AND LOWER(name) = LOWER($1) ORDER BY id DESC LIMIT 2`,
+      [customer.name],
+    );
+    if ((byName.rowCount ?? 0) === 1) return num(byName.rows[0]?.id);
+  }
+  const visibleName = customer.name || `Cliente ${customer.phone}`;
+  const inserted = await db.query(
+    `INSERT INTO cashback_clients (name, phone, notes, status, attendant_id)
+     VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), 'ativo', $4)
+     RETURNING id`,
+    [visibleName, customer.phone, customer.note, attendantId],
+  );
+  return num(inserted.rows[0]?.id);
 }
 
 async function cancelQuickVoucherFromDashboard(req: Request, res: Response): Promise<void> {
@@ -3832,6 +4042,11 @@ function renderQuickVoucherReceipt(voucher: DbRow | null): string {
     <article class="quick-voucher-receipt cashback-thermal-receipt" data-quick-voucher-receipt>
       <img class="receipt-brand" src="${asset('logo-wimifarma-receipt.png')}" alt="Wimifarma" width="731" height="292">
       <h2>CashBack Wimifarma</h2>
+      ${voucher.issued_client_id ? `<div class="receipt-customer">
+        <span>Cliente cadastrado</span>
+        <strong>${e(voucher.client_name || `Cliente #${voucher.issued_client_id}`)}</strong>
+        <b class="receipt-client-code">Codigo do cliente: #${e(voucher.issued_client_id)}</b>
+      </div>` : ''}
       <span class="receipt-label">Voce ganhou</span>
       <strong class="receipt-value">${brMoneyCents(voucher.cashback_cents)}</strong>
       <div class="receipt-code"><span>Codigo</span><strong>${e(voucher.code)}</strong></div>
@@ -3840,6 +4055,21 @@ function renderQuickVoucherReceipt(voucher: DbRow | null): string {
       <small>Emitido por ${e(voucher.attendant_name || 'Wimifarma')} em ${e(issuedAtText)}</small>
     </article>
   </div>`;
+}
+
+function renderQuickVoucherPrintDocument(voucher: DbRow): string {
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CashBack Wimifarma</title>
+  <link rel="stylesheet" href="${asset('styles.css')}">
+</head>
+<body class="printing-cashback-receipt">
+  <main class="cashback-receipt-print-root">${renderQuickVoucherReceipt(voucher)}</main>
+</body>
+</html>`;
 }
 
 function renderCashbackPurchaseReceipt(receipt: DbRow | null): string {

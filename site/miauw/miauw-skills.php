@@ -157,6 +157,24 @@ function miauw_skill_registry(): array
             'auditoria' => array(),
             'efeitos' => array(),
         ),
+        'criar_cashback_rapido' => array(
+            'nome' => 'criar_cashback_rapido',
+            'titulo' => 'Gerar cashback rapido',
+            'modulo' => 'cashback',
+            'nivel' => 'escrita',
+            'risco' => 'medio',
+            'permissao' => 'autenticado_com_acesso',
+            'executor' => 'miauw_skill_create_quick_cashback',
+            'openai_tool' => false,
+            'local_action' => true,
+            'fase' => 4,
+            'card' => 'Cashback',
+            'aliases' => array('cashback rapido', 'gerar cashback', 'imprimir cashback'),
+            'entrada' => array('valor', 'cliente_id', 'nome', 'telefone', 'cpf', 'observacao'),
+            'saida' => 'Voucher rapido idempotente e comprovante termico local.',
+            'auditoria' => array('cashback_quick_vouchers', 'cashback_audit_events'),
+            'efeitos' => array('criar_voucher', 'imprimir_local', 'xp_somente_identificado'),
+        ),
         'resumo_tarefas' => array(
             'nome' => 'resumo_tarefas',
             'titulo' => 'Resumo tarefas',
@@ -3205,6 +3223,63 @@ function miauw_skill_cashback_internal_request(string $method, string $path, arr
         $query,
         5
     );
+}
+
+function miauw_skill_semantic_entity_value(array $semantic, string $type): string
+{
+    foreach ((array) ($semantic['entities'] ?? array()) as $entity) {
+        if (!is_array($entity) || (string) ($entity['type'] ?? '') !== $type) {
+            continue;
+        }
+        $value = trim((string) ($entity['value'] ?? ''));
+        if ($value !== '') {
+            return $value;
+        }
+    }
+
+    return '';
+}
+
+function miauw_skill_create_quick_cashback(array $semantic, array $user, string $requestId, string $source = 'internal'): array
+{
+    if ((string) ($semantic['intent'] ?? '') !== 'criar_cashback_rapido') {
+        throw new InvalidArgumentException('Intencao de Cashback invalida.');
+    }
+    $amount = miauw_skill_semantic_entity_value($semantic, 'money');
+    if ($amount === '') {
+        throw new InvalidArgumentException('Qual foi o valor da compra para gerar o Cashback?');
+    }
+    $customerId = (int) preg_replace('/\D+/', '', miauw_skill_semantic_entity_value($semantic, 'customer_id'));
+    $payload = array(
+        'gross_amount' => $amount,
+        'actor_user_id' => (int) ($user['id'] ?? 0),
+        'request_id' => miauw_substr(trim($requestId), 0, 180),
+        'source' => $source === 'whatsapp' ? 'whatsapp' : 'internal',
+        'request_print' => $source !== 'whatsapp',
+        'customer' => array(
+            'client_id' => $customerId > 0 ? $customerId : null,
+            'name' => miauw_skill_semantic_entity_value($semantic, 'customer_name'),
+            'phone' => miauw_skill_semantic_entity_value($semantic, 'phone'),
+            'document' => miauw_skill_semantic_entity_value($semantic, 'document'),
+            'note' => miauw_skill_semantic_entity_value($semantic, 'note'),
+        ),
+    );
+    if (isset($GLOBALS['miauw_cashback_quick_override']) && is_callable($GLOBALS['miauw_cashback_quick_override'])) {
+        $response = call_user_func($GLOBALS['miauw_cashback_quick_override'], $payload);
+        if (!is_array($response)) {
+            throw new RuntimeException('Override de teste do Cashback retornou contrato invalido.');
+        }
+        return $response;
+    }
+    if (!miauw_skill_cashback_internal_configured()) {
+        throw new RuntimeException('Integracao com o Cashback nao esta configurada.');
+    }
+    $response = miauw_skill_cashback_internal_request('POST', '/api/internal/miauby/quick-vouchers', $payload);
+    if (!is_array($response) || empty($response['ok']) || !is_array($response['voucher'] ?? null)) {
+        throw new RuntimeException('O Cashback nao confirmou a emissao.');
+    }
+
+    return $response;
 }
 
 function miauw_skill_tarefa_internal_token(): string

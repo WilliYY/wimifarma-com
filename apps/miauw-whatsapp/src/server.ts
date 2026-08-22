@@ -48,6 +48,10 @@ import {
   transitionConversationState,
 } from './conversation-state-store.js';
 import { resolveSemanticMessage } from './semantic-interpreter-client.js';
+import {
+  buildQuickCashbackRequest,
+  formatQuickCashbackReply,
+} from './cashback-command.js';
 
 const { Pool } = pg;
 
@@ -835,6 +839,8 @@ const TAREFA_INTERNAL_TOKEN = textEnv('MIAUW_WHATSAPP_TAREFA_INTERNAL_TOKEN') ||
 const FINANCEIRO_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_FINANCEIRO_INTERNAL_BASE_URL') || textEnv('FINANCEIRO_INTERNAL_BASE_URL') || 'http://wimifarma-financeiro-app:3800/financeiro');
 const COTACAO_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_COTACAO_INTERNAL_BASE_URL') || textEnv('COTACAO_INTERNAL_BASE_URL') || 'http://wimifarma-cotacao-app:3000/cotacao');
 const COTACAO_INTERNAL_TOKEN = textEnv('MIAUW_WHATSAPP_COTACAO_INTERNAL_TOKEN') || textEnv('COTACAO_INTERNAL_TOKEN') || INTERNAL_TOKEN;
+const CASHBACK_INTERNAL_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_CASHBACK_INTERNAL_BASE_URL') || textEnv('CASHBACK_INTERNAL_BASE_URL') || 'http://wimifarma-cashback-app:4000/cashback');
+const CASHBACK_INTERNAL_TOKEN = textEnv('MIAUW_WHATSAPP_CASHBACK_INTERNAL_TOKEN') || textEnv('CASHBACK_INTERNAL_TOKEN') || INTERNAL_TOKEN;
 const PEDIDOS_ARRIVAL_AUTOMATION_KEY = 'pedidos_chegada_17h';
 const FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY = 'financeiro_fechamento_caixa_18h';
 const COTACAO_ENCOMENDA_LEGACY_AUTOMATION_KEY = 'cotacao_encomenda_16h';
@@ -8268,6 +8274,56 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
       reason: semantic.status === 'blocked' ? 'semantic_command_blocked' : 'semantic_command_ambiguous',
     };
   }
+  if (semantic.status === 'resolved' && semantic.intent === 'criar_cashback_rapido') {
+    if (!moduleAllowed(allowedCards, 'cashback')) {
+      return {
+        text: forbiddenModuleReply('cashback', allowedCards),
+        engine: 'blocked',
+        reason: 'blocked_module:cashback_quick_issue',
+      };
+    }
+    try {
+      const cashback = await registerQuickCashbackCommand(semantic, traceId, userContext);
+      const voucher = isRecord(cashback.voucher) ? cashback.voucher : {};
+      const customer = isRecord(cashback.customer) ? cashback.customer : null;
+      const xp = isRecord(cashback.xp) ? cashback.xp : {};
+      const reply = formatQuickCashbackReply({
+        voucher: {
+          gross_amount: Number(voucher.gross_amount || 0),
+          cashback_amount: Number(voucher.cashback_amount || 0),
+        },
+        customer: customer ? { name: safeText(customer.name, 120) } : null,
+        xp: {
+          awarded: xp.awarded === true,
+          already_awarded: xp.already_awarded === true,
+        },
+      });
+      await mergeWhatsappEventSummaryByTrace(traceId, {
+        cashback_quick_attempted: true,
+        cashback_quick_outcome: cashback.replayed === true ? 'replayed' : 'created',
+        cashback_quick_voucher_id: Number(voucher.id || 0),
+        cashback_quick_client_id: Number(customer?.id || 0),
+        cashback_quick_xp_awarded: xp.awarded === true,
+      });
+      return {
+        text: reply,
+        engine: 'local',
+        reason: cashback.replayed === true ? 'cashback_quick_replayed' : 'cashback_quick_created',
+      };
+    } catch (error) {
+      const errorText = safeError(error);
+      await mergeWhatsappEventSummaryByTrace(traceId, {
+        cashback_quick_attempted: true,
+        cashback_quick_outcome: 'error',
+        cashback_quick_error: errorText,
+      });
+      return {
+        text: errorText || 'Nao consegui gerar o Cashback agora. Tente novamente.',
+        engine: 'local',
+        reason: `cashback_quick_error:${errorText || 'unknown'}`,
+      };
+    }
+  }
   message = semantic.message;
   if (mightBeFalteiroCommand(message)) {
     if (!moduleAllowed(allowedCards, 'cotacao')) {
@@ -14520,6 +14576,25 @@ async function registerFalteiroCommand(message: string, traceId: string, userCon
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !isRecord(data) || data.ok !== true) {
     throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 220) || `cotacao_falteiro_http_${response.status}`);
+  }
+  return data;
+}
+
+async function registerQuickCashbackCommand(
+  semantic: Awaited<ReturnType<typeof resolveSemanticMessage>>,
+  traceId: string,
+  userContext: WhatsappUserContext,
+): Promise<JsonRecord> {
+  if (!CASHBACK_INTERNAL_TOKEN) throw new Error('Integracao com o Cashback nao esta configurada.');
+  const payload = buildQuickCashbackRequest(semantic, Number(userContext.id || 0), traceId);
+  const response = await fetch(`${CASHBACK_INTERNAL_BASE_URL}/api/internal/miauby/quick-vouchers`, {
+    method: 'POST',
+    headers: internalPhpJsonHeaders(CASHBACK_INTERNAL_TOKEN),
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !isRecord(data) || data.ok !== true || !isRecord(data.voucher)) {
+    throw new Error(safeText(isRecord(data) ? data.message || data.error : '', 220) || `cashback_quick_http_${response.status}`);
   }
   return data;
 }

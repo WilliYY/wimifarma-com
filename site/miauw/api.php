@@ -287,7 +287,7 @@ try {
         $hasLegacyPendingInteraction = function_exists('miauw_structured_has_legacy_pending_interaction')
             && miauw_structured_has_legacy_pending_interaction();
         if ($hasLegacyPendingInteraction) {
-            $reply = miauw_try_controlled_action($message, (int) $user['id'], $pageContext, $widgetMode, $conversationId, $traceId);
+            $reply = miauw_try_controlled_action($message, (int) $user['id'], $pageContext, $widgetMode, $conversationId, $traceId, $userMessageId);
         }
 
         if ($reply === null && !$hasLegacyPendingInteraction && function_exists('miauw_structured_conversation_resolve')) {
@@ -315,7 +315,7 @@ try {
         }
 
         if ($reply === null) {
-            $reply = miauw_try_controlled_action($routingMessage, (int) $user['id'], $pageContext, $widgetMode, $conversationId, $traceId);
+            $reply = miauw_try_controlled_action($routingMessage, (int) $user['id'], $pageContext, $widgetMode, $conversationId, $traceId, $userMessageId);
         }
         if ($reply === null && $silentConfirmation) {
             $reply = array(
@@ -457,6 +457,12 @@ try {
             'reply_audio' => $replyAudio,
             'reply_audio_error' => $replyAudioError,
             'confirmation' => $confirmation,
+            'print' => is_array($reply['print'] ?? null) ? array(
+                'requested' => !empty($reply['print']['requested']),
+                'receipt_type' => (string) ($reply['print']['receipt_type'] ?? ''),
+                'entity_id' => (int) ($reply['print']['entity_id'] ?? 0),
+                'html' => (string) ($reply['print']['html'] ?? ''),
+            ) : null,
             'agent_status' => function_exists('miauw_agent_public_status') ? miauw_agent_public_status() : array(
                 'name' => 'Miauby',
                 'version' => defined('MIAUW_VERSION') ? MIAUW_VERSION : '',

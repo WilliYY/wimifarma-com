@@ -1404,6 +1404,65 @@ miauw_eval_add('fase22_negacao_bloqueia_acao_legada', static function (): void {
     miauw_eval_assert(!isset($reply['confirmation']), 'Negacao nao pode criar confirmacao.');
 });
 
+miauw_eval_add('fase24_cashback_rapido_contrato_sem_confirmacao', static function (): void {
+    $captured = array();
+    $GLOBALS['miauw_cashback_quick_override'] = static function (array $payload) use (&$captured): array {
+        $captured = $payload;
+        return array(
+            'ok' => true,
+            'voucher' => array(
+                'id' => 91,
+                'gross_amount' => 35.0,
+                'cashback_amount' => 1.75,
+            ),
+            'customer' => array('id' => 139, 'name' => 'Maria Silva'),
+            'xp' => array('awarded' => true, 'points' => 250),
+            'print' => array(
+                'requested' => true,
+                'receipt_type' => 'quick_voucher',
+                'entity_id' => 91,
+                'html' => '<!doctype html><html><body>Cashback</body></html>',
+            ),
+        );
+    };
+
+    $response = miauw_skill_create_quick_cashback(array(
+        'intent' => 'criar_cashback_rapido',
+        'entities' => array(
+            array('type' => 'money', 'value' => '35'),
+            array('type' => 'customer_id', 'value' => '#139'),
+            array('type' => 'customer_name', 'value' => 'Maria Silva'),
+            array('type' => 'phone', 'value' => '(44) 99999-9999'),
+            array('type' => 'document', 'value' => '123.456.789-09'),
+            array('type' => 'note', 'value' => 'Cliente prefere contato pelo WhatsApp'),
+        ),
+    ), array('id' => 7), 'interno:mensagem:123', 'internal');
+    unset($GLOBALS['miauw_cashback_quick_override']);
+
+    miauw_eval_assert_same('35', (string) ($captured['gross_amount'] ?? ''), 'Valor do Cashback nao foi preservado.');
+    miauw_eval_assert_same(7, (int) ($captured['actor_user_id'] ?? 0), 'Usuario responsavel nao foi preservado.');
+    miauw_eval_assert_same(139, (int) ($captured['customer']['client_id'] ?? 0), 'Codigo do cliente nao foi preservado.');
+    miauw_eval_assert_same('(44) 99999-9999', (string) ($captured['customer']['phone'] ?? ''), 'Telefone foi confundido com valor.');
+    miauw_eval_assert_same('123.456.789-09', (string) ($captured['customer']['document'] ?? ''), 'CPF nao chegou ao contrato protegido.');
+    miauw_eval_assert(!empty($captured['request_print']), 'Miauby Interno precisa solicitar impressao local.');
+    miauw_eval_assert_same(91, (int) ($response['voucher']['id'] ?? 0), 'Resposta idempotente perdeu o voucher.');
+
+    $registry = miauw_skill_registry_public();
+    $skill = (array) ($registry['criar_cashback_rapido'] ?? array());
+    miauw_eval_assert_same('escrita', (string) ($skill['nivel'] ?? ''), 'Skill de Cashback precisa ser escrita auditada.');
+    miauw_eval_assert(!empty($skill['local_action']), 'Skill de Cashback deve executar sem passar pelo modelo.');
+    miauw_eval_assert(empty($skill['openai_tool']), 'Skill de Cashback nao deve depender da OpenAI.');
+});
+
+miauw_eval_add('fase24_cashback_impressao_local_frontend', static function (): void {
+    $app = file_get_contents(__DIR__ . '/app.js');
+    $widget = file_get_contents(__DIR__ . '/widget.js');
+    $api = file_get_contents(__DIR__ . '/api.php');
+    miauw_eval_assert(is_string($app) && strpos($app, 'printMiaubyReceipt(data.print)') !== false, 'Chat principal nao aciona o comprovante confiavel.');
+    miauw_eval_assert(is_string($widget) && strpos($widget, 'printMiaubyReceipt(data.print)') !== false, 'Widget nao aciona o comprovante confiavel.');
+    miauw_eval_assert(is_string($api) && strpos($api, "'receipt_type'") !== false, 'API nao devolve o contrato de impressao sanitizado.');
+});
+
 miauw_eval_add('fase23_memoria_conversacional_contrato_seguro', static function (): void {
     $sessionKey = miauw_structured_conversation_session_id();
     miauw_eval_assert(preg_match('/^[a-f0-9]{64}$/', $sessionKey) === 1, 'Identidade da sessao deve ser hash opaco de 64 caracteres.');

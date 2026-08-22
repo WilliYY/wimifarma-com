@@ -913,6 +913,36 @@
     return draft;
   };
 
+  const printMiaubyReceipt = (payload) => {
+    if (!payload || payload.requested !== true || payload.receipt_type !== 'quick_voucher') return;
+    const html = String(payload.html || '');
+    if (!html || html.length > 250000 || /<script\b/i.test(html)) return;
+
+    const frame = document.createElement('iframe');
+    frame.title = 'Impressao do Cashback';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.setAttribute('sandbox', 'allow-modals allow-same-origin');
+    frame.style.position = 'fixed';
+    frame.style.width = '1px';
+    frame.style.height = '1px';
+    frame.style.right = '0';
+    frame.style.bottom = '0';
+    frame.style.border = '0';
+    frame.style.opacity = '0';
+    frame.addEventListener('load', () => {
+      window.setTimeout(() => {
+        try {
+          frame.contentWindow?.focus();
+          frame.contentWindow?.print();
+        } finally {
+          window.setTimeout(() => frame.remove(), 1500);
+        }
+      }, 120);
+    }, { once: true });
+    document.body.appendChild(frame);
+    frame.srcdoc = html;
+  };
+
   const sendMessage = async (message, options = {}) => {
     const text = String(message || '').trim();
     if (!text) return { ok: false, data: null };
@@ -956,6 +986,7 @@
       }
 
       hideTyping();
+      printMiaubyReceipt(data.print);
       if (options.voiceReply && data.reply_audio && data.reply_audio.audio_base64) {
         const assistantAudioUrl = audioUrlFromBase64(data.reply_audio.audio_base64, data.reply_audio.mime || 'audio/mpeg');
         if (assistantAudioUrl) {

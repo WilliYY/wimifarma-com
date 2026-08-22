@@ -15,12 +15,18 @@ test('usa a mensagem canonica retornada pelo interpretador central', async () =>
       module: 'financeiro',
       confidence: 0.91,
       canonical_message: 'sangria 30 troco',
+      entities: [
+        { type: 'money', value: '30', raw: '30', confidence: 0.99 },
+      ],
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
   });
 
   assert.equal(result.status, 'resolved');
   assert.equal(result.message, 'sangria 30 troco');
   assert.equal(result.intent, 'registrar_sangria');
+  assert.deepEqual(result.entities, [
+    { type: 'money', value: '30', raw: '30', confidence: 0.99 },
+  ]);
 });
 
 test('ambiguidade nao cai no parser legado', async () => {
@@ -69,4 +75,5 @@ test('indisponibilidade preserva o formato legado', async () => {
 
   assert.equal(result.status, 'fallback');
   assert.equal(result.message, 'miauby pedido anb 350');
+  assert.deepEqual(result.entities, []);
 });

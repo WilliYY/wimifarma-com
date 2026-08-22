@@ -53,6 +53,7 @@ O registro inicial cobre as familias operacionais existentes:
 - criar conta da Gestao;
 - relatorios e resumos por modulo;
 - calendario e demais consultas registradas nos contratos de tools.
+- emissao direta e idempotente de Cashback rapido.
 
 Novos comandos devem adicionar uma especificacao ao registro central e testes de linguagem natural; nao devem adicionar combinacoes para cada ordem possivel.
 
@@ -73,6 +74,15 @@ Novos comandos devem adicionar uma especificacao ao registro central e testes de
 - O ator autenticado/vinculado e usado apenas para permissao e auditoria. Ele nunca substitui o cliente informado.
 - A confirmacao gera chave idempotente enviada ao endpoint da Cotacao; retries da mesma confirmacao devolvem o registro original.
 - O endpoint grava novas Encomendas somente nas colunas `produto` e `categoria`. A categoria comeca por `Encomenda` e preserva, em partes separadas por ` | `, todo contexto util realmente informado. O contrato legado continua aceito na API, mas e normalizado para as mesmas duas colunas.
+
+### Cashback rapido
+
+- A intencao `criar_cashback_rapido` reconhece `cashback` ou `cash back` em qualquer posicao/caixa e separa o valor da compra de telefone, CPF e codigo do cliente. Consulta, historico, relatorio e saldo nao podem virar emissao.
+- O valor e obrigatorio. Nome, telefone, CPF, observacao e codigo permanente do cliente sao opcionais e chegam como entidades separadas; telefone e CPF nunca podem ser usados como valor monetario.
+- Interno e WhatsApp reutilizam `POST /cashback/api/internal/miauby/quick-vouchers`, protegido por token. O endpoint revalida ator e permissao, calcula o percentual configurado, usa o mesmo lock/sorteio de cinco digitos e a mesma validade de seis meses do Balcao.
+- A chave derivada de canal e mensagem/evento torna retry idempotente. Repetir o mesmo evento devolve o voucher original, sem criar outro cliente, codigo ou XP.
+- Sem cliente identificavel, a emissao permanece anonima e nao gera XP. Com codigo do cliente, nome ou telefone valido, o backend vincula/reutiliza o cliente e aplica a regra atual de +250 XP de forma idempotente. CPF e observacao isolados nao inventam identidade nem sao gravados em campo inadequado.
+- Este comando e uma acao local deterministica de risco medio e nao abre confirmacao adicional. No Miauby Interno, a resposta confiavel abre o dialogo local do navegador. No WhatsApp, o voucher e gerado, mas a resposta informa que a impressao deve ser aberta no Cashback ou no Miauby Interno; o WhatsApp nao afirma que imprimiu.
 
 ## Memoria conversacional
 
@@ -99,7 +109,7 @@ Para cada familia, cobrir:
 
 - Interno e WhatsApp recebem a mesma intencao e mensagem canonica para a mesma frase.
 - Nenhuma escrita nova ocorre no interpretador.
-- Confirmacoes e idempotencia atuais permanecem obrigatorias.
+- Confirmacoes existentes permanecem nas acoes que as exigem; a emissao direta de Cashback rapido e a excecao documentada e depende de idempotencia, permissao e auditoria no backend.
 - Suites PHP e TypeScript passam, inclusive exemplos antigos.
 - `npm audit --omit=dev` fica sem vulnerabilidades conhecidas no Agent e no WhatsApp.
 - Health dos servicos e smoke de producao ficam verdes depois do deploy.

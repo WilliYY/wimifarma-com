@@ -26,6 +26,17 @@ export const WHATSAPP_MISSING_PREFIX_HELP_REPLY = '😺 Para acessar o Miauby é
 
 export const WHATSAPP_COMMAND_HELP_REGISTRY: WhatsappCommandHelpCategory[] = [
   {
+    moduleKey: 'cashback',
+    title: 'Cashback (card)',
+    actions: [
+      {
+        label: 'Gerar Cashback rapido',
+        example: 'miauby cashback 35',
+        note: 'gera na hora; a impressao fica disponivel no Cashback ou no Miauby Interno',
+      },
+    ],
+  },
+  {
     moduleKey: 'financeiro',
     title: 'Financeiro (card)',
     actions: [

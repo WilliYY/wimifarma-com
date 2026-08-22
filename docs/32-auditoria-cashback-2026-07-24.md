@@ -2,6 +2,8 @@
 
 > Nota de 2026-07-25: a arquitetura `Wimi Impressora` auditada abaixo foi retirada. Card, estacao web, agente e fila nao estao mais ativos; a impressao atual e local pelo navegador. O restante deste documento permanece como registro historico da auditoria feita em 24/07.
 
+> Nota de 2026-08-22: Miauby Interno e WhatsApp podem emitir Cashback rapido pelo endpoint interno tokenizado `/api/internal/miauby/quick-vouchers`. O fluxo reutiliza lock, faixa de codigo, validade e auditoria existentes; emissao anonima nao gera XP, identificada usa a regra atual e somente o Interno abre impressao local.
+
 ## Escopo e criterio
 
 Auditoria tecnica do Cashback Node/Postgres, vouchers rapidos e da integracao Wimi Impressora. Foram revisados controles de sessao, CSRF, autorizacao, transacoes de compra/resgate, validade, codigos, fila de impressao, dependencias e o estado operacional do VPS.

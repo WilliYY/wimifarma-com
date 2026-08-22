@@ -5,6 +5,14 @@ export type SemanticMessageResult = {
   module: string;
   confidence: number;
   clarification: string;
+  entities: SemanticMessageEntity[];
+};
+
+export type SemanticMessageEntity = {
+  type: string;
+  value: string;
+  raw: string;
+  confidence: number;
 };
 
 type ResolveOptions = {
@@ -22,6 +30,7 @@ type SemanticResponse = {
   confidence?: unknown;
   canonical_message?: unknown;
   clarification?: unknown;
+  entities?: unknown;
 };
 
 export async function resolveSemanticMessage(message: string, options: ResolveOptions): Promise<SemanticMessageResult> {
@@ -56,6 +65,7 @@ export async function resolveSemanticMessage(message: string, options: ResolveOp
         confidence: numberValue(body.confidence),
         clarification: stringValue(body.clarification)
           || (status === 'blocked' ? 'Entendi. Nao vou executar essa acao.' : 'Qual acao voce quer executar?'),
+        entities: semanticEntities(body.entities),
       };
     }
     if (status === 'resolved') {
@@ -68,6 +78,7 @@ export async function resolveSemanticMessage(message: string, options: ResolveOp
         module: stringValue(body.module),
         confidence: numberValue(body.confidence),
         clarification: '',
+        entities: semanticEntities(body.entities),
       };
     }
     if (status === 'none') {
@@ -78,6 +89,7 @@ export async function resolveSemanticMessage(message: string, options: ResolveOp
         module: '',
         confidence: 0,
         clarification: '',
+        entities: [],
       };
     }
 
@@ -97,7 +109,21 @@ function fallback(message: string): SemanticMessageResult {
     module: '',
     confidence: 0,
     clarification: '',
+    entities: [],
   };
+}
+
+function semanticEntities(value: unknown): SemanticMessageEntity[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry))
+    .map((entry) => ({
+      type: stringValue(entry.type),
+      value: stringValue(entry.value),
+      raw: stringValue(entry.raw),
+      confidence: numberValue(entry.confidence),
+    }))
+    .filter((entry) => entry.type !== '' && entry.value !== '');
 }
 
 function stringValue(value: unknown): string {

@@ -380,6 +380,71 @@ test('normaliza caixa, acentos e valores brasileiros sem perder o dado original'
   assert.ok(result.entities.some((entity) => entity.type === 'money' && entity.value === '1.500,20'));
 });
 
+test('entende emissao rapida de Cashback sem ordem fixa e preserva o valor da compra', () => {
+  for (const message of [
+    'Miauby cashback 35',
+    'cashback 35',
+    'MIAUBY faz CASHBACK de 35',
+    'Miauby gera 35 reais de cashback e imprime',
+    'Miauby 35,90 cashback',
+  ]) {
+    const result = resolved(message);
+    assert.equal(result.status, 'resolved', message);
+    assert.equal(result.intent, 'criar_cashback_rapido', message);
+    assert.match(result.canonical_message, /^cashback\s+(?:35|35,90)(?:\b|$)/i, message);
+    assert.ok(result.entities.some((entity) => entity.type === 'money'), message);
+  }
+});
+
+test('Cashback identificado separa cliente, telefone, CPF e observacao do valor', () => {
+  const result = resolved(
+    'Miauby cashback de 35 para Ana telefone (44) 99999-8888 CPF 123.456.789-09 observacao cliente do bairro',
+  );
+
+  assert.equal(result.status, 'resolved');
+  assert.equal(result.intent, 'criar_cashback_rapido');
+  assert.match(result.canonical_message, /^cashback 35\b/i);
+  assert.ok(result.entities.some((entity) => entity.type === 'customer_name' && /Ana/i.test(entity.value)));
+  assert.ok(result.entities.some((entity) => entity.type === 'phone' && /99999-8888/.test(entity.value)));
+  assert.ok(result.entities.some((entity) => entity.type === 'document' && /123\.456\.789-09/.test(entity.value)));
+  assert.ok(result.entities.some((entity) => entity.type === 'note' && /cliente do bairro/i.test(entity.value)));
+  assert.equal(result.entities.find((entity) => entity.type === 'money')?.normalized, '35');
+});
+
+test('Cashback aceita codigo permanente de cliente sem confundir com valor', () => {
+  const result = resolved('Miauby cashback 35 cliente #139');
+  assert.equal(result.status, 'resolved');
+  assert.equal(result.entities.find((entity) => entity.type === 'money')?.normalized, '35');
+  assert.equal(result.entities.find((entity) => entity.type === 'customer_id')?.normalized, '139');
+});
+
+test('Cashback nunca usa telefone ou CPF como valor monetario', () => {
+  for (const message of [
+    'Miauby cashback telefone 44999998888',
+    'Miauby cashback CPF 123.456.789-09',
+    'Miauby cashback para Ana telefone 44999998888 valor 35',
+  ]) {
+    const result = resolved(message);
+    if (/valor 35/.test(message)) {
+      assert.equal(result.status, 'resolved', message);
+      assert.equal(result.entities.find((entity) => entity.type === 'money')?.normalized, '35', message);
+    } else {
+      assert.equal(result.status, 'ambiguous', message);
+      assert.deepEqual(result.missing, ['valor'], message);
+    }
+  }
+});
+
+test('consulta de Cashback nao vira emissao e valor ausente pede somente o valor', () => {
+  assert.notEqual(resolved('Miauby relatorio de cashback de ontem').intent, 'criar_cashback_rapido');
+  assert.notEqual(resolved('Miauby qual o saldo de cashback da Ana?').intent, 'criar_cashback_rapido');
+
+  const missing = resolved('Miauby gera cashback para Ana');
+  assert.equal(missing.status, 'ambiguous');
+  assert.equal(missing.intent, 'criar_cashback_rapido');
+  assert.deepEqual(missing.missing, ['valor']);
+});
+
 test('bloqueia ambiguidade real entre duas acoes destrutivas', () => {
   const result = resolved('Miauby cancelar o pedido e a tarefa');
   assert.equal(result.status, 'ambiguous');
@@ -414,6 +479,7 @@ test('cobre todas as familias operacionais registradas', () => {
     ['Miauby dipirona buscar na cotacao', 'consultar_cotacao'],
     ['Miauby dia 15/08/2026 relatorio financeiro', 'relatorio_financeiro'],
     ['Miauby agosto consultar calendario de plantao', 'consultar_calendario'],
+    ['Miauby cashback 35', 'criar_cashback_rapido'],
   ];
 
   for (const [message, intent] of cases) {

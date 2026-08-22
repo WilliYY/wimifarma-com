@@ -6957,7 +6957,7 @@ function miauw_widget_vague_reply(string $message, string $pageContext = ''): ?s
         . "\nBaixo impacto operacional. Proxima bagunca, por favor.";
 }
 
-function miauw_try_controlled_action(string $message, int $userId, string $pageContext = '', bool $widgetMode = false, ?int $conversationId = null, ?string $traceId = null): ?array
+function miauw_try_controlled_action(string $message, int $userId, string $pageContext = '', bool $widgetMode = false, ?int $conversationId = null, ?string $traceId = null, ?int $userMessageId = null): ?array
 {
     if ($traceId !== null || $conversationId !== null) {
         $trace = miauw_trace_context();
@@ -7187,6 +7187,79 @@ function miauw_try_controlled_action(string $message, int $userId, string $pageC
                 ),
             ));
             $message = $canonicalMessage;
+        }
+    }
+
+    if (is_array($semantic) && $semanticStatus === 'resolved'
+        && (string) ($semantic['intent'] ?? '') === 'criar_cashback_rapido') {
+        $user = function_exists('current_user') ? current_user() : null;
+        if (!is_array($user) || !miauw_user_can_access_module($user, 'cashback')) {
+            return array(
+                'text' => 'Seu usuario nao tem acesso ao Cashback para gerar esse cupom.',
+                'fallback' => false,
+                'model' => 'miauw-cashback-rapido',
+                'engine' => 'php_local',
+            );
+        }
+
+        try {
+            $requestId = $userMessageId !== null && $userMessageId > 0
+                ? 'interno:mensagem:' . $userMessageId
+                : 'interno:' . (int) $conversationId . ':' . (string) ($traceId ?? hash('sha256', $message));
+            $cashback = miauw_skill_create_quick_cashback($semantic, $user, $requestId, 'internal');
+            $voucher = (array) ($cashback['voucher'] ?? array());
+            $customer = is_array($cashback['customer'] ?? null) ? $cashback['customer'] : null;
+            $xp = (array) ($cashback['xp'] ?? array());
+            $gross = isset($voucher['gross_amount']) ? (float) $voucher['gross_amount'] : 0.0;
+            $benefit = isset($voucher['cashback_amount']) ? (float) $voucher['cashback_amount'] : 0.0;
+            $customerName = trim((string) ($customer['name'] ?? ''));
+            $text = 'Cashback de ' . miauw_skill_money($benefit)
+                . ' sobre compra de ' . miauw_skill_money($gross)
+                . ' gerado. A impressao foi aberta neste computador.';
+            if ($customerName !== '') {
+                $text .= ' Cliente: ' . $customerName . '.';
+            }
+            if (!empty($xp['awarded'])) {
+                $text .= ' +250 XP para o usuario responsavel.';
+            } elseif (!empty($xp['already_awarded'])) {
+                $text .= ' XP ja registrado nesta emissao.';
+            }
+
+            miauw_trace_record('cashback_rapido', 'ok', array(
+                'type' => 'write',
+                'summary' => 'Cashback rapido gerado pelo Miauby.',
+                'payload' => array(
+                    'voucher_id' => (int) ($voucher['id'] ?? 0),
+                    'client_id' => (int) ($customer['id'] ?? 0),
+                    'replayed' => !empty($cashback['replayed']),
+                    'xp_points' => (int) ($xp['points'] ?? 0),
+                    'print_requested' => !empty($cashback['print']['requested']),
+                ),
+            ));
+
+            return array(
+                'text' => $text,
+                'fallback' => false,
+                'model' => 'miauw-cashback-rapido',
+                'engine' => 'php_local',
+                'print' => is_array($cashback['print'] ?? null) ? $cashback['print'] : null,
+            );
+        } catch (Throwable $error) {
+            error_log('Miauby Cashback command failed: ' . $error->getMessage());
+            miauw_trace_record('cashback_rapido', 'error', array(
+                'type' => 'write',
+                'summary' => 'Falha ao gerar Cashback rapido.',
+                'error' => $error->getMessage(),
+            ));
+
+            return array(
+                'text' => trim($error->getMessage()) !== ''
+                    ? $error->getMessage()
+                    : 'Nao consegui gerar o Cashback agora. Tente novamente.',
+                'fallback' => false,
+                'model' => 'miauw-cashback-rapido',
+                'engine' => 'php_local',
+            );
         }
     }
 

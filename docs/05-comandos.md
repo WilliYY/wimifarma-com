@@ -111,6 +111,7 @@ Os PHPs antigos de XP, Codigos, Gestao e financeiro antigo dentro de Cashback fi
 ```powershell
 cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\miauw-agent
 npm.cmd run check
+npm.cmd test
 npm.cmd run build
 cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d --no-deps --build wimifarma-miauw-agent wimifarma-com-web
@@ -132,6 +133,7 @@ No Miauby WhatsApp, `MIAUW_WHATSAPP_AUDIO_INPUT_ENABLED=true` faz audio autoriza
 ```powershell
 cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\miauw-whatsapp
 npm.cmd run check
+npm.cmd test
 npm.cmd run build
 cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d --no-deps --build wimifarma-miauw-whatsapp-db wimifarma-miauw-whatsapp wimifarma-com-web
@@ -179,6 +181,7 @@ Esse migrador copia `miauw_*` para `miauby_*` em Postgres sombra, com `legacy_my
 ```powershell
 cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\cashback
 npm.cmd run check
+npm.cmd test
 npm.cmd run build
 cd C:\Users\Thiesen\Desktop\wimifarma-com
 docker compose up -d wimifarma-cashback-db wimifarma-xp-db
@@ -190,6 +193,8 @@ docker exec wimifarma-cashback-db psql -U wimifarma_cashback -d wimifarma_cashba
 ```
 
 O app `apps/cashback` atende a rota oficial `/cashback/` via proxy Apache. A fonte oficial e o Postgres `wimifarma_cashback`; desde 2026-05-30 o servico nao possui `mysql2`, importador, espelho, logs ou fallback MySQL. Desde 2026-06-11, o container tambem precisa enxergar `wimifarma-xp-db` para pontuar +500 XP por uso de cashback; indisponibilidade do XP nao bloqueia compra/resgate, mas deve aparecer no feedback. Rollback para MySQL exige restaurar commit/imagem anterior e backup validado, nao trocar `.env`. Endpoints internos sem token devem responder 401 ou 503; nao colar token real em comando versionado.
+
+O comando direto do Miauby usa `POST /cashback/api/internal/miauby/quick-vouchers`. O smoke seguro deve ser feito sem token e precisa responder 401/503; nao criar voucher real apenas para testar deploy. A interpretacao sem efeitos colaterais pode ser validada no agente com `Miauby cashback 35` e deve resolver `criar_cashback_rapido` com valor `35`.
 
 ## Local - Core auth Postgres oficial
 

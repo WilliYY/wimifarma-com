@@ -10,6 +10,14 @@ Desde 2026-08-16, o Interno e o WhatsApp consultam o endpoint tokenizado e sem e
 
 `resolved` segue para as mesmas permissoes, confirmacoes e executores anteriores; a camada central nunca grava diretamente. `ambiguous` interrompe o fluxo e pede somente a informacao que diferencia as acoes. `blocked` encerra localmente uma frase negada sem executar nem cair no legado. `none`, timeout ou indisponibilidade mantem a mensagem original e o parser legado, garantindo compatibilidade. Respostas pendentes de confirmacao ou selecao continuam sendo tratadas antes de uma nova interpretacao. Desde 2026-08-16, perguntas informativas sobre escrita sao desambiguadas, pequenos erros de uma letra nos termos do comando sao aceitos apenas com ativacao explicita, singular/plural permanece exato e frases normalizadas usam cache no Agent.
 
+## Cashback rapido compartilhado
+
+Desde 2026-08-22, `miauby cashback 35` e variacoes naturais em qualquer ordem/caixa geram o Cashback rapido pelo mesmo motor do Balcao. A camada semantica separa o valor da compra de nome, telefone, CPF, observacao e codigo do cliente; telefone e CPF nunca viram valor. Falta de valor pede somente o valor, e consultas de saldo/historico/relatorio nao executam emissao.
+
+O telefone precisa estar autorizado, ter o card `Cashback` e estar vinculado a um usuario core. O bridge chama `POST /cashback/api/internal/miauby/quick-vouchers` com `request_id=whatsapp:<trace_id>`; o Cashback revalida acesso, calcula o percentual configurado, reserva o codigo com lock e devolve o mesmo voucher em retry. Emissao anonima nao gera XP. Quando existe cliente identificavel por codigo, nome ou telefone, o voucher e vinculado e a regra atual de +250 XP e aplicada de forma idempotente.
+
+O WhatsApp nao controla a impressora do computador. A resposta confirma somente a gravacao e orienta abrir o Cashback ou o Miauby Interno para imprimir. No Interno, o HTML termico confiavel volta pelo contrato da API e abre o dialogo local do navegador uma unica vez para a mensagem processada.
+
 ## Comando Falteiro compartilhado
 
 Desde 2026-08-16, mensagens com intencao clara de falta de estoque ou necessidade de compra sao candidatas ao registro no Falteiro da Cotacao, sem diferenciar maiusculas/minusculas. A triagem reconhece tanto os comandos diretos `falteiro`, `falta`, `faltou` e `acabou` quanto expressoes como `esta faltando`, `estamos sem`, `sem estoque`, `nao tem mais`, `terminou`, `precisa comprar` e `coloca no falteiro`, inclusive quando o produto vem antes da intencao. No WhatsApp, a mensagem continua sujeita a prefixo/allowlist conforme a configuracao e exige o card `Cotacao`; no interno, exige que o usuario logado tenha acesso a Cotacao.
