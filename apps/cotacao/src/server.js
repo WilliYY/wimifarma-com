@@ -3466,6 +3466,11 @@ app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, as
            WHERE quote_id = $1
              AND deleted_at IS NULL
              AND btrim(COALESCE(values->>'produto', '')) = ''
+             AND NOT EXISTS (
+               SELECT 1
+                 FROM jsonb_each_text(COALESCE(values, '{}'::jsonb)) AS entry(key, value)
+                WHERE btrim(COALESCE(entry.value, '')) <> ''
+             )
            ORDER BY position ASC, id ASC
            LIMIT $2
            FOR UPDATE`,

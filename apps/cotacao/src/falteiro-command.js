@@ -7,6 +7,7 @@ const CATEGORY_HINT_PATTERN = /^(?:prioridade\s+)?(?:urgente|urg[êe]ncia|popula
 const CATEGORY_ALIASES = new Map([
   ['acabando', 'falta'],
   ['acabou', 'falta'],
+  ['acabaram', 'falta'],
   ['cota', 'cotar'],
   ['cotacao', 'cotar'],
   ['cotacoes', 'cotar'],
@@ -26,7 +27,7 @@ const CATEGORY_ALIASES = new Map([
 ]);
 const CATEGORY_PHRASE_ALIASES = [
   { concept: 'urgente', phrases: ['com urgencia'] },
-  { concept: 'popular', phrases: ['linha popular'] },
+  { concept: 'popular', phrases: ['linha popular', 'farmacia popular'] },
   { concept: 'cotar', phrases: ['precisa cotar', 'precisamos cotar', 'preciso cotar', 'para cotar', 'pra cotar'] },
   { concept: 'falta', phrases: ['sem estoque'] },
 ].flatMap((rule) => rule.phrases.map((phrase) => ({
@@ -40,6 +41,21 @@ const CATEGORY_CONTROL_TOKENS = new Set([
 ]);
 const INTENT_FILLER_TOKENS = new Set(['por', 'favor']);
 const PRODUCT_EDGE_TOKENS = new Set(['e', 'mas', 'porque', 'pois', 'para']);
+const LIST_CONNECTOR_PATTERN = /^(?:e\s+tamb[eé]m|tamb[eé]m|al[eé]m\s+disso|mais|outro(?:s|a|as)?)\b[\s,:;\-]*/iu;
+const COLLECTIVE_PATTERN = /(?:^|[,;]\s*|\s+)(todos?|todas?|tudo(?:\s+isso)?|os\s+dois|as\s+duas|os\s+tr[eê]s|esses|essas)\s+(?:s[aã]o\s+)?(.+?)\s*$/iu;
+const COMPOUND_PRODUCT_PATTERN = /\b(?:kit|conjunto|combo)\b|\bshampoo\s+e\s+condicionador\b/iu;
+const STRONG_PRODUCT_START_PATTERN = /^(?:(?:kit|shampoo|condicionador|creme|detergente|limpador|fralda|protetor|sabonete|bobina|papel|caneta|sacola|[aá]lcool|vassoura|pilha|mamadeira|chocolate|[aá]gua|[oó]leo|leite|sal)\b|[\p{L}'’-]+\s+\d+(?:[.,]\d+)?\s*(?:mg|mcg|g|ml|ui)\b)/iu;
+const NON_PRODUCT_CONJUNCTION_START_PATTERN = /^(?:tamb[eé]m|porque|pois|para|pra|n[aã]o|mas|com|sem|que|quando|disse|falou|avisou|vem|volta|s[oó]|urgente|popular|falta|acabou)\b/iu;
+const FREE_CONTEXT_PATTERNS = [
+  /\b(?:para|pra)\s+(?:(?:a|o)\s+)?[\p{L}'’-]+\s+que\s+(?:vem|volta|pediu|procurou)\b[\s\S]*$/iu,
+  /\b(?:para|pra)\s+(?:usar|utilizar|limpar|fazer\s+a\s+limpeza|a\s+limpeza|uso\s+na|repor|reposi[cç][aã]o)\b[\s\S]*$/iu,
+  /\bque\s+(?:(?:a|o|uma|um)\s+)?(?:cliente\s+)?(?:dona\s+)?[\p{L}][\p{L}\s'’-]{0,60}\s+(?:pediu|procurou|veio\s+procurar)\b[\s\S]*$/iu,
+  /\b(?:(?:a|o)\s+)?(?:cliente|dona)\s+[\p{L}][\p{L}\s'’-]{0,60}\s+(?:pediu|procurou|volta|veio\s+procurar)\b[\s\S]*$/iu,
+  /\bcliente\s+(?:volta|vem)\b[\s\S]*$/iu,
+  /\b(?:comprar|pegar|repor)\s+(?:(?:uns?|umas?)\s+)?(?:\d+|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|bastante)\b[\s\S]*$/iu,
+  /\b(?:s[oó]\s+se|n[aã]o\s+esquecer|ver\s+pre[cç]o)\b[\s\S]*$/iu,
+  /\bporque\b[\s\S]*$/iu,
+];
 export const MAX_FALTEIRO_BATCH_ITEMS = 50;
 const BATCH_CONTROL_ONLY_PATTERN = /^(?:(?:por\s+favor\s+)?(?:miauby|miauw)\s+)?(?:falta|faltou|faltando|falteiro|acabou|comprar|repor|reposicao|coloca(?:r)?\s+no\s+falteiro|adiciona(?:r)?\s+no\s+falteiro|joga(?:r)?\s+no\s+falteiro)$/iu;
 const NUMBER_TOKEN_SOURCE = '(?:\\d+(?:[.,]\\d+)?|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)';
@@ -49,11 +65,11 @@ const ANYWHERE_INTENTS = [
   { trigger: 'faltando', phrases: ['esta faltando', 'ta faltando', 'estao faltando', 'tao faltando', 'faltando'] },
   { trigger: 'acabando', phrases: ['estoque baixo', 'esta acabando', 'ta acabando', 'tem pouco', 'vai acabar', 'acabando'] },
   { trigger: 'estoque_baixo', phrases: ['so temos', 'so tem', 'tem so', 'tem meia caixa', 'restou', 'ultima caixa', 'ultima unidade'] },
-  { trigger: 'comprar', phrases: ['precisamos comprar', 'precisa comprar', 'preciso comprar', 'comprar'] },
+  { trigger: 'comprar', phrases: ['estamos precisando de', 'esta precisando de', 'precisamos comprar', 'precisa comprar', 'preciso comprar', 'comprar'] },
   { trigger: 'repor', phrases: ['precisamos repor', 'precisa repor', 'preciso repor', 'reposicao', 'repor'] },
   { trigger: 'falteiro', phrases: ['no falteiro', 'falteiro'] },
   { trigger: 'falta', phrases: ['faltou', 'falta', 'faltam'] },
-  { trigger: 'acabou', phrases: ['nao pode faltar', 'zerou', 'acabou'] },
+  { trigger: 'acabou', phrases: ['nao pode faltar', 'zerou', 'acabaram', 'acabou'] },
   { trigger: 'terminou', phrases: ['terminou'] },
 ];
 
@@ -143,7 +159,7 @@ function collectFalteiroContexts(value) {
   addMatches(/\bnao\s+comprar\s+desse\s+laboratorio\b/giu, 70, () => ({ label: 'Nao comprar desse laboratorio' }));
   addMatches(/\bnao\s+(?:substituir|precisa\s+muitas?)\b/giu, 70, (match) => ({ label: match[0] }));
 
-  addMatches(new RegExp(`\\b(comprar|compre|pegar|pega|pegue|repor)\\s+(${NUMBER_TOKEN_SOURCE})(?:\\s+(${ORDER_UNIT_SOURCE}))?\\b`, 'giu'), 40, (match) => {
+  addMatches(new RegExp(`\\b(comprar|compre|pegar|pega|pegue|repor)\\s+((?:(?:uns?|umas?)\\s+)?${NUMBER_TOKEN_SOURCE})(?:\\s+(${ORDER_UNIT_SOURCE}))?\\b`, 'giu'), 40, (match) => {
     const action = /^(?:pegar|pega|pegue)$/iu.test(match[1]) ? 'Pegar' : (/^repor$/iu.test(match[1]) ? 'Repor' : 'Comprar');
     const amount = cleanCommandText(match[2]);
     const unit = normalized(match[3]);
@@ -183,7 +199,7 @@ function collectFalteiroContexts(value) {
   });
   addMatches(/\btem\s+meia\s+caixa\b/giu, 20, (match) => ({ label: match[0] }));
   addMatches(/\b(?:ultima\s+(?:caixa|unidade)|estoque\s+baixo|tem\s+pouco|vai\s+acabar|esta\s+acabando|ta\s+acabando)\b/giu, 20, (match) => ({ label: match[0] }));
-  addMatches(/\b(?:esta\s+faltando|t(?:a|\u00e1)\s+faltando|estao\s+faltando|tao\s+faltando|esta\s+em\s+falta|estamos\s+sem|ficou\s+sem|estou\s+sem|nao\s+tem\s+mais|nao\s+temos|sem\s+estoque|terminou|zerou|acabou)\b/giu, 20, (match) => ({ label: normalized(match[0]) }));
+  addMatches(/\b(?:esta\s+faltando|t(?:a|\u00e1)\s+faltando|estao\s+faltando|tao\s+faltando|esta\s+em\s+falta|estamos\s+sem|ficou\s+sem|estou\s+sem|nao\s+tem\s+mais|nao\s+temos|sem\s+estoque|terminou|zerou|acabaram|acabou)\b/giu, 20, (match) => ({ label: normalized(match[0]) }));
 
   addMatches(/\b(?:muita\s+gente\s+(?:esta\s+)?procurando|muita\s+gente\s+perguntou|muita\s+procura|cliente\s+esta\s+procurando|ja\s+pediram\s+varias\s+vezes|vende\s+muito|sai\s+muito|produto\s+de\s+giro|vende\s+pouco|nao\s+pode\s+faltar)\b/giu, 30, (match) => ({ label: match[0] }));
 
@@ -200,6 +216,7 @@ function collectFalteiroContexts(value) {
     extraRemovals: normalized(match[0]).startsWith('comprar ') ? [match[0].replace(/^comprar\s+/iu, '')] : [],
   }));
   addMatches(/\b(?:qualquer\s+laboratorio|pode\s+ser\s+generico|validade\s+longa|pegar\s+bastante|cliente\s+reclama\s+dessa\s+marca)\b/giu, 70, (match) => ({ label: match[0] }));
+  addMatches(/\bcomprar\s+bastante\b/giu, 70, (match) => ({ label: match[0] }));
   addMatches(/\bse\s+tiver\s+([\p{L}\p{N}-]+)\s+melhor\b/giu, 70, (match) => ({ label: `Preferir ${match[1]}` }));
   addMatches(/\bpreferir\s+([\p{L}\p{N}-]+)\b/giu, 70, (match) => ({ label: match[0] }));
   addMatches(/\bsomente\s+([\p{L}\p{N}-]+)\b/giu, 70, (match) => ({ label: match[0] }));
@@ -469,6 +486,8 @@ function extractIntent(commandText, catalog) {
   const patterns = [
     { trigger: 'falteiro', pattern: /^(?:por\s+favor\s+)?(?:coloca|coloque|adiciona|adicione|joga|jogue)\s+no\s+falteiro\s+(.+)$/iu },
     { trigger: 'falteiro', pattern: /^(?:por\s+favor\s+)?(?:coloca|coloque|adiciona|adicione|joga|jogue)\s+(.+?)\s+no\s+falteiro$/iu },
+    { trigger: 'falta', pattern: /^(?:por\s+favor\s+)?(?:coloca|coloque|adiciona|adicione|joga|jogue)\s+(.+?)\s+na\s+falta$/iu },
+    { trigger: 'falta', pattern: /^(.+?)\s+(?:coloca|coloque|adiciona|adicione|joga|jogue)\s+na\s+falta$/iu, subjectCommand: true },
     { trigger: 'falta', pattern: /^(?:por\s+favor[\s,:;\-]+)?(?:falteiro|falta|faltou|acabou)\b[\s,:;\-]*(.*)$/iu, triggerFromMatch: true },
     { trigger: 'faltando', pattern: /^(?:por\s+favor\s+)?(?:est[aá]|t[aá])\s+faltando\s+(.+)$/iu },
     { trigger: 'sem_estoque', pattern: /^(?:por\s+favor\s+)?(?:ficou|estamos|estou|est[aá]|t[aá])\s+sem\s+(?:estoque\s+(?:de\s+)?)?(.+)$/iu },
@@ -498,6 +517,9 @@ function extractIntent(commandText, catalog) {
     if (item.categoryBeforeProduct) {
       if (!categoryHintOnly(match[1])) continue;
       return { trigger: item.trigger, productText: cleanCommandText(match[2]), categoryHint: cleanCommandText(match[1]) };
+    }
+    if (item.subjectCommand) {
+      return { trigger: item.trigger, productText: cleanCommandText(match[1]), categoryHint: '' };
     }
     if (item.subjectFirst) {
       return {
@@ -538,7 +560,13 @@ function displayProduct(value) {
   clean = tokens.map((token) => token.value).join(' ').trim();
   if (!clean) return '';
   clean = clean
-    .replace(/\bda\s+l['’]?or[eé]al\b/giu, "L'Oreal")
+    .replace(/\b(?:da\s+)?l['’]?or[eé]al\b/giu, "L'Oreal")
+    .replace(/\bda\s+omo\b/giu, 'OMO')
+    .replace(/\bomo\b/giu, 'OMO')
+    .replace(/\bveja\b/giu, 'Veja')
+    .replace(/\belseve\b/giu, 'Elseve')
+    .replace(/\bpantene\b/giu, 'Pantene')
+    .replace(/\bde\s+(\d+(?:[.,]\d+)?\s*(?:mg|mcg|g|ml|ui))\b/giu, '$1')
     .replace(/\beno\b/giu, 'Eno');
   return clean.charAt(0).toLocaleUpperCase('pt-BR') + clean.slice(1);
 }
@@ -605,8 +633,80 @@ function correctProductFromCatalog(value, knownProducts, preparedTokens) {
   return displayProduct(corrected);
 }
 
-function splitFalteiroSegments(value) {
-  const text = String(value || '').replace(/\r\n?/g, '\n');
+function stripBatchSegmentPrefix(value) {
+  return cleanCommandText(String(value || '')
+    .replace(/^\s*(?:[-*•]+|\d+[.)])\s*/u, '')
+    .replace(LIST_CONNECTOR_PATTERN, ''));
+}
+
+function splitConjoinedProducts(value) {
+  const clean = stripBatchSegmentPrefix(value);
+  if (!clean || COMPOUND_PRODUCT_PATTERN.test(clean)) return clean ? [clean] : [];
+
+  const parts = clean.split(/\s+e\s+/iu);
+  if (parts.length <= 1) return [clean];
+  const result = [];
+  let current = parts[0].trim();
+  for (let index = 1; index < parts.length; index += 1) {
+    const next = parts[index].trim();
+    const leftTokens = textTokens(current);
+    const rightTokens = textTokens(next);
+    const leftHasContextClause = /\b(?:para|pra|porque|pois|cliente|dona|que)\b/iu.test(current);
+    const rightStartsStrongProduct = STRONG_PRODUCT_START_PATTERN.test(next);
+    const confidentBoundary = leftTokens.length > 0
+      && leftTokens.length <= 9
+      && rightTokens.length > 0
+      && rightTokens.length <= 14
+      && (!leftHasContextClause || rightStartsStrongProduct)
+      && !NON_PRODUCT_CONJUNCTION_START_PATTERN.test(next)
+      && !categoryHintOnly(next);
+    if (confidentBoundary) {
+      result.push(current);
+      current = next;
+    } else {
+      current = `${current} e ${next}`.trim();
+    }
+  }
+  if (current) result.push(current);
+  return result;
+}
+
+function splitByKnownProductAnchors(value, knownProducts) {
+  const text = stripBatchSegmentPrefix(value);
+  const tokens = textTokens(text);
+  const candidates = [];
+  for (const knownProduct of Array.isArray(knownProducts) ? knownProducts : []) {
+    const knownTokens = textTokens(knownProduct).map((token) => token.key);
+    if (!knownTokens.length) continue;
+    for (let start = 0; start <= tokens.length - knownTokens.length; start += 1) {
+      if (!knownTokens.every((key, offset) => tokens[start + offset]?.key === key)) continue;
+      candidates.push({
+        start: tokens[start].start,
+        end: tokens[start + knownTokens.length - 1].end,
+        tokenCount: knownTokens.length,
+      });
+    }
+  }
+
+  const anchors = candidates
+    .sort((left, right) => left.start - right.start || right.tokenCount - left.tokenCount)
+    .filter((candidate, index, items) => (
+      items.findIndex((item) => item.start === candidate.start) === index
+    ))
+    .filter((candidate, index, items) => index === 0 || candidate.start >= items[index - 1].end);
+  if (anchors.length < 2) return [text];
+
+  return anchors.map((anchor, index) => {
+    const start = index === 0 ? 0 : anchor.start;
+    const end = anchors[index + 1]?.start ?? text.length;
+    return stripBatchSegmentPrefix(text.slice(start, end));
+  }).filter(Boolean);
+}
+
+function splitFalteiroSegments(value, options = {}) {
+  const text = String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/\s+(?:e\s+tamb[eé]m|tamb[eé]m|al[eé]m\s+disso)\s+/giu, '\n');
   const segments = [];
   let current = '';
 
@@ -615,7 +715,7 @@ function splitFalteiroSegments(value) {
     const previous = text[index - 1] || '';
     const next = text[index + 1] || '';
     const decimalComma = character === ',' && /\d/.test(previous) && /\d/.test(next);
-    if (character === '\n' || character === ';' || (character === ',' && !decimalComma)) {
+    if (character === '\n' || character === ';' || character === '•' || (character === ',' && !decimalComma)) {
       if (current.trim()) segments.push(current.trim());
       current = '';
       continue;
@@ -625,12 +725,117 @@ function splitFalteiroSegments(value) {
   if (current.trim()) segments.push(current.trim());
 
   return segments
-    .map((segment) => segment.replace(/^\s*(?:[-*]+|\d+[.)])\s*/u, '').trim())
+    .flatMap((segment) => splitByKnownProductAnchors(segment, options.knownProducts))
+    .flatMap(splitConjoinedProducts)
+    .map(stripBatchSegmentPrefix)
     .filter(Boolean);
 }
 
 function isBatchControlOnly(value) {
-  return BATCH_CONTROL_ONLY_PATTERN.test(cleanCommandText(value));
+  return BATCH_CONTROL_ONLY_PATTERN.test(cleanCommandText(value).replace(/[,:;.!?]+$/u, '').trim());
+}
+
+function contextResidue(value, contexts) {
+  return normalized(removeContextSegments(value, contexts))
+    .replace(/\b(?:porque|pois|e|que|a|o|as|os|um|uma|de|do|da)\b/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function semanticContextLabel(value) {
+  const label = contextLabel(cleanCommandText(value)
+    .replace(/^que\s+(?:a\s+)?/iu, '')
+    .replace(/^que\s+(?:o\s+)?/iu, '')
+    .replace(/^(?:a|o)\s+(?=(?:cliente|dona)\b)/iu, ''));
+  return label.replace(/\b(Cliente|Dona)\s+([\p{L}'’-]+)/iu, (match, prefix, name) => {
+    if (/^(?:pediu|procurou|volta|veio)$/iu.test(name)) return match;
+    return `${prefix} ${name.charAt(0).toLocaleUpperCase('pt-BR')}${name.slice(1)}`;
+  });
+}
+
+function extractLeadingCustomerRequest(value) {
+  const text = cleanCommandText(value);
+  const match = text.match(/^(?:(?:miauby|miauw)\s+)?(?:a|o)\s+([\p{L}'’-]+)\s+(veio\s+atras\s+de|veio\s+procurar|procurou|pediu)\s+(.+?)\s+(?:e|mas)\s+nao\s+tinha\s+(?:coloca|coloque|adiciona|adicione|joga|jogue)\s+na\s+falta$/iu);
+  if (!match) return { text, contexts: [] };
+  const person = contextLabel(match[1]);
+  const action = normalized(match[2]) === 'veio atras de' ? 'veio atras' : cleanCommandText(match[2]);
+  return {
+    text: `falta ${cleanCommandText(match[3])}`,
+    contexts: [{ label: `${person} ${action} e nao tinha` }],
+  };
+}
+
+function extractSemanticFreeContext(value) {
+  const text = cleanCommandText(value);
+  let selected = null;
+  for (const pattern of FREE_CONTEXT_PATTERNS) {
+    const match = pattern.exec(text);
+    if (!match) continue;
+    const clause = cleanCommandText(match[0]);
+    const knownContexts = collectFalteiroContexts(clause);
+    if (normalized(clause).startsWith('porque ') && knownContexts.length && !contextResidue(clause, knownContexts)) {
+      continue;
+    }
+    const candidate = { start: match.index || 0, clause };
+    if (!selected || candidate.start < selected.start) selected = candidate;
+  }
+  if (!selected) return { text, contexts: [] };
+
+  const productText = cleanCommandText(text.slice(0, selected.start));
+  return {
+    text: productText,
+    contexts: [{ label: semanticContextLabel(selected.clause) }],
+  };
+}
+
+function extractGlobalModifier(value, catalog) {
+  const text = String(value || '').trim();
+  const match = text.match(COLLECTIVE_PATTERN);
+  if (!match) return { text, category: '', context: '' };
+
+  const modifier = cleanCommandText(match[2]).replace(/^(?:como|na\s+categoria)\s+/iu, '');
+  const resolved = resolveCategory(modifier, catalog);
+  const knownContexts = collectFalteiroContexts(modifier);
+  const context = resolved ? '' : combineFalteiroCategory('', knownContexts);
+  if (!resolved && !context) return { text, category: '', context: '' };
+  return {
+    text: `${text.slice(0, match.index)}${text.slice((match.index || 0) + match[0].length)}`.trim(),
+    category: resolved,
+    context,
+  };
+}
+
+function withSemanticMetadata(parsed, rawText, segmentationConfidence = 0.96) {
+  return {
+    ...parsed,
+    rawText: cleanCommandText(rawText),
+    intentConfidence: 0.98,
+    segmentationConfidence,
+    productConfidence: parsed?.product ? 0.95 : 0,
+  };
+}
+
+function parseFalteiroItem(segment, parseOptions, globalTrigger, segmentationConfidence) {
+  const cleanSegment = stripBatchSegmentPrefix(segment);
+  const leadingCustomer = extractLeadingCustomerRequest(cleanSegment);
+  const semantic = extractSemanticFreeContext(leadingCustomer.text);
+  const direct = parseFalteiroCommand(semantic.text, parseOptions);
+  const inheritedSegment = semantic.text.replace(ACTIVATION_PATTERN, '').trim();
+  const parsed = direct || parseFalteiroCommand(`falta ${inheritedSegment}`, parseOptions);
+  if (!parsed) {
+    return withSemanticMetadata({
+      matched: true,
+      trigger: globalTrigger,
+      product: '',
+      category: '',
+      error: 'missing_product',
+    }, segment, segmentationConfidence);
+  }
+  return withSemanticMetadata({
+    ...parsed,
+    trigger: parsed.trigger || globalTrigger,
+    category: combineFalteiroCategory(parsed.category, [...leadingCustomer.contexts, ...semantic.contexts]),
+  }, segment, segmentationConfidence);
 }
 
 export function parseFalteiroCommand(message, options = {}) {
@@ -687,17 +892,31 @@ export function parseFalteiroCommands(message, options = {}) {
     ...options,
     knownProductTokens: knownProductTokenCatalog(options.knownProducts),
   };
+  const catalog = categoryCatalog(options.categories);
   const wholeMessage = parseFalteiroCommand(raw, parseOptions);
-  if (!wholeMessage) return null;
+  const explicitBatchIntent = /\b(?:falta|falteiro)\b|\b(?:coloca|coloque|adiciona|adicione|joga|jogue)\b[\s\S]*\b(?:falta|falteiro)\b/iu.test(raw);
+  const fallbackIntent = explicitBatchIntent
+    ? extractIntent(cleanCommandText(raw).replace(ACTIVATION_PATTERN, ''), catalog)
+    : null;
+  const globalTrigger = wholeMessage?.trigger || fallbackIntent?.trigger || '';
+  if (!globalTrigger) return null;
 
-  const segments = splitFalteiroSegments(raw);
+  const globalModifier = extractGlobalModifier(raw, catalog);
+  const messageForItems = globalModifier.text || raw;
+
+  const segments = splitFalteiroSegments(messageForItems, parseOptions);
   if (segments.length <= 1) {
+    const item = parseFalteiroItem(segments[0] || messageForItems, parseOptions, globalTrigger, 1);
+    item.category = combineFalteiroCategory(item.category, [
+      ...(globalModifier.category ? [{ label: globalModifier.category }] : []),
+      ...(globalModifier.context ? [{ label: globalModifier.context }] : []),
+    ]);
     return {
       matched: true,
-      trigger: wholeMessage.trigger,
-      items: [wholeMessage],
+      trigger: globalTrigger,
+      items: [item],
       detectedCount: 1,
-      error: wholeMessage.error,
+      error: item.error,
     };
   }
 
@@ -712,37 +931,29 @@ export function parseFalteiroCommands(message, options = {}) {
     };
   }
 
-  const items = [];
-  for (const segment of itemSegments) {
-    const direct = parseFalteiroCommand(segment, parseOptions);
-    const inheritedSegment = segment.replace(ACTIVATION_PATTERN, '').trim();
-    const parsed = direct || parseFalteiroCommand(`falta ${inheritedSegment}`, parseOptions);
-    if (parsed) {
-      items.push(parsed);
-      continue;
-    }
-    items.push({
-      matched: true,
-      trigger: wholeMessage.trigger,
-      product: '',
-      category: '',
-      error: 'missing_product',
-    });
-  }
+  const items = itemSegments.map((segment) => {
+    const item = parseFalteiroItem(segment, parseOptions, globalTrigger, 0.97);
+    item.category = combineFalteiroCategory(item.category, [
+      ...(globalModifier.category ? [{ label: globalModifier.category }] : []),
+      ...(globalModifier.context ? [{ label: globalModifier.context }] : []),
+    ]);
+    return item;
+  });
 
   if (!items.length) {
+    const item = parseFalteiroItem(messageForItems, parseOptions, globalTrigger, 1);
     return {
       matched: true,
-      trigger: wholeMessage.trigger,
-      items: [wholeMessage],
+      trigger: globalTrigger,
+      items: [item],
       detectedCount: 1,
-      error: wholeMessage.error,
+      error: item.error,
     };
   }
 
   return {
     matched: true,
-    trigger: wholeMessage.trigger,
+    trigger: globalTrigger,
     items,
     detectedCount: items.length,
     error: items.find((item) => item.error)?.error || '',

@@ -483,3 +483,220 @@ test('rejeita lote excessivo inteiro antes de qualquer escrita', () => {
   assert.equal(parsed?.error, 'too_many_items');
   assert.deepEqual(parsed?.items, []);
 });
+
+test('interpreta varios itens longos sem misturar o contexto local', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby falta detergente omo 500ml para limpar o estoque porque acabou, creme de pentear loreal para cabelo cacheado que a maria pediu, losartana 50mg urgente porque so tem uma caixa, eno tradicional comprar umas cinco caixas',
+    { categories: CATEGORIES },
+  );
+
+  assert.deepEqual(
+    parsed?.items.map((item) => [item.product, item.category]),
+    [
+      ['Detergente OMO 500ml', 'Para limpar o estoque porque acabou'],
+      ["Creme de pentear L'Oreal para cabelo cacheado", 'Maria pediu'],
+      ['Losartana 50mg', 'Urgente | So tem uma caixa'],
+      ['Eno tradicional', 'Comprar umas cinco caixas'],
+    ],
+  );
+});
+
+test('segmenta conectores naturais, bullets e numeracao sem quebrar produto composto', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby falta:\n1. losartana 50mg\n- amitriptilina 25mg\n• sal de fruta eno\ne tambem kit shampoo e condicionador elseve',
+    { categories: CATEGORIES },
+  );
+
+  assert.deepEqual(
+    parsed?.items.map((item) => item.product),
+    [
+      'Losartana 50mg',
+      'Amitriptilina 25mg',
+      'Sal de fruta Eno',
+      'Kit shampoo e condicionador Elseve',
+    ],
+  );
+});
+
+test('resolve modificador coletivo somente quando a referencia global e explicita', () => {
+  const collective = parseFalteiroCommands(
+    'Miauby falta losartana, atenolol e amitriptilina, todos urgente',
+    { categories: CATEGORIES },
+  );
+  assert.deepEqual(
+    collective?.items.map((item) => [item.product, item.category]),
+    [
+      ['Losartana', 'Urgente'],
+      ['Atenolol', 'Urgente'],
+      ['Amitriptilina', 'Urgente'],
+    ],
+  );
+
+  const local = parseFalteiroCommands(
+    'Miauby falta losartana urgente, atenolol, amitriptilina',
+    { categories: CATEGORIES },
+  );
+  assert.deepEqual(
+    local?.items.map((item) => [item.product, item.category]),
+    [
+      ['Losartana', 'Urgente'],
+      ['Atenolol', ''],
+      ['Amitriptilina', ''],
+    ],
+  );
+});
+
+test('preserva apresentacao e separa a quantidade operacional de compra', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby falta dipirona 500mg caixa com 20 comprimidos comprar 5 caixas',
+    { categories: CATEGORIES },
+  );
+
+  assert.equal(parsed?.items[0].product, 'Dipirona 500mg caixa com 20 comprimidos');
+  assert.equal(parsed?.items[0].category, 'Comprar 5 caixas');
+});
+
+test('entende finalidade operacional sem retirar caracteristica comercial do produto', () => {
+  const cases = [
+    [
+      'Miauby falta detergente de limpeza da omo para usar na limpeza do banheiro da farmacia',
+      'Detergente de limpeza OMO',
+      'Para usar na limpeza do banheiro da farmacia',
+    ],
+    [
+      'Miauby falta creme de pentear loreal para cabelos cacheados que a cliente maria pediu para amanha',
+      "Creme de pentear L'Oreal para cabelos cacheados",
+      'Cliente Maria pediu para amanha',
+    ],
+    [
+      'Miauby falta bobina de papel para impressora termica porque esta acabando',
+      'Bobina de papel para impressora termica',
+      'Esta acabando',
+    ],
+  ];
+
+  for (const [message, product, category] of cases) {
+    const parsed = parseFalteiroCommands(message, { categories: CATEGORIES });
+    assert.equal(parsed?.items[0].product, product, message);
+    assert.equal(parsed?.items[0].category, category, message);
+  }
+});
+
+test('mantem metadados de auditoria e confianca por item interpretado', () => {
+  const parsed = parseFalteiroCommands('Miauby falta losartana 50mg urgente', { categories: CATEGORIES });
+  const item = parsed?.items[0];
+
+  assert.equal(item?.rawText, 'Miauby falta losartana 50mg urgente');
+  assert.equal(typeof item?.intentConfidence, 'number');
+  assert.equal(typeof item?.segmentationConfidence, 'number');
+  assert.equal(typeof item?.productConfidence, 'number');
+  assert.ok(item.intentConfidence >= 0 && item.intentConfidence <= 1);
+  assert.ok(item.segmentationConfidence >= 0 && item.segmentationConfidence <= 1);
+  assert.ok(item.productConfidence >= 0 && item.productConfidence <= 1);
+});
+
+test('servidor reserva somente linhas sem qualquer item ou dado preenchido', () => {
+  const serverSource = fs.readFileSync(new URL('./server.js', import.meta.url), 'utf8');
+  const availableRowsQuery = serverSource.match(/const available = await client\.query\(\s*`([\s\S]*?)`/u)?.[1] || '';
+
+  assert.match(availableRowsQuery, /jsonb_each_text/u);
+  assert.match(availableRowsQuery, /btrim\(COALESCE\(entry\.value, ''\)\) <> ''/u);
+  assert.match(availableRowsQuery, /NOT EXISTS/u);
+});
+
+test('remove o comando no final sem deixar palavras de controle no produto', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby losartana 50mg, atenolol 25mg coloca na falta',
+    { categories: CATEGORIES },
+  );
+
+  assert.deepEqual(parsed?.items.map((item) => item.product), ['Losartana 50mg', 'Atenolol 25mg']);
+});
+
+test('usa conectores naturais como fronteira quando os dois lados sao produtos', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby acabou losartana 50mg e tambem esta precisando de detergente omo para limpar o chao',
+    { categories: CATEGORIES },
+  );
+
+  assert.deepEqual(
+    parsed?.items.map((item) => [item.product, item.category]),
+    [
+      ['Losartana 50mg', 'Acabou'],
+      ['Detergente OMO', 'Para limpar o chao'],
+    ],
+  );
+});
+
+test('segmenta lista sem pontuacao somente quando encontra produtos conhecidos confiaveis', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby falta losartana 50mg urgente amitriptilina 25mg urgente eno tradicional e detergente omo para limpeza',
+    {
+      categories: CATEGORIES,
+      knownProducts: ['Losartana 50mg', 'Amitriptilina 25mg', 'Eno tradicional', 'Detergente OMO'],
+    },
+  );
+
+  assert.deepEqual(
+    parsed?.items.map((item) => [item.product, item.category]),
+    [
+      ['Losartana 50mg', 'Urgente'],
+      ['Amitriptilina 25mg', 'Urgente'],
+      ['Eno tradicional', ''],
+      ['Detergente OMO para limpeza', ''],
+    ],
+  );
+});
+
+test('entende cliente antes do produto quando a ordem para o Falteiro e explicita', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby a maria veio atras de creme de pentear da loreal para cacheado e nao tinha coloca na falta',
+    { categories: CATEGORIES },
+  );
+
+  assert.equal(parsed?.items[0].product, "Creme de pentear L'Oreal para cacheado");
+  assert.equal(parsed?.items[0].category, 'Maria veio atras e nao tinha');
+});
+
+test('interpreta a lista realista completa em sete registros independentes', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby falta losartana 50mg urgente porque saiu a ultima caixa, atenolol 25mg farmacia popular comprar umas dez caixas, amitriptilina 25mg que a dona maria veio procurar hoje, creme de pentear da loreal para cabelos cacheados que uma cliente pediu, detergente omo de 500ml para usar na limpeza do chao do estoque, limpador de vidro veja porque acabou e shampoo elseve reparacao total 5 de 400ml comprar so se tiver promocao',
+    { categories: CATEGORIES },
+  );
+
+  assert.equal(parsed?.detectedCount, 7);
+  assert.deepEqual(
+    parsed?.items.map((item) => [item.product, item.category]),
+    [
+      ['Losartana 50mg', 'Urgente | Porque saiu a ultima caixa'],
+      ['Atenolol 25mg', 'Popular | Comprar umas dez caixas'],
+      ['Amitriptilina 25mg', 'Dona Maria veio procurar hoje'],
+      ["Creme de pentear L'Oreal para cabelos cacheados", 'Uma cliente pediu'],
+      ['Detergente OMO 500ml', 'Para usar na limpeza do chao do estoque'],
+      ['Limpador de vidro Veja', 'Acabou'],
+      ['Shampoo Elseve reparacao total 5 400ml', 'So se tiver promocao'],
+    ],
+  );
+});
+
+test('nao transforma continuacao do relato de cliente em outro produto', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby falta losartana 50mg a dona joana veio procurar e disse que volta depois das quatro',
+    { categories: CATEGORIES },
+  );
+
+  assert.equal(parsed?.detectedCount, 1);
+  assert.equal(parsed?.items[0].product, 'Losartana 50mg');
+  assert.equal(parsed?.items[0].category, 'Dona Joana veio procurar e disse que volta depois das quatro');
+});
+
+test('nao divide finalidade operacional que usa a conjuncao e', () => {
+  const parsed = parseFalteiroCommands(
+    'Miauby falta detergente omo para limpar o chao e o banheiro da farmacia',
+    { categories: CATEGORIES },
+  );
+
+  assert.equal(parsed?.detectedCount, 1);
+  assert.equal(parsed?.items[0].product, 'Detergente OMO');
+  assert.equal(parsed?.items[0].category, 'Para limpar o chao e o banheiro da farmacia');
+});
