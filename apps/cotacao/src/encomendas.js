@@ -80,7 +80,24 @@ export function extractQuantityFromText(value) {
   return normalizeEncomendaText(`${match[1]}${match[2] ? ` ${match[2]}` : ''}`, 80);
 }
 
-export function buildEncomendaRowValues({ produto, quantidade, responsavel, telefone, categoriaExtra } = {}) {
+function normalizeEncomendaCategory(value) {
+  const parts = String(value || '')
+    .split(/\s*\|\s*/g)
+    .map((part) => normalizeEncomendaText(part, 600))
+    .filter(Boolean)
+    .filter((part) => !/^encomendas?$/i.test(part));
+  const uniqueParts = [];
+  const seen = new Set();
+  for (const part of parts) {
+    const key = part.toLocaleLowerCase('pt-BR');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueParts.push(part);
+  }
+  return normalizeEncomendaText(['Encomenda', ...uniqueParts].join(' | '), 900);
+}
+
+export function buildEncomendaRowValues({ produto, categoria, quantidade, responsavel, telefone, categoriaExtra } = {}) {
   const cleanProduct = normalizeEncomendaText(produto, 220);
   const cleanQuantity = normalizeEncomendaText(quantidade, 80) || '1';
   const cleanResponsible = normalizeEncomendaText(responsavel, 70);
@@ -89,12 +106,11 @@ export function buildEncomendaRowValues({ produto, quantidade, responsavel, tele
   const quantityContext = cleanQuantity !== '1' && !/\bquantidade\b/i.test(cleanExtra)
     ? `Quantidade: ${cleanQuantity}`
     : '';
-  const categoryParts = ['Encomenda', cleanResponsible, cleanPhone, quantityContext, cleanExtra].filter(Boolean);
+  const legacyCategory = [cleanResponsible, cleanPhone, quantityContext, cleanExtra].filter(Boolean).join(' | ');
 
   return {
     produto: cleanProduct,
-    quantidade: cleanQuantity,
-    categoria: normalizeEncomendaText([...new Set(categoryParts)].join(' | '), 900),
+    categoria: normalizeEncomendaCategory(categoria || legacyCategory),
   };
 }
 

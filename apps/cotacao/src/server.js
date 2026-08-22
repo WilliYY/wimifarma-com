@@ -3538,6 +3538,7 @@ app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRout
   const telefone = normalizeInternalText(req.body?.telefone, 32);
   const observacao = normalizeInternalText(req.body?.observacao, 700);
   const categoriaExtra = normalizeInternalText(req.body?.categoria_extra, 600);
+  const categoriaInformada = normalizeInternalText(req.body?.categoria, 900);
   const requestId = normalizeInternalText(req.body?.request_id || req.body?.idempotency_key, 160);
   const requestedSource = normalizeInternalSearch(req.body?.source);
   const source = requestedSource === 'whatsapp' ? 'whatsapp' : 'interno';
@@ -3571,6 +3572,7 @@ app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRout
   const quote = await getOrCreateDefaultQuote();
   const rowValues = buildEncomendaRowValues({
     produto,
+    categoria: categoriaInformada,
     quantidade,
     responsavel,
     telefone,

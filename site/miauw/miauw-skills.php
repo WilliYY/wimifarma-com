@@ -4258,7 +4258,7 @@ function miauw_skill_encomenda_is_dosage_token(string $token): bool
 {
     $normalized = miauw_skill_normalized($token);
 
-    return preg_match('/^\d+(?:[.,]\d+)?(?:mg|mcg|ml|g|kg|ui|cp|cps|caps|comprimidos?|capsulas?|un|und)$/iu', $normalized) === 1
+    return preg_match('/^\d+(?:[.,]\d+)?(?:mg|mcg|ml|g|kg|ui|cp|cps|caps|comprimidos?|capsulas?|un|und|unidades?)$/iu', $normalized) === 1
         || preg_match('/^\d{1,4}(?:[.,]\d+)?$/', $normalized) === 1;
 }
 
@@ -4267,7 +4267,7 @@ function miauw_skill_encomenda_is_presentation_token(string $token): bool
     return in_array(miauw_skill_normalized($token), array(
         'ampola', 'ampolas', 'caps', 'capsula', 'capsulas', 'comprimido', 'comprimidos', 'cp',
         'creme', 'frasco', 'frascos', 'gel', 'gotas', 'pomada', 'sache', 'saches', 'solucao',
-        'spray', 'suspensao', 'xarope',
+        'spray', 'suspensao', 'un', 'und', 'unidade', 'unidades', 'xarope',
     ), true);
 }
 
@@ -4311,10 +4311,19 @@ function miauw_skill_encomenda_extract_context(string &$body): array
     }
 
     $quantityPattern = '/\b(?:quantidade\s+)?(\d{1,2}|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez)\s+(caixas?|unidades?|frascos?|cartelas?|pacotes?)\b/iu';
-    if (preg_match($quantityPattern, $body, $match)) {
-        $number = miauw_skill_encomenda_quantity_number((string) $match[1]);
-        $context['quantidade'] = miauw_skill_clean_encomenda_part($number . ' ' . (string) $match[2], 80);
-        $body = str_replace((string) $match[0], ' ', $body);
+    if (preg_match($quantityPattern, $body, $match, PREG_OFFSET_CAPTURE)) {
+        $matchedQuantity = (string) ($match[0][0] ?? '');
+        $matchedOffset = (int) ($match[0][1] ?? 0);
+        $matchedUnit = (string) ($match[2][0] ?? '');
+        $suffix = trim(substr($body, $matchedOffset + strlen($matchedQuantity)));
+        $isExplicitQuantity = preg_match('/^\s*quantidade\b/iu', $matchedQuantity) === 1;
+        $hasProductAfter = preg_match('/\p{L}/u', $suffix) === 1;
+        $isOrderPackage = preg_match('/^(?:caixas?|frascos?|cartelas?|pacotes?)$/iu', $matchedUnit) === 1;
+        if ($isExplicitQuantity || $hasProductAfter || $isOrderPackage) {
+            $number = miauw_skill_encomenda_quantity_number((string) ($match[1][0] ?? ''));
+            $context['quantidade'] = miauw_skill_clean_encomenda_part($number . ' ' . $matchedUnit, 80);
+            $body = substr_replace($body, ' ', $matchedOffset, strlen($matchedQuantity));
+        }
     }
 
     $addressPattern = '/\b((?:rua|r\.?|avenida|av\.?|travessa|tv\.?|estrada|rodovia)\s+(?:[\p{L}\.\'\-]+\s+){0,5}(?:n(?:umero)?\.?\s*)?(?:[º°]\s*)?\d{1,6}(?:\s+(?:(?:apartamento|ap(?:to)?|casa|bloco)\s*[\p{L}\d\-]+|fundos?)){0,3})\b/iu';
@@ -4349,7 +4358,9 @@ function miauw_skill_encomenda_extract_context(string &$body): array
         '/\b(avisar\s+(?:no|pelo)\s+whatsapp)\b/iu',
         '/\b(n[aã]o\s+substituir)\b/iu',
         '/\b(pode\s+ser\s+gen[eé]rico)\b/iu',
-        '/\b(prefer[eê]ncia\s+(?:por|pela|pelo)\s+[\p{L}\d\'\-]+(?:\s+[\p{L}\d\'\-]+){0,2})\b/iu',
+        '/\b(prefer[eê]ncia\s+(?:por|pela|pelo)\s+[\p{L}\d\'\-]+(?:\s+(?!cliente\b|ligar\b|s[oó]\b|somente\b)[\p{L}\d\'\-]+){0,1})\b/iu',
+        '/\b((?:s[oó]|somente)\s+daquela\s+marca)\b/iu',
+        '/\b(cliente\s+aceita\s+(?:similar|gen[eé]rico))\b/iu',
         '/\b((?:cliente\s+)?tem\s+receita)\b/iu',
         '/\b(deixa(?:r)?\s+separad[oa])\b/iu',
         '/\b(n[aã]o\s+entregar\s+antes\s+(?:das?|de)\s+\d{1,2}(?::\d{2}|h\d{0,2})?)\b/iu',
@@ -4427,6 +4438,59 @@ function miauw_skill_encomenda_strip_product_context_words(array $words): array
     return array_values($words);
 }
 
+function miauw_skill_encomenda_split_person_context(string $value): array
+{
+    $clean = miauw_skill_encomenda_clean_person($value);
+    if ($clean === '') {
+        return array('responsavel' => '', 'restante' => '');
+    }
+
+    $words = preg_split('/\s+/u', $clean) ?: array();
+    $personWords = array();
+    $nameParticles = array('da', 'das', 'de', 'do', 'dos');
+    foreach ($words as $index => $word) {
+        $normalized = miauw_skill_normalized((string) $word);
+        $startsUpper = preg_match('/^\p{Lu}/u', (string) $word) === 1;
+        $isKnownName = miauw_skill_encomenda_likely_person_name((string) $word);
+        $isParticle = $personWords && in_array($normalized, $nameParticles, true);
+        if ($startsUpper || $isKnownName || $isParticle) {
+            $personWords[] = (string) $word;
+            continue;
+        }
+
+        if (!$personWords) {
+            return array('responsavel' => $clean, 'restante' => '');
+        }
+
+        return array(
+            'responsavel' => miauw_skill_encomenda_clean_person(implode(' ', $personWords)),
+            'restante' => miauw_skill_clean_encomenda_part(implode(' ', array_slice($words, $index)), 320),
+        );
+    }
+
+    return array('responsavel' => miauw_skill_encomenda_clean_person(implode(' ', $personWords)), 'restante' => '');
+}
+
+function miauw_skill_encomenda_category_from_parts(array $parts): string
+{
+    $categoryParts = array('Encomenda');
+    $seen = array('encomenda' => true);
+    foreach ($parts as $part) {
+        $clean = miauw_skill_clean_encomenda_part((string) $part, 320);
+        if ($clean === '') {
+            continue;
+        }
+        $key = miauw_skill_normalized($clean);
+        if ($key === '' || isset($seen[$key])) {
+            continue;
+        }
+        $seen[$key] = true;
+        $categoryParts[] = $clean;
+    }
+
+    return miauw_substr(implode(' | ', $categoryParts), 0, 900);
+}
+
 function miauw_skill_encomenda_split_payload(string $payload): array
 {
     $payload = miauw_skill_encomenda_trim_context($payload);
@@ -4481,6 +4545,10 @@ function miauw_skill_encomenda_split_payload(string $payload): array
         }
         if ($namePrefixLength > 0 && $namePrefixLength < count($beforeDosage)) {
             $productStart = $namePrefixLength;
+        } elseif (array_filter($beforeDosage, static function ($word): bool {
+            return miauw_skill_encomenda_is_presentation_token((string) $word);
+        })) {
+            $productStart = 0;
         } elseif (count($beforeDosage) >= 2) {
             for ($index = count($beforeDosage) - 1; $index >= 0; $index--) {
                 $word = (string) $beforeDosage[$index];
@@ -4570,21 +4638,25 @@ function miauw_skill_cotacao_encomenda_command_from_message(string $message): ?a
         return null;
     }
 
-    $intentPattern = '(?:pedido\s+para\s+cliente|pedido\s+cliente|encomenda|encomendar|encomendado|encomendou|pediu|pediram|separa(?:r)?(?:\s+para)?|reserva(?:r)?(?:\s+para)?)';
-    $clientRequestedPattern = '\bcliente\b(?:\s+[\p{L}\'\-]+){1,5}\s+pediu\b';
+    $intentPattern = '(?:pedido\s+(?:do\s+cliente|para(?:\s+cliente)?|cliente)|encomenda|encomendar|encomendado|encomendou|pediu|pediram|quer|separa(?:r)?(?:\s+para)?|deixa(?:r)?\s+separad[oa](?:\s+para)?|guarda(?:r)?(?:\s+para)?|reserva(?:r)?(?:\s+para)?)';
+    $clientRequestedPattern = '\b(?:cliente\s+)?(?:[\p{L}\'\-]+\s+){1,5}(?:pediu|quer)\s+(?!(?:abrir|acessar|consultar|entrar|para|perguntar|saber|ver)\b)[\p{L}\d]';
     if (preg_match('/\b' . $intentPattern . '\b/iu', $body) !== 1
         && preg_match('/' . $clientRequestedPattern . '/iu', $body) !== 1) {
         return null;
     }
-    if (preg_match('/\bpediu\b/iu', $body) === 1
+    if (preg_match('/\b(?:pediu|quer)\b/iu', $body) === 1
         && preg_match('/' . $clientRequestedPattern . '/iu', $body) !== 1
-        && preg_match('/\b(?:abrir|acessar|caixa|calendario|financeiro|gestao|pix|relatorio|sangria|tarefa)\b/iu', $body) === 1) {
+        && preg_match('/\b(?:abrir|acessar|caixa|calendario|consultar|financeiro|gestao|perguntar|pix|pre[cç]o|relatorio|saber|sangria|tarefa|valor)\b/iu', $body) === 1) {
+        return null;
+    }
+    if (preg_match('/\bpedido\s+para\s+(?:abrir|acessar|cancelar|consultar|excluir|mostrar|ver)\b/iu', $body) === 1) {
         return null;
     }
     $hasExplicitOrderCue = preg_match('/\b(?:encomenda|encomendar|encomendado|encomendou|pediram)\b/iu', $body) === 1
-        || preg_match('/\bpedido\s+(?:para\s+)?cliente\b/iu', $body) === 1
+        || preg_match('/\bpedido\s+(?:(?:do|para)\s+)?cliente\b/iu', $body) === 1
+        || preg_match('/\bpedido\s+para\b/iu', $body) === 1
         || preg_match('/' . $clientRequestedPattern . '/iu', $body) === 1;
-    $hasReservationCue = preg_match('/\b(?:separa|separar|reserva|reservar)\b/iu', $body) === 1;
+    $hasReservationCue = preg_match('/\b(?:separa|separar|reserva|reservar|guarda|guardar|deixa(?:r)?\s+separad[oa])\b/iu', $body) === 1;
     if (!$hasExplicitOrderCue && $hasReservationCue) {
         if (preg_match('/\bpara\b/iu', $body) !== 1
             || preg_match('/\b(?:caixa|calendario|dinheiro|financeiro|gestao|pix|relatorio|sangria|tarefa)\b/iu', $body) === 1) {
@@ -4627,7 +4699,7 @@ function miauw_skill_cotacao_encomenda_command_from_message(string $message): ?a
     $beforeCue = miauw_skill_encomenda_trim_context(substr($body, 0, $cueOffset));
     $afterCue = miauw_skill_encomenda_trim_context(substr($body, $cueOffset + strlen($cue)));
 
-    if (preg_match('/^cliente\s+(.+?)\s+(?:pediu|encomendou|quer)\s+(.+)$/iu', $body, $match)) {
+    if (preg_match('/^(?:cliente\s+)?(.+?)\s+(?:pediu|encomendou|quer)\s+(.+)$/iu', $body, $match)) {
         $responsible = miauw_skill_encomenda_clean_person((string) $match[1]);
         $product = miauw_skill_clean_encomenda_part(miauw_skill_encomenda_trim_context((string) $match[2]), 220);
     } elseif (preg_match('/^(.+?)\s+(?:encomendou|pediu)\s+(.+)$/iu', $body, $match)) {
@@ -4668,10 +4740,23 @@ function miauw_skill_cotacao_encomenda_command_from_message(string $message): ?a
         $responsible = miauw_skill_encomenda_clean_person((string) ($parts['responsavel'] ?? ''));
     }
 
+    $product = preg_replace('/\s+(?:de\s+)?(?:encomenda|encomendar|encomendad[oa]|reserva)\s*$/iu', '', $product) ?? $product;
+    $product = miauw_skill_clean_encomenda_part($product, 220);
+
     $bareAddress = miauw_skill_encomenda_split_bare_address($responsible);
     $responsible = (string) ($bareAddress['responsavel'] ?? $responsible);
     if (trim((string) ($context['endereco'] ?? '')) === '' && trim((string) ($bareAddress['endereco'] ?? '')) !== '') {
         $context['endereco'] = (string) $bareAddress['endereco'];
+    }
+
+    $personContext = miauw_skill_encomenda_split_person_context($responsible);
+    $responsible = (string) ($personContext['responsavel'] ?? $responsible);
+    $remainingContext = (string) ($personContext['restante'] ?? '');
+    if ($remainingContext !== '') {
+        $context['observacao_livre'] = miauw_skill_clean_encomenda_part(
+            implode(' - ', array_filter(array((string) ($context['observacao_livre'] ?? ''), $remainingContext))),
+            320
+        );
     }
 
     $categoryParts = array();
@@ -4679,28 +4764,39 @@ function miauw_skill_cotacao_encomenda_command_from_message(string $message): ?a
         $categoryParts[] = (string) $context['prioridade'];
     }
     if ((string) ($context['quantidade'] ?? '') !== '') {
-        $categoryParts[] = 'Quantidade: ' . (string) $context['quantidade'];
+        $categoryParts[] = (string) $context['quantidade'];
+    }
+    if ($responsible !== '') {
+        $categoryParts[] = $responsible;
+    }
+    if ($phone !== '') {
+        $categoryParts[] = $phone;
     }
     if ((string) ($context['endereco'] ?? '') !== '') {
-        $categoryParts[] = 'Endereco: ' . (string) $context['endereco'];
+        $categoryParts[] = (string) $context['endereco'];
     }
+    $scheduleParts = array();
     if ((string) ($context['tipo_entrega'] ?? '') !== '') {
-        $categoryParts[] = 'Tipo: ' . (string) $context['tipo_entrega'];
+        $scheduleParts[] = miauw_skill_normalized((string) $context['tipo_entrega']) === 'entrega' ? 'Entregar' : 'Retirar';
     }
     if ((string) ($context['data_encomenda'] ?? '') !== '') {
-        $categoryParts[] = 'Data: ' . (string) $context['data_encomenda'];
+        $scheduleParts[] = (string) $context['data_encomenda'];
     }
     if ((string) ($context['horario'] ?? '') !== '') {
-        $categoryParts[] = 'Horario: ' . (string) $context['horario'];
+        $scheduleParts[] = (string) $context['horario'];
+    }
+    if ($scheduleParts) {
+        $categoryParts[] = implode(' ', $scheduleParts);
     }
     if ((string) ($context['referencia'] ?? '') !== '') {
-        $categoryParts[] = 'Referencia: ' . (string) $context['referencia'];
+        $categoryParts[] = (string) $context['referencia'];
     }
     if ((string) ($context['observacao_livre'] ?? '') !== '') {
-        $categoryParts[] = 'Obs: ' . (string) $context['observacao_livre'];
+        $categoryParts = array_merge($categoryParts, preg_split('/\s+-\s+/u', (string) $context['observacao_livre']) ?: array());
     }
     $categoryParts = array_merge($categoryParts, $extras);
-    $categoryExtra = miauw_skill_clean_encomenda_part(implode(' - ', array_values(array_unique(array_filter($categoryParts)))), 600);
+    $category = miauw_skill_encomenda_category_from_parts($categoryParts);
+    $categoryExtra = miauw_substr(implode(' | ', array_slice(explode(' | ', $category), 1)), 0, 600);
     $noteParts = array_filter(array($phone !== '' ? 'telefone ' . $phone : '', $categoryExtra));
     $note = miauw_skill_clean_encomenda_part(implode(' - ', $noteParts), 700);
 
@@ -4719,6 +4815,7 @@ function miauw_skill_cotacao_encomenda_command_from_message(string $message): ?a
         'informacoes_extras' => $categoryExtra,
         'observacao_usuario' => $note,
         'categoria_extra' => $categoryExtra,
+        'categoria' => $category,
         'raw_message' => $message,
     );
 }
@@ -4744,6 +4841,10 @@ function miauw_skill_create_cotacao_encomenda_v2(array $command, string $product
         $payload['usuario_id'] = (int) $command['usuario_id'];
     }
 
+    if (trim((string) ($command['categoria'] ?? '')) !== '') {
+        $payload['categoria'] = miauw_skill_encomenda_category_from_parts(explode('|', (string) $command['categoria']));
+    }
+
     if (isset($command['username'])) {
         $payload['username'] = (string) $command['username'];
     }
@@ -4767,7 +4868,7 @@ function miauw_skill_create_cotacao_encomenda_v2(array $command, string $product
         'quantidade' => (string) ($item['quantidade'] ?? $payload['quantidade']),
         'responsavel' => $responsible,
         'telefone' => (string) ($item['telefone'] ?? $payload['telefone']),
-        'categoria' => (string) ($item['categoria'] ?? trim('Encomenda ' . $responsible)),
+        'categoria' => (string) ($item['categoria'] ?? ($payload['categoria'] ?? trim('Encomenda ' . $responsible))),
         'status' => (string) ($item['status'] ?? 'aberta'),
         'registrada_em' => (string) ($item['registrada_em'] ?? ''),
         'observacao' => (string) ($item['observacao'] ?? $note),

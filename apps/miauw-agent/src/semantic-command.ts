@@ -213,8 +213,10 @@ const INTENTS: IntentSpec[] = [
   {
     intent: 'criar_encomenda_cotacao', module: 'cotacao', risk: 'alto', prefix: 'encomenda', priority: 85,
     groups: [[
-      'encomenda', 'encomendar', 'encomendado', 'encomendou', 'pedido cliente', 'pedido para cliente',
-      'cliente pediu', 'pediu', 'pediram', 'separa', 'separar', 'reserva', 'reservar',
+      'encomenda', 'encomendar', 'encomendado', 'encomendou', 'pedido cliente', 'pedido do cliente',
+      'pedido para', 'pedido para cliente', 'cliente pediu', 'cliente quer', 'pediu', 'pediram', 'quer',
+      'separa', 'separar', 'separar para', 'deixar separado', 'deixar separado para',
+      'guarda', 'guardar', 'guardar para', 'reserva', 'reservar',
     ]],
     optional: ['criar', 'registrar', 'adicionar', 'colocar', 'cotacao'],
     blockers: [
@@ -381,16 +383,22 @@ function candidateFor(
     matched.indexes.forEach((index) => consumed.add(index));
   }
 
-  if (spec.intent === 'criar_encomenda_cotacao'
-      && evidence.includes('pediu')
-      && !/\bcliente\b(?:\s+[a-z0-9'\-]+){1,5}\s+pediu\b/.test(normalized)) {
-    return null;
-  }
   if (spec.intent === 'criar_encomenda_cotacao') {
+    const hasNamedCustomerRequest = /\b(?:cliente\s+)?[a-z][a-z'\-]*(?:\s+[a-z][a-z'\-]*){0,4}\s+(?:pediu|quer)\s+(?!(?:abrir|acessar|consultar|entrar|para|perguntar|saber|ver)\b)[a-z0-9]/.test(normalized);
+    const hasWeakCustomerCue = evidence.some((cue) => ['cliente pediu', 'cliente quer', 'pediu', 'quer'].includes(cue));
+    if (hasWeakCustomerCue && (!hasNamedCustomerRequest
+        || /\b(?:abrir|acessar|caixa|calendario|consultar|financeiro|gestao|perguntar|pix|preco|relatorio|saber|sangria|tarefa|valor)\b/.test(normalized))) {
+      return null;
+    }
+    if (evidence.includes('pedido para')
+        && /\bpedido\s+para\s+(?:abrir|acessar|cancelar|consultar|excluir|mostrar|ver)\b/.test(normalized)) {
+      return null;
+    }
     const hasExplicitOrderCue = /\b(?:encomenda|encomendar|encomendado|encomendou|pediram)\b/.test(normalized)
-      || /\bpedido\s+(?:para\s+)?cliente\b/.test(normalized)
-      || /\bcliente\b(?:\s+[a-z0-9'\-]+){1,5}\s+pediu\b/.test(normalized);
-    const hasReservationCue = /\b(?:separa|separar|reserva|reservar)\b/.test(normalized);
+      || /\bpedido\s+(?:(?:do|para)\s+)?cliente\b/.test(normalized)
+      || /\bpedido\s+para\b/.test(normalized)
+      || hasNamedCustomerRequest;
+    const hasReservationCue = /\b(?:separa|separar|reserva|reservar|guarda|guardar|deixar\s+separado)\b/.test(normalized);
     if (!hasExplicitOrderCue && hasReservationCue) {
       if (!/\bpara\b/.test(normalized)) return null;
       if (/\b(?:caixa|calendario|dinheiro|financeiro|gestao|pix|relatorio|sangria|tarefa)\b/.test(normalized)) return null;

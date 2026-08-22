@@ -89,23 +89,30 @@ assert.match(contextual.obs, /ligar antes/);
 
 const rowValues = buildEncomendaRowValues({
   produto: 'losartana 50mg 30cp EMS',
-  quantidade: '2 caixas',
-  responsavel: 'Maria',
-  telefone: '44998489494',
-  categoriaExtra: 'Urgente - Endereco: Rua Curitiba 2222 - Tipo: Entrega'
+  categoria: 'Encomenda | Urgente | 2 caixas | Maria | 44 99848-9494 | Rua Curitiba 2222 | Entregar amanha depois das 18 | Perto da igreja | Ligar antes'
 });
 assert.deepEqual(rowValues, {
   produto: 'losartana 50mg 30cp EMS',
-  quantidade: '2 caixas',
-  categoria: 'Encomenda | Maria | 44998489494 | Quantidade: 2 caixas | Urgente - Endereco: Rua Curitiba 2222 - Tipo: Entrega'
+  categoria: 'Encomenda | Urgente | 2 caixas | Maria | 44 99848-9494 | Rua Curitiba 2222 | Entregar amanha depois das 18 | Perto da igreja | Ligar antes'
 });
+assert.equal(Object.hasOwn(rowValues, 'quantidade'), false);
 
-const quantityAlreadyDescribed = buildEncomendaRowValues({
+const legacyPayload = buildEncomendaRowValues({
   produto: 'dipirona 500mg',
   quantidade: '3 unidades',
+  responsavel: 'Maria',
+  telefone: '44998489494',
   categoriaExtra: 'Quantidade: 3 unidades - Data: amanha'
 });
-assert.equal(quantityAlreadyDescribed.categoria, 'Encomenda | Quantidade: 3 unidades - Data: amanha');
+assert.equal(legacyPayload.produto, 'dipirona 500mg');
+assert.equal(Object.hasOwn(legacyPayload, 'quantidade'), false);
+assert.equal(legacyPayload.categoria, 'Encomenda | Maria | 44998489494 | Quantidade: 3 unidades - Data: amanha');
+
+const categoryWithoutPrefix = buildEncomendaRowValues({
+  produto: 'Nebulizador G-Tech',
+  categoria: 'Retirar amanha'
+});
+assert.equal(categoryWithoutPrefix.categoria, 'Encomenda | Retirar amanha');
 
 assert.match(productQuantityAndNote.original, /Produto: dipirona/);
 assert.match(productQuantityAndNote.original, /Categoria: encomenda João 10/);

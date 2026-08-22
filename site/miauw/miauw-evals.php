@@ -952,6 +952,8 @@ miauw_eval_add('intent_cotacao_encomenda', static function (): void {
     miauw_eval_assert(miauw_skill_cotacao_encomenda_command_from_message('Miauby ver encomenda recente') === null, 'Consulta de encomenda nao pode virar escrita no fallback PHP.');
     miauw_eval_assert(miauw_skill_cotacao_encomenda_command_from_message('Miauby Joao pediu para abrir o financeiro') === null, 'Pedido generico nao pode virar encomenda.');
     miauw_eval_assert(miauw_skill_cotacao_encomenda_command_from_message('Miauby separar dinheiro para o caixa') === null, 'Separacao financeira nao pode virar encomenda.');
+    miauw_eval_assert(miauw_skill_cotacao_encomenda_command_from_message('Miauby Maria quer saber o preco da losartana') === null, 'Pergunta de preco nao pode virar encomenda.');
+    miauw_eval_assert(miauw_skill_cotacao_encomenda_command_from_message('Miauby pedido para cancelar 123') === null, 'Acao sobre pedido nao pode virar encomenda.');
 });
 
 miauw_eval_add('intent_cotacao_encomenda_contexto_completo', static function (): void {
@@ -1054,6 +1056,70 @@ miauw_eval_add('intent_cotacao_encomenda_contexto_completo', static function ():
     $deliveryNote = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda amoxicilina 500mg Maria nao entregar antes das 18h falar com a filha');
     miauw_eval_assert_contains('nao entregar antes das 18h', miauw_skill_normalized((string) ($deliveryNote['observacao_livre'] ?? '')), 'Restricao de horario foi descartada.');
     miauw_eval_assert_contains('falar com a filha', miauw_skill_normalized((string) ($deliveryNote['observacao_livre'] ?? '')), 'Pessoa de contato foi descartada.');
+
+    $freeOrderCases = array(
+        'Miauby encomenda losartana 50 Maria 44 99848-9494',
+        'Miauby losartana 50 encomenda Maria 44 99848-9494',
+        'Miauby Maria encomenda losartana 50 44 99848-9494',
+        'Miauby Maria 44 99848-9494 losartana 50 encomenda',
+        'Miauby 44 99848-9494 Maria losartana 50 encomenda',
+    );
+    foreach ($freeOrderCases as $message) {
+        $command = miauw_skill_cotacao_encomenda_command_from_message($message);
+        miauw_eval_assert_same('losartana 50', miauw_skill_normalized((string) ($command['produto'] ?? '')), 'Ordem livre contaminou o produto: ' . $message);
+        miauw_eval_assert_same('maria', miauw_skill_normalized((string) ($command['responsavel'] ?? '')), 'Ordem livre perdeu o cliente: ' . $message);
+        miauw_eval_assert_same('44998489494', preg_replace('/\D+/', '', (string) ($command['telefone'] ?? '')), 'Ordem livre perdeu o telefone: ' . $message);
+    }
+
+    $productCases = array(
+        array('Miauby encomenda Losartana 50', 'losartana 50'),
+        array('Miauby encomenda Losartana 50mg', 'losartana 50mg'),
+        array('Miauby encomenda Metformina 850', 'metformina 850'),
+        array('Miauby encomenda Amoxicilina 500mg', 'amoxicilina 500mg'),
+        array('Miauby encomenda Dipirona gotas 20ml', 'dipirona gotas 20ml'),
+        array('Miauby encomenda Nimesulida 100mg 12cp', 'nimesulida 100mg 12cp'),
+        array('Miauby encomenda Bepantol Derma 30g', 'bepantol derma 30g'),
+        array('Miauby encomenda Fralda Pampers G 36 unidades', 'fralda pampers g 36 unidades'),
+        array('Miauby encomenda Nebulizador G-Tech', 'nebulizador g-tech'),
+        array('Miauby encomenda Losartana 50 EMS', 'losartana 50 ems'),
+    );
+    foreach ($productCases as $case) {
+        $command = miauw_skill_cotacao_encomenda_command_from_message((string) $case[0]);
+        miauw_eval_assert_same((string) $case[1], miauw_skill_normalized((string) ($command['produto'] ?? '')), 'Identidade do item incorreta: ' . (string) $case[0]);
+    }
+
+    $synonymCases = array(
+        'Miauby Maria pediu losartana 50 e vai buscar amanha',
+        'Miauby pedido do cliente Maria losartana 50',
+        'Miauby pedido para Maria losartana 50',
+        'Miauby guardar losartana 50 para Maria',
+        'Miauby deixar separado losartana 50 para Maria',
+        'Miauby cliente Maria quer losartana 50',
+    );
+    foreach ($synonymCases as $message) {
+        $command = miauw_skill_cotacao_encomenda_command_from_message($message);
+        miauw_eval_assert(is_array($command), 'Sinonimo de encomenda nao reconhecido: ' . $message);
+        miauw_eval_assert_same('losartana 50', miauw_skill_normalized((string) ($command['produto'] ?? '')), 'Sinonimo perdeu o produto: ' . $message);
+    }
+
+    $brandPreference = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda losartana 50 para Maria preferencia por EMS cliente aceita similar');
+    miauw_eval_assert_same('losartana 50', miauw_skill_normalized((string) ($brandPreference['produto'] ?? '')), 'Preferencia de marca contaminou o produto.');
+    miauw_eval_assert_contains('preferencia por ems', miauw_skill_normalized((string) ($brandPreference['categoria'] ?? '')), 'Preferencia de marca nao foi preservada na categoria.');
+    miauw_eval_assert_contains('cliente aceita similar', miauw_skill_normalized((string) ($brandPreference['categoria'] ?? '')), 'Aceite de similar nao foi preservado na categoria.');
+
+    $freeRemainder = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda losartana 50 para Maria receita controlada sem generico');
+    miauw_eval_assert_same('maria', miauw_skill_normalized((string) ($freeRemainder['responsavel'] ?? '')), 'Observacao livre contaminou o nome do cliente.');
+    miauw_eval_assert_contains('receita controlada sem generico', miauw_skill_normalized((string) ($freeRemainder['categoria'] ?? '')), 'Observacao livre restante nao foi preservada na categoria.');
+
+    $structured = miauw_skill_cotacao_encomenda_command_from_message(
+        'Miauby encomenda urgente 2 caixas losartana 50 EMS para Maria 44 99848-9494 Rua Curitiba 2222 entregar amanha depois das 18 perto da igreja ligar antes'
+    );
+    miauw_eval_assert_same('losartana 50 ems', miauw_skill_normalized((string) ($structured['produto'] ?? '')), 'Produto final estruturado incorreto.');
+    miauw_eval_assert_same(
+        'encomenda | urgente | 2 caixas | maria | 44 99848-9494 | rua curitiba 2222 | entregar amanha depois das 18 | perto da igreja | ligar antes',
+        miauw_skill_normalized((string) ($structured['categoria'] ?? '')),
+        'Categoria final nao preservou todos os dados na ordem operacional.'
+    );
 });
 
 miauw_eval_add('intent_cotacao_urgente', static function (): void {

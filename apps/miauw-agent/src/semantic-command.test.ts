@@ -202,6 +202,14 @@ test('reconhece Encomenda em ordem livre e em frases naturais', () => {
     'Miauby separar losartana 50 para Maria',
     'Miauby encomenda Maria Losartana 50mg',
     'Miauby Maria Rua Curitiba 2222 encomenda losartana 50 44 2343432',
+    'Miauby Maria pediu losartana 50 e vai buscar amanha',
+    'Miauby pedido do cliente Maria losartana 50mg',
+    'Miauby pedido para Maria losartana 50mg',
+    'Miauby guardar losartana 50mg para Maria',
+    'Miauby deixar separado losartana 50mg para Maria',
+    'Miauby cliente Maria quer losartana 50mg',
+    'Miauby Maria 44 99848-9494 losartana 50 encomenda',
+    'Miauby 44 99848-9494 Maria losartana 50 encomenda',
     'Miauby encomenda urgente 2 caixas losartana 50mg 30cp EMS para Maria 44 99848-9494 Rua Curitiba 2222 entregar amanha depois das 18 perto da igreja ligar antes',
   ];
 
@@ -235,6 +243,8 @@ test('preserva consultas de Encomenda sem transforma-las em escrita', () => {
   assert.notEqual(unrelatedRequest.intent, 'criar_encomenda_cotacao');
   const unrelatedSeparation = interpretSemanticCommand('Miauby separar dinheiro para o caixa');
   assert.notEqual(unrelatedSeparation.intent, 'criar_encomenda_cotacao');
+  assert.notEqual(resolved('Miauby Maria quer saber o preco da losartana').intent, 'criar_encomenda_cotacao');
+  assert.notEqual(resolved('Miauby pedido para cancelar 123').intent, 'criar_encomenda_cotacao');
 });
 
 test('extrai entidades gerais sem executar nada', () => {
