@@ -614,6 +614,10 @@ Quando o login do painel estiver ativo, `/miauw/whatsapp/` deve retornar a tela 
 - O `.env` do VPS foi ajustado em 2026-06-26 para reduzir latencia sem abrir mao do anti-flood: `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_MINUTE=5`, `MIAUW_WHATSAPP_USER_RATE_LIMIT_PER_DAY=60`, `MIAUW_WHATSAPP_USER_RATE_LIMIT_DEFER_SECONDS=25`, `MIAUW_WHATSAPP_GLOBAL_RATE_LIMIT_PER_MINUTE=8`, `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS=3000`, `MIAUW_WHATSAPP_MIN_REPLY_DELAY_MS=700` e `MIAUW_WHATSAPP_MAX_REPLY_DELAY_MS=2200`.
 - Nao enviar teste real de WhatsApp sem controle; use dry-run dos endpoints internos para validar automacoes.
 
+## Memoria conversacional estruturada
+
+Desde 2026-08-22, continuacoes curtas usam o contrato compartilhado de `apps/miauw-agent/src/conversation-memory.ts` e o estado existente `miauw_whatsapp_conversation_states`, sem tabela paralela. O contato precisa continuar na allowlist e vinculado; somente um contexto ativo e nao vencido pode dispensar o prefixo, quando `MIAUBY_WHATSAPP_CONTINUATION_WITHOUT_PREFIX=true`. Cada transicao usa lock transacional, lista recente guarda IDs reais e confirmacao concorrente e consumida uma unica vez. O contrato completo, TTLs, resets, prioridades e limites estao em `docs/36-miauby-memoria-conversacional.md`.
+
 ## Proximas etapas
 
 1. Conectar o numero por QR/codigo de pareamento.

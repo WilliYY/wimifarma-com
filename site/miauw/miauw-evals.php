@@ -1333,6 +1333,30 @@ miauw_eval_add('fase22_negacao_bloqueia_acao_legada', static function (): void {
     miauw_eval_assert(!isset($reply['confirmation']), 'Negacao nao pode criar confirmacao.');
 });
 
+miauw_eval_add('fase23_memoria_conversacional_contrato_seguro', static function (): void {
+    $sessionKey = miauw_structured_conversation_session_id();
+    miauw_eval_assert(preg_match('/^[a-f0-9]{64}$/', $sessionKey) === 1, 'Identidade da sessao deve ser hash opaco de 64 caracteres.');
+    miauw_eval_assert(miauw_pending_action_ttl_seconds() < 1800, 'Pendencia forte precisa expirar antes da conversa padrao.');
+
+    miauw_eval_reset_action_state();
+    miauw_eval_assert(!miauw_structured_has_legacy_pending_interaction(), 'Sessao limpa nao pode aparentar pendencia.');
+    $_SESSION['miauw_pending_cotacao_encomenda'] = array('produto' => 'Losartana');
+    miauw_eval_assert(miauw_structured_has_legacy_pending_interaction(), 'Pendencia legada deve ter prioridade sobre memoria estruturada.');
+    unset($_SESSION['miauw_pending_cotacao_encomenda']);
+
+    $reset = miauw_structured_conversation_direct_reply(array(
+        'status' => 'reset',
+        'reply' => 'Conversa encerrada. Contexto limpo.',
+    ));
+    miauw_eval_assert_contains('Contexto limpo', (string) ($reset['text'] ?? ''), 'Reset estruturado perdeu resposta direta.');
+
+    $confirm = miauw_structured_conversation_direct_reply(array(
+        'status' => 'confirm',
+        'reply' => '',
+    ));
+    miauw_eval_assert_contains('Nada foi alterado', (string) ($confirm['text'] ?? ''), 'Confirmacao sem executor precisa falhar fechada.');
+});
+
 $passed = 0;
 $failed = 0;
 

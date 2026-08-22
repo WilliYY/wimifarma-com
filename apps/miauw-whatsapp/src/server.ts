@@ -42,6 +42,11 @@ import {
   requiredModuleKeysForReport,
   type ReportDialogState,
 } from './report-dialog.js';
+import {
+  applyStoredConversationEffect,
+  hasActiveConversationState,
+  transitionConversationState,
+} from './conversation-state-store.js';
 import { resolveSemanticMessage } from './semantic-interpreter-client.js';
 
 const { Pool } = pg;
@@ -681,7 +686,7 @@ type DashboardSummary = {
 
 const env = process.env;
 const SERVICE_NAME = 'miauw-whatsapp';
-const SERVICE_VERSION = '0.5.42';
+const SERVICE_VERSION = '0.6.0';
 const MODULE_KEY = 'miauw_whatsapp';
 const BASE_PATH = normalizeBasePath(env.BASE_PATH || env.MIAUW_WHATSAPP_BASE_PATH || '/miauw/whatsapp');
 const PORT = numberEnv('PORT', 3400, 1, 65535);
@@ -705,6 +710,12 @@ const AGENT_RUN_URL = textEnv('MIAUW_WHATSAPP_AGENT_RUN_URL')
 const AGENT_INTERPRET_URL = textEnv('MIAUW_WHATSAPP_AGENT_INTERPRET_URL')
   || AGENT_RUN_URL.replace(/\/run\/?$/i, '/interpret');
 const AGENT_INTERPRET_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_AGENT_INTERPRET_TIMEOUT_MS', 1200, 300, 5000);
+const AGENT_CONVERSATION_RESOLVE_URL = textEnv('MIAUW_WHATSAPP_AGENT_CONVERSATION_URL')
+  || AGENT_RUN_URL.replace(/\/run\/?$/i, '/conversation/resolve');
+const AGENT_CONVERSATION_EFFECT_URL = textEnv('MIAUW_WHATSAPP_AGENT_CONVERSATION_EFFECT_URL')
+  || AGENT_RUN_URL.replace(/\/run\/?$/i, '/conversation/effect');
+const AGENT_CONVERSATION_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_AGENT_CONVERSATION_TIMEOUT_MS', 1200, 300, 5000);
+const CONVERSATION_CONTINUATION_WITHOUT_PREFIX = boolEnv('MIAUBY_WHATSAPP_CONTINUATION_WITHOUT_PREFIX', true);
 const AGENT_CONTEXT_URL = textEnv('MIAUW_WHATSAPP_CONTEXT_URL')
   || textEnv('MIAUW_AGENT_CONTEXT_URL')
   || 'http://wimifarma-com-web/miauw/agent-context.php';
@@ -3324,13 +3335,16 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
       && !message.fromMe
       && (!message.isGroup || GROUPS_ENABLED),
   );
-  const [hasPendingSelectionContext, hasPendingReportContext] = canUsePendingContext && message.senderPhone
+  const [hasPendingSelectionContext, hasPendingReportContext, hasStructuredConversationContext] = canUsePendingContext && message.senderPhone
     ? await Promise.all([
       hasPendingSelectionReplyContext(message.senderPhone),
       hasPendingReportDialogReplyContext(message.senderPhone),
+      CONVERSATION_CONTINUATION_WITHOUT_PREFIX
+        ? hasActiveStructuredConversationReplyContext(message.senderPhone)
+        : Promise.resolve(false),
     ])
-    : [false, false];
-  const hasPendingReplyContext = hasPendingSelectionContext || hasPendingReportContext;
+    : [false, false, false];
+  const hasPendingReplyContext = hasPendingSelectionContext || hasPendingReportContext || hasStructuredConversationContext;
   if (hasPendingSelectionContext) {
     message.payloadSummary = {
       ...message.payloadSummary,
@@ -3343,6 +3357,13 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
       ...message.payloadSummary,
       pending_report_reply_context: true,
       activation_prefix_bypassed_for_pending_report: true,
+    };
+  }
+  if (hasStructuredConversationContext) {
+    message.payloadSummary = {
+      ...message.payloadSummary,
+      structured_conversation_reply_context: true,
+      activation_prefix_bypassed_for_structured_conversation: true,
     };
   }
 
@@ -3376,6 +3397,10 @@ async function acceptWebhook(payload: unknown): Promise<JsonRecord> {
     } else {
       acceptedActivationPrefix = true;
       bodyText = prefix.text;
+      message.payloadSummary = {
+        ...message.payloadSummary,
+        activation_prefix_accepted: true,
+      };
     }
   }
 
@@ -4340,7 +4365,14 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     const taskTargetSelectionReply = reportDialogReply || encomendaProductReply || taskSelectionReply || pedidoSelectionReply ? null : await maybeHandleTaskTargetSelectionReply(row, whatsappUserContext);
     const responsibleSelectionReply = reportDialogReply || encomendaProductReply || taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply ? null : await maybeHandleResponsibleSelectionReply(row, whatsappUserContext);
     const confirmationReply = reportDialogReply || encomendaProductReply || taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply || responsibleSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
-    const reply = confirmationReply || audioFailureReply || mediaFailureReply || await requestWhatsappReply(effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes, whatsappUserContext, row);
+    const structuredConversation = confirmationReply || audioFailureReply || mediaFailureReply
+      ? null
+      : await maybeHandleStructuredConversation(row, effectiveBodyText, whatsappUserContext, senderModuleHashes);
+    const reply = confirmationReply
+      || audioFailureReply
+      || mediaFailureReply
+      || structuredConversation?.reply
+      || await requestWhatsappReply(structuredConversation?.message || effectiveBodyText, row.trace_id, row.sender_phone_mask, senderModuleHashes, whatsappUserContext, row);
     const replyLatencyMs = Date.now() - replyStartedAt;
     const confirmation = reply.confirmation
       ? await createPendingConfirmation(row, reply.confirmation)
@@ -4635,6 +4667,157 @@ function reportDialogStateFromPayload(payload: unknown): ReportDialogState | nul
   const validModules = new Set(['financeiro', 'cashback', 'tarefas', 'cotacao', 'codigos', 'calendario', 'geral', '']);
   if (!validModules.has(module) || (date && !/^\d{4}-\d{2}-\d{2}$/.test(date))) return null;
   return { module: module as ReportDialogState['module'], date };
+}
+
+type StructuredConversationOutcome = {
+  message: string;
+  reply: ReplyResult | null;
+};
+
+function structuredConversationIdentity(row: QueueRow, userContext: WhatsappUserContext) {
+  return {
+    storageHash: row.sender_phone_hash,
+    storageMask: row.sender_phone_mask,
+    sourceEventId: row.id,
+    traceId: row.trace_id,
+    channel: 'whatsapp' as const,
+    userId: userContext.id ? `core:${userContext.id}` : `contact:${row.sender_phone_hash}`,
+    conversationId: row.sender_phone_hash,
+    sessionId: 'whatsapp',
+  };
+}
+
+function structuredConversationStoreOptions() {
+  return {
+    resolverUrl: AGENT_CONVERSATION_RESOLVE_URL,
+    effectUrl: AGENT_CONVERSATION_EFFECT_URL,
+    resolverToken: INTERNAL_TOKEN,
+    resolverTimeoutMs: AGENT_CONVERSATION_TIMEOUT_MS,
+  };
+}
+
+async function hasActiveStructuredConversationReplyContext(phone: string): Promise<boolean> {
+  const hashes = phoneHashCandidates(sha256(phone), phone).map((hash) => safeText(hash, 64)).filter(Boolean);
+  if (!hashes.length) return false;
+  try {
+    return await hasActiveConversationState(pgPool, hashes);
+  } catch (error) {
+    await recordErrorLog('structured_conversation_context_lookup', 'warn', error, {
+      phoneMask: maskPhone(phone),
+      details: { hashes: hashes.length },
+    });
+    return false;
+  }
+}
+
+async function maybeHandleStructuredConversation(
+  row: QueueRow,
+  message: string,
+  userContext: WhatsappUserContext,
+  senderHashes: string[],
+): Promise<StructuredConversationOutcome | null> {
+  const cleanMessage = safeText(message, 4000);
+  if (!cleanMessage) return null;
+  const identity = structuredConversationIdentity(row, userContext);
+  const wasExplicitlyActivated = row.payload_summary?.activation_prefix_accepted === true;
+  const bypassedPrefixForContext = row.payload_summary?.activation_prefix_bypassed_for_structured_conversation === true;
+  const resolverMessage = wasExplicitlyActivated && !/^\s*(?:miauby|miauw)\b/i.test(cleanMessage)
+    ? `Miauby ${cleanMessage}`
+    : cleanMessage;
+  try {
+    const resolved = await transitionConversationState(pgPool, {
+      ...identity,
+      message: resolverMessage,
+    }, structuredConversationStoreOptions());
+    if (!resolved.ok || !resolved.result || resolved.result.status === 'inactive') {
+      return bypassedPrefixForContext ? structuredConversationValidationFailure(cleanMessage) : null;
+    }
+
+    const decision = resolved.result;
+    await mergeWhatsappEventSummaryByTrace(row.trace_id, {
+      structured_conversation_status: decision.status,
+      structured_conversation_reason: decision.reason,
+      structured_conversation_revision: Number(decision.state.revision || 0),
+      structured_conversation_topic: safeText(decision.state.currentTopic, 80),
+    });
+
+    if (decision.status === 'route') {
+      return { message: decision.message || cleanMessage, reply: null };
+    }
+
+    if (decision.status === 'selected' && decision.selectedEntity?.type === 'encomenda') {
+      const allowedCards = await allowedModuleCardsForHashes(senderHashes);
+      if (!moduleAllowed(allowedCards, 'cotacao')) {
+        return {
+          message: cleanMessage,
+          reply: {
+            text: forbiddenModuleReply('cotacao', allowedCards),
+            engine: 'blocked',
+            reason: 'blocked_module:structured_encomenda_reference',
+          },
+        };
+      }
+      const summary = await fetchCotacaoEncomendasSummary({ action: 'list', order: 'oldest', raw: 'structured-reference' }, 100);
+      const item = summary.items.find((candidate) => candidate.rowId === decision.selectedEntity?.id);
+      return item
+        ? {
+            message: cleanMessage,
+            reply: {
+              text: formatCotacaoEncomendasMessage({ items: [item], total: 1, returned: 1, order: summary.order }),
+              engine: 'local',
+              reason: 'structured_conversation_encomenda_selected',
+            },
+          }
+        : {
+            message: cleanMessage,
+            reply: {
+              text: 'Essa encomenda mudou ou nao esta mais ativa. Consulte a lista novamente.',
+              engine: 'local',
+              reason: 'structured_conversation_entity_stale',
+            },
+          };
+    }
+
+    if (decision.status === 'confirm') {
+      return {
+        message: cleanMessage,
+        reply: {
+          text: 'A confirmacao foi entendida, mas essa acao contextual ainda nao possui um executor seguro no modulo de origem. Nada foi alterado.',
+          engine: 'blocked',
+          reason: 'structured_conversation_action_without_executor',
+        },
+      };
+    }
+
+    const directReply = safeText(decision.reply, 1000)
+      || (decision.status === 'selected' ? safeText(decision.selectedEntity?.label, 500) : 'Nao consegui concluir essa referencia com seguranca.');
+    return {
+      message: cleanMessage,
+      reply: {
+        text: directReply,
+        engine: decision.status === 'pending_action' ? 'blocked' : 'local',
+        reason: `structured_conversation_${decision.status}`,
+      },
+    };
+  } catch (error) {
+    await recordErrorLog('structured_conversation', 'warn', error, {
+      eventId: row.id,
+      traceId: row.trace_id,
+      phoneMask: row.sender_phone_mask,
+    });
+    return bypassedPrefixForContext ? structuredConversationValidationFailure(cleanMessage) : null;
+  }
+}
+
+function structuredConversationValidationFailure(message: string): StructuredConversationOutcome {
+  return {
+    message,
+    reply: {
+      text: 'O contexto anterior nao pode ser validado agora. Envie novamente com Miauby no inicio.',
+      engine: 'blocked',
+      reason: 'structured_conversation_context_not_validated',
+    },
+  };
 }
 
 async function hasPendingReportDialogReplyContext(phone: string): Promise<boolean> {
@@ -8136,6 +8319,9 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
     }
     try {
       const summary = await fetchCotacaoEncomendasSummary(cotacaoEncomendasCommand);
+      if (row) {
+        await rememberCotacaoEncomendasForConversation(row, userContext, summary);
+      }
       return {
         text: formatCotacaoEncomendasMessage(summary),
         engine: 'local',
@@ -14366,6 +14552,46 @@ async function fetchCotacaoEncomendasSummary(command: CotacaoEncomendasCommand, 
   };
 }
 
+async function rememberCotacaoEncomendasForConversation(
+  row: QueueRow,
+  userContext: WhatsappUserContext,
+  summary: CotacaoEncomendasSummary,
+): Promise<void> {
+  const identity = structuredConversationIdentity(row, userContext);
+  try {
+    await applyStoredConversationEffect(pgPool, {
+      ...identity,
+      effect: {
+        topic: 'encomendas',
+        intent: 'consultar_encomendas',
+        recentEntities: summary.items.slice(0, 20).map((item, offset) => ({
+          index: offset + 1,
+          type: 'encomenda',
+          id: safeText(item.rowId, 160),
+          label: [item.produto, item.observacaoEncomenda || item.depoisEncomenda || item.textoCompleto]
+            .map((value) => safeText(value, 180))
+            .filter(Boolean)
+            .join(' - '),
+          metadata: {
+            line: Number(item.line || 0),
+            ean: safeText(item.ean, 80),
+            produto: safeText(item.produto, 160),
+            quantidade: safeText(item.quantidade, 80),
+            observacao: safeText(item.observacaoEncomenda || item.depoisEncomenda, 260),
+          },
+        })).filter((entity) => entity.id !== ''),
+      },
+    }, structuredConversationStoreOptions());
+  } catch (error) {
+    await recordErrorLog('structured_conversation_effect', 'warn', error, {
+      eventId: row.id,
+      traceId: row.trace_id,
+      phoneMask: row.sender_phone_mask,
+      details: { effect: 'cotacao_encomendas' },
+    });
+  }
+}
+
 function cotacaoEncomendaFromRecord(item: JsonRecord): CotacaoEncomendaItem {
   return {
     rowId: safeText(item.rowId, 80),
@@ -18350,6 +18576,54 @@ app.post(`${BASE_PATH}/internal/evolution-status`, requireInternalToken, async (
 
 app.post(`${BASE_PATH}/internal/memory`, requireInternalToken, async (req, res) => {
   const mode = safeText(req.body?.mode || 'record', 40).toLowerCase();
+  if (mode === 'conversation_resolve' || mode === 'conversation_effect') {
+    const userId = Number(req.body?.user_id || 0);
+    const conversationId = safeText(req.body?.conversation_id, 80);
+    const sessionId = safeText(req.body?.session_id, 160);
+    if (!Number.isInteger(userId) || userId <= 0 || !/^\d+$/.test(conversationId) || !/^[a-zA-Z0-9:_-]{8,160}$/.test(sessionId)) {
+      return res.status(422).json({ ok: false, error: 'invalid_internal_conversation_identity' });
+    }
+    const storageHash = sha256(`internal:${userId}:${conversationId}:${sessionId}`);
+    const identity = {
+      storageHash,
+      storageMask: `internal:user:${userId}`,
+      sourceEventId: null,
+      traceId: safeText(req.body?.trace_id, 32),
+      channel: 'internal' as const,
+      userId: `core:${userId}`,
+      conversationId,
+      sessionId,
+    };
+    try {
+      if (mode === 'conversation_effect') {
+        const effect = isRecord(req.body?.effect) ? req.body.effect : null;
+        if (!effect) return res.status(422).json({ ok: false, error: 'invalid_conversation_effect' });
+        const applied = await applyStoredConversationEffect(pgPool, {
+          ...identity,
+          effect,
+        }, structuredConversationStoreOptions());
+        return res.json({ ok: true, source: 'postgres', mode, applied });
+      }
+
+      const message = safeText(req.body?.message, 4000);
+      if (!message) return res.status(422).json({ ok: false, error: 'missing_conversation_message' });
+      const resolved = await transitionConversationState(pgPool, {
+        ...identity,
+        message,
+      }, structuredConversationStoreOptions());
+      if (!resolved.ok || !resolved.result) {
+        return res.status(503).json({ ok: false, error: resolved.error || 'conversation_resolver_unavailable' });
+      }
+      return res.json({ ok: true, source: 'postgres', mode, result: resolved.result });
+    } catch (error) {
+      await recordErrorLog('internal_structured_conversation', 'error', error, {
+        traceId: identity.traceId,
+        details: { mode, user_id: userId, conversation_id: conversationId },
+      });
+      return res.status(500).json({ ok: false, error: 'internal_conversation_failed' });
+    }
+  }
+
   if (mode === 'recent') {
     const userContext = isRecord(req.body?.user_context) ? req.body.user_context : {};
     const options = isRecord(req.body?.options) ? { ...req.body.options } : {};

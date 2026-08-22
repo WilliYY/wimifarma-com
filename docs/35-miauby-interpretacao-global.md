@@ -73,6 +73,10 @@ Novos comandos devem adicionar uma especificacao ao registro central e testes de
 - A confirmacao gera chave idempotente enviada ao endpoint da Cotacao; retries da mesma confirmacao devolvem o registro original.
 - O endpoint grava `quantidade` na coluna propria e compoe a categoria `Encomenda` apenas com os metadados realmente informados, preservando produto, marca, dosagem e apresentacao na coluna `produto`.
 
+## Memoria conversacional
+
+A interpretacao de uma mensagem nova permanece sem efeitos colaterais. A continuacao entre mensagens usa o redutor estruturado e deterministico descrito em `docs/36-miauby-memoria-conversacional.md`; ele guarda somente estado curto, entidades com IDs reais e pendencias expiraveis. O modulo oficial continua sendo consultado antes de exibir dado atual ou executar uma acao.
+
 ## Testes
 
 Para cada familia, cobrir:

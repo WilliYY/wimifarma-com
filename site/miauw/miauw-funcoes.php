@@ -4427,6 +4427,14 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
     throw new RuntimeException('Acao pendente desconhecida para confirmacao.');
 }
 
+function miauw_pending_action_ttl_seconds(): int
+{
+    $conversationTtl = max(60, min(7200, (int) miauw_env_string(array('MIAUBY_CONVERSATION_TTL'), '1800')));
+    $pendingTtl = max(30, min(900, (int) miauw_env_string(array('MIAUBY_PENDING_ACTION_TTL'), '300')));
+
+    return min($conversationTtl, $pendingTtl);
+}
+
 function miauw_try_confirmation_reply(string $message, int $userId): ?array
 {
     $pending = $_SESSION['miauw_pending_confirm_action'] ?? null;
@@ -4435,7 +4443,7 @@ function miauw_try_confirmation_reply(string $message, int $userId): ?array
     }
 
     $createdAt = (int) ($pending['created_at'] ?? 0);
-    if ($createdAt > 0 && (time() - $createdAt) > 900) {
+    if ($createdAt > 0 && (time() - $createdAt) > miauw_pending_action_ttl_seconds()) {
         unset($_SESSION['miauw_pending_confirm_action']);
         miauw_trace_record((string) ($pending['tool'] ?? 'miauby'), 'expired', array(
             'type' => 'confirmacao',
@@ -4448,14 +4456,14 @@ function miauw_try_confirmation_reply(string $message, int $userId): ?array
 
     $normalized = function_exists('miauw_skill_normalized') ? miauw_skill_normalized($message) : strtolower($message);
     $id = strtolower((string) ($pending['id'] ?? ''));
-    $wantsCancel = preg_match('/\b(cancela|cancelar|nao|n|deixa|esquece)\b/u', $normalized) === 1;
-    $wantsConfirm = preg_match('/\b(confirmar|confirmo|confirma|sim|s|pode|ok|feito)\b/u', $normalized) === 1
+    $wantsCancel = preg_match('/\b(cancela|cancelar|nao|n|deixa|deixa quieto|nao precisa|esquece|melhor nao)\b/u', $normalized) === 1;
+    $wantsConfirm = preg_match('/\b(confirmar|confirmo|confirma|sim|s|ss|pode|pode sim|isso|isso mesmo|beleza|blz|ok|faz|manda|vai|feito)\b/u', $normalized) === 1
         || ($id !== '' && strpos($normalized, $id) !== false);
     if (in_array((string) ($pending['tool'] ?? ''), array('cancelar_tarefa', 'cancelar_pedido'), true)) {
         if (preg_match('/^(nao|n|deixa|volta|esquece|errado|cancela comando|cancelar comando|nao cancela|nao cancelar)(\s|$)/u', $normalized)) {
             $wantsCancel = true;
             $wantsConfirm = false;
-        } elseif (preg_match('/^(sim|s|confirmar|confirmo|confirma|isso|isso mesmo|pode cancelar|pode|cancela|cancelar|ok)(\s|$)/u', $normalized)) {
+        } elseif (preg_match('/^(sim|s|ss|confirmar|confirmo|confirma|isso|isso mesmo|pode cancelar|pode sim|pode|beleza|blz|faz|manda|vai|cancela|cancelar|ok)(\s|$)/u', $normalized)) {
             $wantsCancel = false;
             $wantsConfirm = true;
         }
@@ -5102,6 +5110,216 @@ function miauw_channel_memory_bridge_request(array $payload): ?array
     }
 
     return $data;
+}
+
+function miauw_structured_conversation_session_id(): string
+{
+    $session = session_id();
+    if (!is_string($session) || trim($session) === '') {
+        $session = 'miauw-no-session';
+    }
+
+    return hash('sha256', $session);
+}
+
+function miauw_structured_conversation_resolve(
+    string $message,
+    int $userId,
+    int $conversationId,
+    string $traceId = ''
+): ?array {
+    $bridge = miauw_channel_memory_bridge_request(array(
+        'mode' => 'conversation_resolve',
+        'message' => $message,
+        'user_id' => $userId,
+        'conversation_id' => $conversationId,
+        'session_id' => miauw_structured_conversation_session_id(),
+        'trace_id' => $traceId,
+    ));
+    $result = is_array($bridge['result'] ?? null) ? $bridge['result'] : null;
+
+    return is_array($bridge) && !empty($bridge['ok']) && is_array($result) ? $result : null;
+}
+
+function miauw_structured_conversation_apply_effect(
+    array $effect,
+    int $userId,
+    int $conversationId,
+    string $traceId = ''
+): bool {
+    $bridge = miauw_channel_memory_bridge_request(array(
+        'mode' => 'conversation_effect',
+        'effect' => $effect,
+        'user_id' => $userId,
+        'conversation_id' => $conversationId,
+        'session_id' => miauw_structured_conversation_session_id(),
+        'trace_id' => $traceId,
+    ));
+
+    return is_array($bridge) && !empty($bridge['ok']) && !empty($bridge['applied']);
+}
+
+function miauw_structured_has_legacy_pending_interaction(): bool
+{
+    foreach (array(
+        'miauw_pending_confirm_action',
+        'miauw_pending_cotacao_encomenda',
+        'miauw_pending_financeiro_lancamento',
+        'miauw_pending_gestao_account',
+        'miauw_pending_pedido_selection',
+        'miauw_pending_tarefa_selection',
+    ) as $key) {
+        if (is_array($_SESSION[$key] ?? null)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function miauw_structured_conversation_direct_reply(array $result): ?array
+{
+    $status = strtolower(trim((string) ($result['status'] ?? '')));
+    if ($status === '' || $status === 'inactive' || $status === 'route') {
+        return null;
+    }
+    if ($status === 'selected' && strtolower((string) ($result['selectedEntity']['type'] ?? '')) === 'encomenda') {
+        return null;
+    }
+    if ($status === 'confirm') {
+        return array(
+            'text' => 'A confirmacao foi entendida, mas essa acao contextual ainda nao possui um executor seguro no modulo de origem. Nada foi alterado.',
+            'fallback' => false,
+            'model' => 'miauw-conversation-memory',
+        );
+    }
+
+    $text = trim((string) ($result['reply'] ?? ''));
+    if ($text === '' && $status === 'selected') {
+        $text = trim((string) ($result['selectedEntity']['label'] ?? ''));
+    }
+    if ($text === '') {
+        return null;
+    }
+
+    return array(
+        'text' => $text,
+        'fallback' => false,
+        'model' => 'miauw-conversation-memory',
+    );
+}
+
+function miauw_structured_encomendas_reply(
+    array $result,
+    array $user,
+    int $conversationId,
+    string $traceId = ''
+): ?array {
+    $status = strtolower(trim((string) ($result['status'] ?? '')));
+    $reason = strtolower(trim((string) ($result['reason'] ?? '')));
+    if ($status !== 'selected' && !($status === 'route' && $reason === 'explicit_encomenda_read')) {
+        return null;
+    }
+    $state = is_array($result['state'] ?? null) ? $result['state'] : array();
+    if (strtolower((string) ($state['currentTopic'] ?? '')) !== 'encomendas') {
+        return null;
+    }
+    if (!function_exists('miauw_user_can_access_module') || !miauw_user_can_access_module($user, 'cotacao')) {
+        return array(
+            'text' => 'Seu usuario nao tem acesso a Cotacao para consultar encomendas.',
+            'fallback' => false,
+            'model' => 'miauw-conversation-memory',
+        );
+    }
+    if (!function_exists('miauw_skill_cotacao_v2_internal_request')) {
+        return null;
+    }
+
+    try {
+        $response = miauw_skill_cotacao_v2_internal_request('GET', '/api/internal/encomendas', array(), array(
+            'order' => 'oldest',
+            'limit' => 100,
+        ));
+    } catch (Throwable $error) {
+        return array(
+            'text' => 'Nao consegui consultar as encomendas da Cotacao agora. Tente de novo em instantes.',
+            'fallback' => false,
+            'model' => 'miauw-conversation-memory',
+        );
+    }
+    if (!is_array($response) || empty($response['ok'])) {
+        return null;
+    }
+
+    $items = array_values(array_filter((array) ($response['items'] ?? array()), 'is_array'));
+    $selected = is_array($result['selectedEntity'] ?? null) ? $result['selectedEntity'] : null;
+    if (is_array($selected) && trim((string) ($selected['id'] ?? '')) !== '') {
+        $selectedId = trim((string) $selected['id']);
+        $items = array_values(array_filter($items, static function (array $item) use ($selectedId): bool {
+            return trim((string) ($item['rowId'] ?? '')) === $selectedId;
+        }));
+        if (!$items) {
+            return array(
+                'text' => 'Essa encomenda mudou ou nao esta mais ativa. Consulte a lista novamente.',
+                'fallback' => false,
+                'model' => 'miauw-conversation-memory',
+            );
+        }
+    } else {
+        $items = array_slice($items, 0, 10);
+        $entities = array();
+        foreach ($items as $index => $item) {
+            $id = trim((string) ($item['rowId'] ?? ''));
+            if ($id === '') {
+                continue;
+            }
+            $product = trim((string) ($item['produto'] ?? ''));
+            $observation = trim((string) ($item['observacaoEncomenda'] ?? $item['depoisEncomenda'] ?? ''));
+            $entities[] = array(
+                'index' => $index + 1,
+                'type' => 'encomenda',
+                'id' => $id,
+                'label' => trim($product . ($observation !== '' ? ' - ' . $observation : '')),
+                'metadata' => array(
+                    'line' => (int) ($item['line'] ?? 0),
+                    'ean' => trim((string) ($item['ean'] ?? '')),
+                    'produto' => $product,
+                    'quantidade' => trim((string) ($item['quantidade'] ?? '')),
+                    'observacao' => $observation,
+                ),
+            );
+        }
+        miauw_structured_conversation_apply_effect(array(
+            'topic' => 'encomendas',
+            'intent' => 'consultar_encomendas',
+            'recentEntities' => $entities,
+        ), (int) ($user['id'] ?? 0), $conversationId, $traceId);
+    }
+
+    if (!$items) {
+        $text = 'Nenhuma encomenda ativa na Cotacao.';
+    } else {
+        $lines = array('Encomendas da Cotacao:');
+        foreach ($items as $index => $item) {
+            $parts = array_filter(array(
+                trim((string) ($item['ean'] ?? '')),
+                trim((string) ($item['produto'] ?? '')),
+                trim((string) ($item['quantidade'] ?? '')),
+            ), static fn (string $value): bool => $value !== '');
+            $lines[] = ($index + 1) . '. ' . implode(' - ', $parts);
+            $observation = trim((string) ($item['observacaoEncomenda'] ?? $item['depoisEncomenda'] ?? ''));
+            if ($observation !== '') {
+                $lines[] = 'Obs: ' . $observation;
+            }
+        }
+        $text = implode("\n", $lines);
+    }
+
+    return array(
+        'text' => $text,
+        'fallback' => false,
+        'model' => 'miauw-conversation-memory',
+    );
 }
 
 function miauw_channel_event_record(array $event): bool

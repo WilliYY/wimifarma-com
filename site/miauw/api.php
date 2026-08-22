@@ -282,7 +282,41 @@ try {
             ));
         }
 
-        $reply = miauw_try_controlled_action($message, (int) $user['id'], $pageContext, $widgetMode, $conversationId, $traceId);
+        $reply = null;
+        $routingMessage = $message;
+        $hasLegacyPendingInteraction = function_exists('miauw_structured_has_legacy_pending_interaction')
+            && miauw_structured_has_legacy_pending_interaction();
+        if ($hasLegacyPendingInteraction) {
+            $reply = miauw_try_controlled_action($message, (int) $user['id'], $pageContext, $widgetMode, $conversationId, $traceId);
+        }
+
+        if ($reply === null && !$hasLegacyPendingInteraction && function_exists('miauw_structured_conversation_resolve')) {
+            $conversationResult = miauw_structured_conversation_resolve(
+                $message,
+                (int) $user['id'],
+                $conversationId,
+                $traceId
+            );
+            if (is_array($conversationResult)) {
+                $conversationReply = function_exists('miauw_structured_encomendas_reply')
+                    ? miauw_structured_encomendas_reply($conversationResult, $user, $conversationId, $traceId)
+                    : null;
+                if ($conversationReply === null && function_exists('miauw_structured_conversation_direct_reply')) {
+                    $conversationReply = miauw_structured_conversation_direct_reply($conversationResult);
+                }
+                if (is_array($conversationReply)) {
+                    $reply = $conversationReply;
+                }
+                $resolvedMessage = trim((string) ($conversationResult['message'] ?? ''));
+                if ($resolvedMessage !== '') {
+                    $routingMessage = $resolvedMessage;
+                }
+            }
+        }
+
+        if ($reply === null) {
+            $reply = miauw_try_controlled_action($routingMessage, (int) $user['id'], $pageContext, $widgetMode, $conversationId, $traceId);
+        }
         if ($reply === null && $silentConfirmation) {
             $reply = array(
                 'text' => 'Essa confirmacao expirou ou nao esta mais disponivel. Gere a acao de novo para eu confirmar sem misturar dados.',
@@ -291,6 +325,15 @@ try {
             );
         }
         if ($reply === null) {
+            if ($routingMessage !== $message) {
+                $messageForAi = $routingMessage;
+                if ($pageContext !== '') {
+                    $messageForAi .= "\n\nContexto da pagina atual: " . miauw_substr($pageContext, 0, 900);
+                }
+                if ($widgetMode) {
+                    $messageForAi .= "\n\nModo de resposta: widget compacto. Seja curto, operacional e com voz Miauby. Se estiver vago, peca so o essencial.";
+                }
+            }
             $reply = miauw_generate_reply($conversationId, $messageForAi, $widgetMode);
         }
         if (function_exists('miauw_sanitize_operator_reply')) {

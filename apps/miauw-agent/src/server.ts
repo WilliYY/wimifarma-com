@@ -4,13 +4,19 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { Agent, run, tool } from '@openai/agents';
 import { z } from 'zod';
 
+import {
+  applyConversationEffect,
+  resolveConversationMessage,
+  type ConversationEffect,
+  type MiaubyConversationState,
+} from './conversation-memory.js';
 import { hasInvalidDailyReportDate, inferDailyReportToolRequest, reportPeriodArgsFromMessage } from './report-routing.js';
 import { interpretSemanticCommand, type SemanticChannel } from './semantic-command.js';
 
 const SERVICE_NAME = 'miauw-agent';
-const SERVICE_VERSION = '0.17.2';
-const AGENT_VERSION = '2.1-fase22';
-const PHASE = 'fase22-semantic-command-layer';
+const SERVICE_VERSION = '0.18.0';
+const AGENT_VERSION = '2.2-fase23';
+const PHASE = 'fase23-structured-conversation-memory';
 const PERSONALITY_VERSION = 'miauby-persona-2026-05-16';
 const STYLE_VERSION = 'miauby-style-router-2026-05-16';
 const VOICE_PROFILE_VERSION = 'miauby-voice-profile-2026-05-17';
@@ -105,6 +111,12 @@ function envString(names: string[], fallback = ''): string {
   return fallback;
 }
 
+function envInteger(names: string[], fallback: number, minimum: number, maximum: number): number {
+  const parsed = Number.parseInt(envString(names, String(fallback)), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, parsed));
+}
+
 const port = Number.parseInt(envString(['PORT'], '3100'), 10);
 const basePath = normalizeBasePath(envString(['MIAUW_AGENT_BASE_PATH'], '/miauw/agent'));
 const model = envString(['MIAUW_OPENAI_MODEL', 'OPENAI_MODEL'], DEFAULT_MODEL);
@@ -116,6 +128,11 @@ const speechModel = envString(['MIAUW_SPEECH_MODEL', 'OPENAI_SPEECH_MODEL'], 'gp
 const speechVoice = envString(['MIAUW_SPEECH_VOICE', 'OPENAI_SPEECH_VOICE'], 'marin');
 const realtimeModel = envString(['MIAUW_REALTIME_MODEL', 'OPENAI_REALTIME_MODEL'], 'gpt-realtime');
 const realtimeVoice = envString(['MIAUW_REALTIME_VOICE', 'OPENAI_REALTIME_VOICE'], 'marin');
+const conversationTtlSeconds = envInteger(['MIAUBY_CONVERSATION_TTL'], 1800, 60, 7200);
+const pendingActionTtlSeconds = Math.min(
+  conversationTtlSeconds,
+  envInteger(['MIAUBY_PENDING_ACTION_TTL'], 300, 30, 900),
+);
 
 if (apiKey !== '' && !process.env.OPENAI_API_KEY) {
   process.env.OPENAI_API_KEY = apiKey;
@@ -193,6 +210,9 @@ function internalStatus() {
     model,
     api_configured: apiKey !== '',
     internal_token_configured: internalToken !== '',
+    conversation_memory_supported: true,
+    conversation_ttl_seconds: conversationTtlSeconds,
+    pending_action_ttl_seconds: pendingActionTtlSeconds,
     writes_enabled: false,
     direct_node_writes_enabled: false,
     low_risk_php_bridge_writes: ['criar_tarefa'],
@@ -1574,6 +1594,78 @@ app.post(`${basePath}/interpret`, requireInternalToken, (req, res) => {
     side_effects: false,
     interpreter_version: '1.1.0',
     ...interpretSemanticCommand(message, { channel }),
+  });
+});
+
+app.post(`${basePath}/conversation/resolve`, requireInternalToken, (req, res) => {
+  const message = safeText(req.body?.message, 4000);
+  const channelValue = safeText(req.body?.channel, 20).toLowerCase();
+  const channel: SemanticChannel = channelValue === 'whatsapp' ? 'whatsapp' : 'internal';
+  const userId = safeText(req.body?.user_id, 160);
+  const conversationId = safeText(req.body?.conversation_id, 160);
+  const sessionId = safeText(req.body?.session_id, 160);
+  const state = req.body?.state && typeof req.body.state === 'object'
+    ? req.body.state as MiaubyConversationState
+    : null;
+
+  if (message === '' || userId === '' || conversationId === '' || sessionId === '') {
+    res.status(400).json({
+      ok: false,
+      error: 'invalid_conversation_request',
+      message: 'Informe mensagem e identidade completa da conversa.',
+    });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    side_effects: false,
+    conversation_version: '1.0.0',
+    conversation_ttl_seconds: conversationTtlSeconds,
+    pending_action_ttl_seconds: pendingActionTtlSeconds,
+    result: resolveConversationMessage(message, state, {
+      channel,
+      userId,
+      conversationId,
+      sessionId,
+      conversationTtlSeconds,
+      pendingActionTtlSeconds,
+    }),
+  });
+});
+
+app.post(`${basePath}/conversation/effect`, requireInternalToken, (req, res) => {
+  const channelValue = safeText(req.body?.channel, 20).toLowerCase();
+  const channel: SemanticChannel = channelValue === 'whatsapp' ? 'whatsapp' : 'internal';
+  const userId = safeText(req.body?.user_id, 160);
+  const conversationId = safeText(req.body?.conversation_id, 160);
+  const sessionId = safeText(req.body?.session_id, 160);
+  const state = req.body?.state && typeof req.body.state === 'object'
+    ? req.body.state as MiaubyConversationState
+    : null;
+  const effect = req.body?.effect && typeof req.body.effect === 'object'
+    ? req.body.effect as ConversationEffect
+    : null;
+  const identityMatches = Boolean(state
+    && state.channel === channel
+    && safeText(state.userId, 160) === userId
+    && safeText(state.conversationId, 160) === conversationId
+    && safeText(state.sessionId, 160) === sessionId);
+
+  if (!identityMatches || !effect) {
+    res.status(400).json({
+      ok: false,
+      error: 'invalid_conversation_effect',
+      message: 'Informe estado, efeito e identidade correspondentes.',
+    });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    side_effects: false,
+    conversation_version: '1.0.0',
+    state: applyConversationEffect(state as MiaubyConversationState, effect, new Date(), conversationTtlSeconds),
   });
 });
 

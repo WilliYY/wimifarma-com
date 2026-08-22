@@ -8,8 +8,8 @@ const serverPath = path.join(root, 'src', 'server.ts');
 const source = fs.readFileSync(serverPath, 'utf8');
 
 const required = [
-  '2.1-fase22',
-  'fase22-semantic-command-layer',
+  '2.2-fase23',
+  'fase23-structured-conversation-memory',
   'PERSONALITY_VERSION',
   'STYLE_VERSION',
   'VOICE_PROFILE_VERSION',

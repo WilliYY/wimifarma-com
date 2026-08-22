@@ -683,6 +683,8 @@ Evite sincronizacao por string solta. Use API estruturada do Google Sheets quand
 
 ## Relatorio final obrigatorio
 
+Desde 2026-08-22, Miauby Interno e WhatsApp compartilham memoria conversacional curta pelo redutor puro `apps/miauw-agent/src/conversation-memory.ts`. O WhatsApp persiste o contrato em `miauw_whatsapp_conversation_states` com `state_key='structured_conversation'`; o Interno usa a ponte tokenizada do mesmo servico, sem promover `apps/miauby` a dono. O estado e isolado por canal, usuario, conversa e sessao, guarda IDs reais em `recentEntities`, reconsulta o modulo oficial antes de responder, expira por `MIAUBY_CONVERSATION_TTL` e usa `MIAUBY_PENDING_ACTION_TTL` menor para acoes pendentes. Transicoes usam advisory lock + `FOR UPDATE`; confirmacao concorrente consome no maximo uma vez. Pendencias legadas continuam com prioridade, allowlist/permissoes nao mudam e acao contextual sem executor oficial falha fechada sem escrita. Preservar `docs/36-miauby-memoria-conversacional.md`.
+
 Ao finalizar, responder em portugues com:
 
 - arquivos alterados;

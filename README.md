@@ -741,5 +741,7 @@ Nao misturar essas portas ao configurar proxy, DNS ou WordPress.
 - `docs/31-wimi-impressora.md`: agente Windows, fila termica, instalador, seguranca, build e deploy.
 - `docs/33-entrega.md`: arquitetura, banco, permissoes, comissao, auditoria, filtros e impressao do modulo Entrega.
 - `docs/34-comissao.md`: cupons de indicacao, ledger financeiro, pagamentos, +300 XP, cancelamento e impressao.
+- `docs/35-miauby-interpretacao-global.md`: interpretacao compartilhada, sem ordem fixa, antes dos parsers operacionais.
+- `docs/36-miauby-memoria-conversacional.md`: memoria curta compartilhada, isolamento, TTL, referencias e concorrencia.
 
 Leia `AGENTS.md` antes de qualquer alteracao.
