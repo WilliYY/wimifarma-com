@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -9,6 +10,14 @@ import {
   parseFalteiroCommands,
   sanitizeFalteiroCategories,
 } from './falteiro-command.js';
+
+test('servidor importa o limite de lote do modulo autoritativo do Falteiro', () => {
+  const serverSource = fs.readFileSync(new URL('./server.js', import.meta.url), 'utf8');
+  const falteiroImport = serverSource.match(/import\s*\{([^}]+)\}\s*from\s*['"]\.\/falteiro-command\.js['"]/u);
+  const encomendaImport = serverSource.match(/import\s*\{([^}]+)\}\s*from\s*['"]\.\/encomendas\.js['"]/u);
+  assert.match(falteiroImport?.[1] || '', /\bMAX_FALTEIRO_BATCH_ITEMS\b/u);
+  assert.doesNotMatch(encomendaImport?.[1] || '', /\bMAX_FALTEIRO_BATCH_ITEMS\b/u);
+});
 
 const CATEGORIES = ['Urgente', 'Popular', 'Urgente Popular', 'Urgente Falta Cotar', 'Encomenda', 'Falta'];
 

@@ -11,13 +11,13 @@ import pg from 'pg';
 import { createClient } from 'redis';
 import { Server } from 'socket.io';
 import {
-  MAX_FALTEIRO_BATCH_ITEMS,
   buildEncomendaRowValues,
   encomendaContextFromValues,
   encomendaTextParts,
   hasEncomendaWord
 } from './encomendas.js';
 import {
+  MAX_FALTEIRO_BATCH_ITEMS,
   formatFalteiroBatchConfirmation,
   formatFalteiroConfirmation,
   parseFalteiroCommands,
