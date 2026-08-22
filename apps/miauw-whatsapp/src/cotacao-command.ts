@@ -45,6 +45,7 @@ const FALTEIRO_CANDIDATE_PATTERNS = [
   /^(?:por favor\s+)?(?:coloca|coloque|adiciona|adicione|joga|jogue)\b.*\bno\s+falteiro\b/,
   /\b(?:acabou|terminou)(?:\s+(?:urgente|urgencia|popular|falta))*$/,
   /\b(?:esta|ta)\s+(?:em\s+falta|faltando|sem\s+estoque)(?:\s+(?:urgente|urgencia|popular|falta))*$/,
+  /\b(?:zerou|estoque\s+baixo|tem\s+pouco|so\s+(?:tem|temos)|tem\s+(?:so|meia\s+caixa)|restou|ultima\s+(?:caixa|unidade)|vai\s+acabar|nao\s+pode\s+faltar)\b/,
 ];
 
 export function mightBeFalteiroCommand(message: string): boolean {
@@ -56,7 +57,7 @@ export function mightBeFalteiroCommand(message: string): boolean {
   if (/\b(?:relatorio|historico|qual|quais)\b/.test(normalized)) return false;
   if (/\bfalta\s+(?:de\s+)?(?:chegar|chegando|chegada|chegadas)\b/.test(normalized)) return false;
   if (FALTEIRO_CANDIDATE_PATTERNS.some((pattern) => pattern.test(normalized))) return true;
-  return /\b(?:falteiro|falta|faltou|faltam|acabou|acabando|terminou|faltando|comprar|repor|reposicao)\b|\b(?:sem\s+estoque|nao\s+tem\s+mais|nao\s+temos|nao\s+tem|precis(?:a|amos|o)\s+(?:comprar|repor))\b/.test(normalized);
+  return /\b(?:falteiro|falta|faltou|faltam|acabou|zerou|acabando|terminou|faltando|comprar|repor|reposicao)\b|\b(?:sem\s+estoque|estoque\s+baixo|tem\s+pouco|so\s+(?:tem|temos)|tem\s+(?:so|meia\s+caixa)|restou|ultima\s+(?:caixa|unidade)|vai\s+acabar|nao\s+pode\s+faltar|nao\s+tem\s+mais|nao\s+temos|nao\s+tem|precis(?:a|amos|o)\s+(?:comprar|repor))\b/.test(normalized);
 }
 
 export function parseCotacaoEncomendasCommand(message: string): CotacaoEncomendasCommand | null {

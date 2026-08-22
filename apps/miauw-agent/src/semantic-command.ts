@@ -99,13 +99,22 @@ const CATEGORY_WORDS = new Set([
   'normal', 'popular', 'urgente',
 ]);
 const FALTEIRO_CONTEXT_CUES = [
-  'falteiro', 'falta', 'faltou', 'acabou', 'acabando', 'esta acabando', 'ta acabando',
+  'falteiro', 'falta', 'faltou', 'acabou', 'zerou', 'acabando', 'esta acabando', 'ta acabando',
   'esta faltando', 'ta faltando', 'ficou sem', 'estamos sem', 'sem estoque', 'nao tem mais',
   'nao temos', 'nao tem', 'terminou', 'precisa comprar', 'precisamos comprar', 'preciso comprar',
   'comprar', 'precisa repor', 'precisamos repor', 'preciso repor', 'repor', 'reposicao', 'no falteiro',
   'preciso urgente de', 'preciso de', 'precisamos de', 'esta em falta', 'ta em falta', 'em falta',
-  'estao faltando', 'tao faltando', 'faltando', 'faltam',
+  'estao faltando', 'tao faltando', 'faltando', 'faltam', 'estoque baixo', 'tem pouco', 'so tem',
+  'so temos', 'tem so', 'tem meia caixa', 'restou', 'ultima caixa', 'ultima unidade', 'vai acabar', 'nao pode faltar',
 ];
+const FALTEIRO_PRESERVED_CUES = new Set([
+  'acabou', 'zerou', 'esta acabando', 'ta acabando', 'esta faltando', 'ta faltando', 'ficou sem',
+  'estamos sem', 'sem estoque', 'nao tem mais', 'nao temos', 'terminou', 'precisa comprar',
+  'precisamos comprar', 'preciso comprar', 'comprar', 'precisa repor', 'precisamos repor',
+  'preciso repor', 'repor', 'reposicao', 'esta em falta', 'ta em falta', 'estoque baixo', 'tem pouco',
+  'so tem', 'so temos', 'tem so', 'tem meia caixa', 'restou', 'ultima caixa', 'ultima unidade', 'vai acabar',
+  'nao pode faltar',
+]);
 
 const INTENTS: IntentSpec[] = [
   {
@@ -285,7 +294,7 @@ export function interpretSemanticCommand(message: string, _options: SemanticOpti
 
   const top = candidates[0];
   const second = candidates[1];
-  if (top.spec.risk !== 'baixo' && hasUnconsumedNegation(tokens, top.consumed)) {
+  if (top.spec.risk !== 'baixo' && hasBlockingNegation(top, tokens)) {
     return {
       status: 'blocked',
       intent: top.spec.intent,
@@ -430,6 +439,13 @@ function candidateFor(
 
 function canonicalMessage(candidate: Candidate, tokens: MessageToken[], entities: SemanticEntity[]): string {
   const consumed = new Set(candidate.consumed);
+  if (candidate.spec.intent === 'registrar_falteiro') {
+    for (const cue of candidate.evidence) {
+      if (!FALTEIRO_PRESERVED_CUES.has(normalizeText(cue))) continue;
+      const match = bestPhrase(tokens, [cue]);
+      match?.indexes.forEach((index) => consumed.delete(index));
+    }
+  }
   tokens.forEach((token, index) => {
     if (ACTIVATION_WORDS.has(token.normalized)) consumed.add(index);
   });
@@ -572,6 +588,24 @@ function isConservativeTypo(actual: string, expected: string): boolean {
 
 function hasUnconsumedNegation(tokens: MessageToken[], consumed: Set<number>): boolean {
   return tokens.some((token, index) => NEGATION_WORDS.has(token.normalized) && !consumed.has(index));
+}
+
+function hasBlockingNegation(candidate: Candidate, tokens: MessageToken[]): boolean {
+  if (!hasUnconsumedNegation(tokens, candidate.consumed)) return false;
+  if (candidate.spec.intent !== 'registrar_falteiro') return true;
+
+  let text = tokens.map((token) => token.normalized).join(' ');
+  const contextualNegations = [
+    /\bnao (?:e|eh) urgente\b/g,
+    /\bnao pegar validade curta\b/g,
+    /\bnao comprar desse laboratorio\b/g,
+    /\bnao substituir\b/g,
+    /\bnao precisa muitas?\b/g,
+    /\bnao pode faltar\b/g,
+    /\bnao pegar [a-z0-9-]+\b/g,
+  ];
+  for (const pattern of contextualNegations) text = text.replace(pattern, ' ');
+  return /\b(?:jamais|nao|nem|nunca)\b/.test(text);
 }
 
 function hasInformationalCue(tokens: MessageToken[]): boolean {

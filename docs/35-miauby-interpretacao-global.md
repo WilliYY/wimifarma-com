@@ -33,12 +33,13 @@ E retorna:
 5. Nao inventar categoria, usuario, data, quantidade ou valor. Validacoes dependentes de banco continuam no modulo dono do dado.
 6. Intencoes de escrita exigem confianca maior que consultas. Empate proximo entre intencoes potencialmente destrutivas retorna `ambiguous` e pede somente a informacao necessaria.
 7. O interpretador nao chama OpenAI e nao executa tools. O PHP continua dono da confirmacao e da escrita; o WhatsApp continua usando confirmacoes idempotentes.
-8. Negacao explicita fora dos termos da propria intencao retorna `blocked`; qualquer pergunta sobre uma acao de escrita retorna `ambiguous`, mesmo com ativacao `Miauby`. Nenhum dos dois estados pode cair no parser legado.
+8. Negacao explicita da acao retorna `blocked`; no Falteiro, restricoes negativas contextuais como `nao e urgente` ou `nao pegar validade curta` permanecem na mensagem canonica. Qualquer pergunta sobre uma acao de escrita retorna `ambiguous`, mesmo com ativacao `Miauby`. Nenhum desses estados pode cair no parser legado.
 9. Pequenos erros de uma letra sao tolerados somente nos termos do comando e quando `Miauby` foi chamado. Singular/plural nao usa aproximacao para nao misturar intencoes diferentes.
-10. No Falteiro, a camada semantica da prioridade ao dominio de ruptura quando `cotar` e `urgente` aparecem junto de sinais como `acabou`, `faltando`, `comprar`, `repor` ou `reposicao`; assim, a frase nao desvia para uma Cotacao urgente comum.
-11. `apps/cotacao/src/falteiro-command.js` preserva produto/apresentacao, resolve categorias por conjuntos de conceitos e aliases contra o catalogo real, prefere a categoria composta mais especifica e bloqueia a escrita quando o contexto nao possui correspondencia unica.
-12. Frases e sinonimos normalizados ficam em cache no processo. Datas relativas, quantidades naturais e valores brasileiros como `1.500,20` sao extraidos como contexto sem inventar nem reformatar dados.
-13. Se o servico estiver indisponivel ou retornar `none`, usar o parser legado com a mensagem original.
+10. No Falteiro, a camada semantica da prioridade ao dominio de ruptura quando `cotar` e `urgente` aparecem junto de sinais como `acabou`, `zerou`, `estoque baixo`, `vai acabar`, `comprar`, `repor` ou `reposicao`; assim, a frase nao desvia para uma Cotacao urgente comum.
+11. `apps/cotacao/src/falteiro-command.js` preserva no produto identidade, dosagem, apresentacao, embalagem e marca obrigatoria; resolve categorias oficiais contra o catalogo real e agrega na categoria estado do estoque, quantidade de compra, prazo, preco, preferencia, demanda e observacao.
+12. Apresentacao e quantidade de compra sao separadas por contexto, nao apenas pelo numero. Demanda geral segue para Falteiro; pedido ou reserva para pessoa identificada segue para Encomenda. Categoria oficial ambigua ou inexistente falha fechada.
+13. Frases e sinonimos normalizados ficam em cache no processo. Datas relativas, quantidades naturais e valores brasileiros como `1.500,20` sao extraidos como contexto sem inventar nem reformatar dados.
+14. Se o servico estiver indisponivel ou retornar `none`, usar o parser legado com a mensagem original; os detectores de contingencia dos dois canais reconhecem tambem os sinais de estoque baixo.
 
 ## Comandos cobertos
 

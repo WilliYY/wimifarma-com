@@ -36,18 +36,22 @@ const CATEGORY_PHRASE_ALIASES = [
 const CATEGORY_HINT_TOKENS = new Set(['urgente', 'popular', 'falta', 'cotar']);
 const CATEGORY_CONTROL_TOKENS = new Set([
   'adiciona', 'adicione', 'adicionar', 'categoria', 'coloca', 'coloque', 'colocar', 'como',
-  'porque', 'pois',
+  'compre', 'comprar', 'pega', 'pegar', 'pegue', 'porque', 'pois', 'repor',
 ]);
 const INTENT_FILLER_TOKENS = new Set(['por', 'favor']);
+const PRODUCT_EDGE_TOKENS = new Set(['e', 'mas', 'porque', 'pois', 'para']);
+const NUMBER_TOKEN_SOURCE = '(?:\\d+(?:[.,]\\d+)?|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)';
+const ORDER_UNIT_SOURCE = '(?:caixas?|pacotes?|frascos?|ampolas?|unidades?|itens?)';
 const ANYWHERE_INTENTS = [
   { trigger: 'sem_estoque', phrases: ['nao tem mais', 'nao temos', 'nao tem', 'sem estoque', 'estamos sem', 'ficou sem', 'estou sem', 'sem'] },
   { trigger: 'faltando', phrases: ['esta faltando', 'ta faltando', 'estao faltando', 'tao faltando', 'faltando'] },
-  { trigger: 'acabando', phrases: ['esta acabando', 'ta acabando', 'acabando'] },
+  { trigger: 'acabando', phrases: ['estoque baixo', 'esta acabando', 'ta acabando', 'tem pouco', 'vai acabar', 'acabando'] },
+  { trigger: 'estoque_baixo', phrases: ['so temos', 'so tem', 'tem so', 'tem meia caixa', 'restou', 'ultima caixa', 'ultima unidade'] },
   { trigger: 'comprar', phrases: ['precisamos comprar', 'precisa comprar', 'preciso comprar', 'comprar'] },
   { trigger: 'repor', phrases: ['precisamos repor', 'precisa repor', 'preciso repor', 'reposicao', 'repor'] },
   { trigger: 'falteiro', phrases: ['no falteiro', 'falteiro'] },
   { trigger: 'falta', phrases: ['faltou', 'falta', 'faltam'] },
-  { trigger: 'acabou', phrases: ['acabou'] },
+  { trigger: 'acabou', phrases: ['nao pode faltar', 'zerou', 'acabou'] },
   { trigger: 'terminou', phrases: ['terminou'] },
 ];
 
@@ -87,9 +91,165 @@ function textTokens(value) {
       value: token,
       key,
       canonical: CATEGORY_ALIASES.get(key) || key,
+      start: match.index || 0,
+      end: (match.index || 0) + token.length,
     });
   }
   return tokens;
+}
+
+function contextLabel(value) {
+  const clean = cleanCommandText(value);
+  if (!clean) return '';
+  return clean.charAt(0).toLocaleUpperCase('pt-BR') + clean.slice(1);
+}
+
+function contextRemovalVariants(value, extra = []) {
+  return [value, ...extra]
+    .map((item) => textTokens(item).map((token) => token.key))
+    .filter((parts) => parts.length > 0);
+}
+
+function collectFalteiroContexts(value) {
+  const text = cleanCommandText(value);
+  const contexts = [];
+
+  const addMatches = (pattern, priority, build) => {
+    for (const match of text.matchAll(pattern)) {
+      const built = build(match);
+      if (!built?.label) continue;
+      const start = match.index || 0;
+      const end = start + match[0].length;
+      if (contexts.some((item) => start < item.end && item.start < end)) continue;
+      contexts.push({
+        label: contextLabel(built.label),
+        priority,
+        start,
+        end,
+        removals: contextRemovalVariants(match[0], built.extraRemovals || []),
+      });
+    }
+  };
+
+  addMatches(/\b(?:\d+|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)\s+clientes?\s+(?:perguntaram|procuraram|pediram)\s+(?:por|pelo|pela)\b/giu, 10, (match) => ({
+    label: 'Muita procura',
+    extraRemovals: [match[0].replace(/\s+(?:por|pelo|pela)\s*$/iu, '')],
+  }));
+
+  addMatches(/\bnao\s+(?:e|eh)\s+urgente\b/giu, 25, () => ({ label: 'Nao urgente' }));
+  addMatches(/\bnao\s+pegar\s+validade\s+curta\b/giu, 70, () => ({ label: 'Nao pegar validade curta' }));
+  addMatches(/\bnao\s+comprar\s+desse\s+laboratorio\b/giu, 70, () => ({ label: 'Nao comprar desse laboratorio' }));
+  addMatches(/\bnao\s+(?:substituir|precisa\s+muitas?)\b/giu, 70, (match) => ({ label: match[0] }));
+
+  addMatches(new RegExp(`\\b(comprar|compre|pegar|pega|pegue|repor)\\s+(${NUMBER_TOKEN_SOURCE})(?:\\s+(${ORDER_UNIT_SOURCE}))?\\b`, 'giu'), 40, (match) => {
+    const action = /^(?:pegar|pega|pegue)$/iu.test(match[1]) ? 'Pegar' : (/^repor$/iu.test(match[1]) ? 'Repor' : 'Comprar');
+    const amount = cleanCommandText(match[2]);
+    const unit = normalized(match[3]);
+    return {
+      label: [action, amount, unit].filter(Boolean).join(' '),
+      extraRemovals: [[amount, unit].filter(Boolean).join(' ')],
+    };
+  });
+  addMatches(new RegExp(`\\b(?:precisa|precisamos|preciso)\\s+de\\s+(${NUMBER_TOKEN_SOURCE})(?:\\s+(${ORDER_UNIT_SOURCE}))?\\b`, 'giu'), 40, (match) => {
+    const amount = cleanCommandText(match[1]);
+    const unit = normalized(match[2]);
+    return {
+      label: ['Comprar', amount, unit].filter(Boolean).join(' '),
+      extraRemovals: [[amount, unit].filter(Boolean).join(' ')],
+    };
+  });
+
+  addMatches(/\b(?:se\s+estiver\s+)?ate\s+(?:r\$\s*)?(\d+(?:[.,]\d+)?)\s*(?:reais?|rs)?\b/giu, 60, (match) => ({
+    label: `Ate R$ ${match[1]}`,
+  }));
+  addMatches(/\bno\s+maximo\s+(?:r\$\s*)?(\d+(?:[.,]\d+)?)\s*(?:reais?|rs)?\b/giu, 60, (match) => ({
+    label: `No maximo R$ ${match[1]}`,
+  }));
+  addMatches(/\babaixo\s+de\s+(?:r\$\s*)?(\d+(?:[.,]\d+)?)\s*(?:reais?|rs)?\b/giu, 60, (match) => ({
+    label: `Abaixo de R$ ${match[1]}`,
+  }));
+
+  addMatches(new RegExp(`\\b(?:so\\s+temos|so\\s+tem|tem\\s+so|restou)\\s+(${NUMBER_TOKEN_SOURCE})(?:\\s+(${ORDER_UNIT_SOURCE}))?\\b`, 'giu'), 20, (match) => {
+    const stockText = normalized(match[0]);
+    const prefix = stockText.startsWith('so temos')
+      ? 'So temos'
+      : (stockText.startsWith('so tem') ? 'So tem' : (stockText.startsWith('tem so') ? 'Tem so' : 'Restou'));
+    return {
+      label: [prefix, cleanCommandText(match[1]), normalized(match[2])].filter(Boolean).join(' '),
+      extraRemovals: [[match[1], match[2]].filter(Boolean).join(' ')],
+    };
+  });
+  addMatches(/\btem\s+meia\s+caixa\b/giu, 20, (match) => ({ label: match[0] }));
+  addMatches(/\b(?:ultima\s+(?:caixa|unidade)|estoque\s+baixo|tem\s+pouco|vai\s+acabar|esta\s+acabando|ta\s+acabando)\b/giu, 20, (match) => ({ label: match[0] }));
+  addMatches(/\b(?:esta\s+faltando|t(?:a|\u00e1)\s+faltando|estao\s+faltando|tao\s+faltando|esta\s+em\s+falta|estamos\s+sem|ficou\s+sem|estou\s+sem|nao\s+tem\s+mais|nao\s+temos|sem\s+estoque|terminou|zerou|acabou)\b/giu, 20, (match) => ({ label: normalized(match[0]) }));
+
+  addMatches(/\b(?:muita\s+gente\s+(?:esta\s+)?procurando|muita\s+gente\s+perguntou|muita\s+procura|cliente\s+esta\s+procurando|ja\s+pediram\s+varias\s+vezes|vende\s+muito|sai\s+muito|produto\s+de\s+giro|vende\s+pouco|nao\s+pode\s+faltar)\b/giu, 30, (match) => ({ label: match[0] }));
+
+  addMatches(/\b(?:o\s+quanto\s+antes|nao\s+pode\s+esperar|sem\s+pressa|pode\s+esperar|proxima\s+cotacao|preciso\s+(?:hoje|amanha))\b/giu, 50, (match) => ({ label: match[0] }));
+  addMatches(/\b(?:para|pra)\s+(?:hoje|amanha|segunda|terca|quarta|quinta|sexta|sabado|domingo)\b/giu, 50, (match) => ({ label: match[0] }));
+  addMatches(/\b(?:hoje|amanha)\b/giu, 50, (match) => ({ label: match[0] }));
+
+  addMatches(/\b(?:se\s+estiver\s+barato|pegar\s+o\s+mais\s+barato|so\s+se\s+tiver\s+promocao|comprar\s+se\s+tiver\s+promocao)\b/giu, 65, (match) => ({
+    label: match[0],
+    extraRemovals: normalized(match[0]).startsWith('comprar ') ? [match[0].replace(/^comprar\s+/iu, '')] : [],
+  }));
+  addMatches(/\b(?:qualquer\s+laboratorio|pode\s+ser\s+generico|validade\s+longa|pegar\s+bastante|cliente\s+reclama\s+dessa\s+marca)\b/giu, 70, (match) => ({ label: match[0] }));
+  addMatches(/\bse\s+tiver\s+([\p{L}\p{N}-]+)\s+melhor\b/giu, 70, (match) => ({ label: `Preferir ${match[1]}` }));
+  addMatches(/\bpreferir\s+([\p{L}\p{N}-]+)\b/giu, 70, (match) => ({ label: match[0] }));
+  addMatches(/\bsomente\s+([\p{L}\p{N}-]+)\b/giu, 70, (match) => ({ label: match[0] }));
+  addMatches(/\bnao\s+pegar\s+([\p{L}\p{N}-]+)\b/giu, 70, (match) => ({ label: match[0] }));
+
+  return contexts
+    .sort((left, right) => left.priority - right.priority || left.start - right.start)
+    .filter((item, index, items) => items.findIndex((candidate) => normalized(candidate.label) === normalized(item.label)) === index);
+}
+
+function removeContextSegments(value, contexts) {
+  const tokens = textTokens(value);
+  const removed = new Set();
+
+  for (const context of contexts) {
+    for (const sequence of context.removals) {
+      let matched = false;
+      for (let start = 0; start <= tokens.length - sequence.length; start += 1) {
+        if (sequence.every((part, offset) => !removed.has(start + offset) && tokens[start + offset]?.key === part)) {
+          sequence.forEach((_part, offset) => removed.add(start + offset));
+          matched = true;
+          break;
+        }
+      }
+      if (matched) break;
+    }
+  }
+
+  return tokens.filter((_token, index) => !removed.has(index)).map((token) => token.value).join(' ');
+}
+
+function combineFalteiroCategory(officialCategory, contexts) {
+  const labels = [officialCategory, ...contexts.map((item) => item.label)].filter(Boolean);
+  const unique = labels.filter((label, index) => labels.findIndex((item) => normalized(item) === normalized(label)) === index);
+  return cleanCommandText(unique.join(' | ')).slice(0, 700);
+}
+
+function hasBlockingFalteiroNegation(value) {
+  let text = normalized(value);
+  const safeContexts = [
+    /\bnao (?:e|eh) urgente\b/gu,
+    /\bnao pegar validade curta\b/gu,
+    /\bnao comprar desse laboratorio\b/gu,
+    /\bnao substituir\b/gu,
+    /\bnao precisa muitas?\b/gu,
+    /\bnao pode faltar\b/gu,
+    /\bnao pegar [a-z0-9-]+\b/gu,
+  ];
+  for (const pattern of safeContexts) text = text.replace(pattern, ' ');
+  return /\bnao\s+(?:coloca|coloque|adiciona|adicione|joga|jogue|registra|registrar|acabou|zerou|falta|faltou|esta\s+acabando|ta\s+acabando|comprar|repor)\b/u.test(text);
+}
+
+function isSpecificCustomerOrder(value) {
+  const text = normalized(value);
+  if (/\b(?:encomenda|encomendar|reservar|reserva)\b/.test(text) && /\b(?:para|pra)\s+[a-z]/.test(text)) return true;
+  return /\b(?!cliente\b|clientes\b)[a-z][a-z0-9-]*(?:\s+[a-z][a-z0-9-]*){0,3}\s+pediu\b/.test(text);
 }
 
 export function sanitizeFalteiroCategories(values) {
@@ -266,7 +426,9 @@ function extractCategory(productText, catalog, initialHint = '', overlapHint = '
 
 function collectIntentCandidates(tokens, catalog) {
   const categoryIndexes = new Set(
-    categoryMatches(tokens, catalog).flatMap((match) => match.indexes),
+    categoryMatches(tokens, catalog)
+      .filter((match) => match.tokens.length > 1)
+      .flatMap((match) => match.indexes),
   );
   const candidates = [];
 
@@ -360,10 +522,14 @@ function extractIntent(commandText, catalog) {
 }
 
 function displayProduct(value) {
-  const clean = cleanCommandText(value)
+  let clean = cleanCommandText(value)
     .replace(/^[\s,:;\-]+|[\s,;.!?]+$/g, '')
     .replace(/^de\s+/iu, '')
     .trim();
+  let tokens = textTokens(clean);
+  while (tokens.length && PRODUCT_EDGE_TOKENS.has(tokens[0].key)) tokens = tokens.slice(1);
+  while (tokens.length && PRODUCT_EDGE_TOKENS.has(tokens[tokens.length - 1].key)) tokens = tokens.slice(0, -1);
+  clean = tokens.map((token) => token.value).join(' ').trim();
   if (!clean) return '';
   return clean.charAt(0).toLocaleUpperCase('pt-BR') + clean.slice(1);
 }
@@ -373,11 +539,15 @@ export function parseFalteiroCommand(message, options = {}) {
   if (!raw || QUESTION_PATTERN.test(raw)) return null;
 
   const commandText = raw.replace(ACTIVATION_PATTERN, '');
+  if (hasBlockingFalteiroNegation(commandText) || isSpecificCustomerOrder(commandText)) return null;
+
+  const contexts = collectFalteiroContexts(commandText);
   const catalog = categoryCatalog(options.categories);
   const intent = extractIntent(commandText, catalog);
   if (!intent || NON_FALTEIRO_COMPLEMENT_PATTERN.test(intent.productText)) return null;
 
-  const extracted = extractCategory(intent.productText, catalog, intent.categoryHint, intent.overlapCategoryHint);
+  const productWithoutContext = removeContextSegments(intent.productText, contexts);
+  const extracted = extractCategory(productWithoutContext, catalog, intent.categoryHint, intent.overlapCategoryHint);
   const product = displayProduct(extracted.productText);
   if (BLOCKED_PRODUCT_PATTERN.test(product)) return null;
 
@@ -394,7 +564,9 @@ export function parseFalteiroCommand(message, options = {}) {
     matched: true,
     trigger: intent.trigger,
     product: error && !['category_not_found', 'category_ambiguous'].includes(error) ? '' : product,
-    category: extracted.category,
+    category: extracted.categoryError
+      ? ''
+      : (error === 'missing_product' ? extracted.category : combineFalteiroCategory(extracted.category, contexts)),
     error,
   };
   if (error === 'category_not_found' || error === 'category_ambiguous') {

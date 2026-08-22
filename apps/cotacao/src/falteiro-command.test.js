@@ -15,18 +15,18 @@ function parse(message, categories = CATEGORIES) {
 
 test('reconhece os sinonimos do Falteiro sem diferenciar maiusculas', () => {
   const cases = [
-    ['Miauby falteiro losartana', 'falteiro'],
-    ['miauby falta losartana', 'falta'],
-    ['MIAUBY FALTOU losartana', 'faltou'],
-    ['MiAuBy acabou losartana', 'acabou'],
+    ['Miauby falteiro losartana', 'falteiro', ''],
+    ['miauby falta losartana', 'falta', ''],
+    ['MIAUBY FALTOU losartana', 'faltou', ''],
+    ['MiAuBy acabou losartana', 'acabou', 'Acabou'],
   ];
 
-  for (const [message, trigger] of cases) {
+  for (const [message, trigger, category] of cases) {
     assert.deepEqual(parse(message), {
       matched: true,
       trigger,
       product: 'Losartana',
-      category: '',
+      category,
       error: '',
     });
   }
@@ -70,37 +70,37 @@ test('aceita comando direto, pontuacao e falta de produto sem inventar dado', ()
 
 test('entende intencao natural de falta de estoque e necessidade de compra', () => {
   const cases = [
-    ['Miauby ta faltando losartana 50mg', 'Losartana 50mg'],
-    ['Miauby tá faltando losartana 50mg', 'Losartana 50mg'],
-    ['Miauby estamos sem dipirona', 'Dipirona'],
-    ['Miauby ficou sem ibuprofeno 600mg', 'Ibuprofeno 600mg'],
-    ['Miauby sem estoque de nimesulida 100mg', 'Nimesulida 100mg'],
-    ['Miauby nao tem mais azitromicina 500mg', 'Azitromicina 500mg'],
-    ['Miauby terminou prednisona 20mg', 'Prednisona 20mg'],
-    ['Miauby precisa comprar losartana 50mg', 'Losartana 50mg'],
-    ['Miauby precisamos comprar omeprazol 20mg', 'Omeprazol 20mg'],
-    ['Miauby coloca omeprazol 20mg no falteiro', 'Omeprazol 20mg'],
-    ['Miauby adiciona no falteiro loratadina 10mg', 'Loratadina 10mg'],
-    ['Miauby joga cetirizina 10mg no falteiro', 'Cetirizina 10mg'],
-    ['Miauby amoxicilina 500mg esta em falta', 'Amoxicilina 500mg'],
-    ['Miauby o estoque de losartana acabou', 'Losartana'],
+    ['Miauby ta faltando losartana 50mg', 'Losartana 50mg', 'Ta faltando'],
+    ['Miauby tá faltando losartana 50mg', 'Losartana 50mg', 'Ta faltando'],
+    ['Miauby estamos sem dipirona', 'Dipirona', 'Estamos sem'],
+    ['Miauby ficou sem ibuprofeno 600mg', 'Ibuprofeno 600mg', 'Ficou sem'],
+    ['Miauby sem estoque de nimesulida 100mg', 'Nimesulida 100mg', 'Sem estoque'],
+    ['Miauby nao tem mais azitromicina 500mg', 'Azitromicina 500mg', 'Nao tem mais'],
+    ['Miauby terminou prednisona 20mg', 'Prednisona 20mg', 'Terminou'],
+    ['Miauby precisa comprar losartana 50mg', 'Losartana 50mg', ''],
+    ['Miauby precisamos comprar omeprazol 20mg', 'Omeprazol 20mg', ''],
+    ['Miauby coloca omeprazol 20mg no falteiro', 'Omeprazol 20mg', ''],
+    ['Miauby adiciona no falteiro loratadina 10mg', 'Loratadina 10mg', ''],
+    ['Miauby joga cetirizina 10mg no falteiro', 'Cetirizina 10mg', ''],
+    ['Miauby amoxicilina 500mg esta em falta', 'Amoxicilina 500mg', 'Esta em falta'],
+    ['Miauby o estoque de losartana acabou', 'Losartana', 'Acabou'],
   ];
 
-  for (const [message, product] of cases) {
+  for (const [message, product, category] of cases) {
     const parsed = parse(message);
     assert.equal(parsed?.product, product, message);
-    assert.equal(parsed?.category, '', message);
+    assert.equal(parsed?.category, category, message);
   }
 });
 
 test('entende ordem natural e resolve somente categorias cadastradas', () => {
   const cases = [
     ['Miauby falteiro dipirona 500mg popular', 'Dipirona 500mg', 'Popular'],
-    ['Miauby acabou amoxicilina 500mg urgente popular', 'Amoxicilina 500mg', 'Urgente Popular'],
-    ['Miauby acabou amoxicilina 500mg popular urgente', 'Amoxicilina 500mg', 'Urgente Popular'],
+    ['Miauby acabou amoxicilina 500mg urgente popular', 'Amoxicilina 500mg', 'Urgente Popular | Acabou'],
+    ['Miauby acabou amoxicilina 500mg popular urgente', 'Amoxicilina 500mg', 'Urgente Popular | Acabou'],
     ['Miauby coloca losartana 50mg como urgente no falteiro', 'Losartana 50mg', 'Urgente'],
-    ['Miauby losartana 50mg acabou, urgente', 'Losartana 50mg', 'Urgente'],
-    ['Miauby estamos sem dipirona 500mg, coloca popular', 'Dipirona 500mg', 'Popular'],
+    ['Miauby losartana 50mg acabou, urgente', 'Losartana 50mg', 'Urgente | Acabou'],
+    ['Miauby estamos sem dipirona 500mg, coloca popular', 'Dipirona 500mg', 'Popular | Estamos sem'],
     ['Miauby preciso urgente de amoxicilina 500mg', 'Amoxicilina 500mg', 'Urgente'],
     ['Miauby coloca dipirona 500mg como falta no falteiro', 'Dipirona 500mg', 'Falta'],
     ['Miauby falta omeprazol 20mg encomenda', 'Omeprazol 20mg', 'Encomenda'],
@@ -137,8 +137,8 @@ test('resolve categoria composta em qualquer posicao sem contaminar o produto', 
 test('prefere a categoria real mais especifica e aceita ordem, acento e pontuacao', () => {
   const cases = [
     ['Miauby urgente falta cotar metformina 850 falta', 'Urgente Falta Cotar'],
-    ['Miauby urgente falta cotar metformina 850 acabou', 'Urgente Falta Cotar'],
-    ['Miauby urgente falta cotar acabou metformina 850', 'Urgente Falta Cotar'],
+    ['Miauby urgente falta cotar metformina 850 acabou', 'Urgente Falta Cotar | Acabou'],
+    ['Miauby urgente falta cotar acabou metformina 850', 'Urgente Falta Cotar | Acabou'],
     ['MIAUBY, COTAR; URGENTE FALTA metformina 850', 'Urgente Falta Cotar'],
     ['Miauby popular urgencia metformina 850 falta', 'Urgente Popular'],
   ];
@@ -158,9 +158,9 @@ test('interpreta categorias por conceitos e preserva produto e apresentacao fora
     ['Miauby popular metformina falta 850 urgente', 'Metformina 850', 'Urgente Popular'],
     ['Miauby belfaren cp urgente falta cotar', 'Belfaren cp', 'Urgente Falta Cotar'],
     ['Miauby urgente belfaren falta cotar cp', 'Belfaren cp', 'Urgente Falta Cotar'],
-    ['Miauby belfaren precisa cotar urgente porque acabou', 'Belfaren', 'Urgente Falta Cotar'],
-    ['Miauby acabou bepantol urgente', 'Bepantol', 'Urgente'],
-    ['Miauby bepantol acabou urgente', 'Bepantol', 'Urgente'],
+    ['Miauby belfaren precisa cotar urgente porque acabou', 'Belfaren', 'Urgente Falta Cotar | Acabou'],
+    ['Miauby acabou bepantol urgente', 'Bepantol', 'Urgente | Acabou'],
+    ['Miauby bepantol acabou urgente', 'Bepantol', 'Urgente | Acabou'],
     ['Miauby losartana 50mg falta', 'Losartana 50mg', ''],
     ['Miauby falta losartana 50mg', 'Losartana 50mg', ''],
   ];
@@ -176,10 +176,10 @@ test('interpreta categorias por conceitos e preserva produto e apresentacao fora
 test('entende aliases de categoria sem gravar linguagem natural no produto', () => {
   const cases = [
     ['Miauby belfaren cp urgencia faltando cotacao', 'Belfaren cp', 'Urgente Falta Cotar'],
-    ['Miauby belfaren precisa cotar urgente porque acabou', 'Belfaren', 'Urgente Falta Cotar'],
-    ['Miauby linha popular dipirona 500 mg acabou', 'Dipirona 500 mg', 'Popular'],
+    ['Miauby belfaren precisa cotar urgente porque acabou', 'Belfaren', 'Urgente Falta Cotar | Acabou'],
+    ['Miauby linha popular dipirona 500 mg acabou', 'Dipirona 500 mg', 'Popular | Acabou'],
     ['Miauby com urgencia belfaren cp precisa cotar porque faltou', 'Belfaren cp', 'Urgente Falta Cotar'],
-    ['Miauby prioridade belfaren cp para cotar porque acabou', 'Belfaren cp', 'Urgente Falta Cotar'],
+    ['Miauby prioridade belfaren cp para cotar porque acabou', 'Belfaren cp', 'Urgente Falta Cotar | Acabou'],
   ];
 
   for (const [message, product, category] of cases) {
@@ -192,17 +192,17 @@ test('entende aliases de categoria sem gravar linguagem natural no produto', () 
 
 test('entende necessidade de reposicao como intencao de Falteiro', () => {
   const cases = [
-    ['Miauby precisa repor losartana 50mg', 'Losartana 50mg'],
-    ['Miauby reposicao de dipirona 500mg', 'Dipirona 500mg'],
-    ['Miauby comprar omeprazol 20mg', 'Omeprazol 20mg'],
-    ['Miauby losartana 50mg esta acabando', 'Losartana 50mg'],
-    ['Miauby nao temos amoxicilina 500mg', 'Amoxicilina 500mg'],
+    ['Miauby precisa repor losartana 50mg', 'Losartana 50mg', ''],
+    ['Miauby reposicao de dipirona 500mg', 'Dipirona 500mg', ''],
+    ['Miauby comprar omeprazol 20mg', 'Omeprazol 20mg', ''],
+    ['Miauby losartana 50mg esta acabando', 'Losartana 50mg', 'Esta acabando'],
+    ['Miauby nao temos amoxicilina 500mg', 'Amoxicilina 500mg', 'Nao temos'],
   ];
 
-  for (const [message, product] of cases) {
+  for (const [message, product, category] of cases) {
     const parsed = parse(message);
     assert.equal(parsed?.product, product, message);
-    assert.equal(parsed?.category, '', message);
+    assert.equal(parsed?.category, category, message);
     assert.equal(parsed?.error, '', message);
   }
 });
@@ -245,6 +245,111 @@ test('nao registra frases ambiguas ou sem relacao clara com o Falteiro', () => {
   assert.equal(parse('Miauby estamos sem internet'), null);
   assert.equal(parse('Miauby ficou sem energia'), null);
   assert.equal(parse('Miauby nao tem mais tempo'), null);
+});
+
+test('grava somente Produto e Categoria preservando todo o contexto util', () => {
+  const cases = [
+    [
+      'Miauby falta losartana 50 urgente comprar 5 caixas amanha',
+      'Losartana 50',
+      'Urgente | Comprar 5 caixas | Amanha',
+    ],
+    [
+      'Miauby losartana 50 esta acabando urgente comprar 5 caixas amanha',
+      'Losartana 50',
+      'Urgente | Esta acabando | Comprar 5 caixas | Amanha',
+    ],
+    [
+      'Miauby losartana 50 urgente popular esta acabando comprar 10',
+      'Losartana 50',
+      'Urgente Popular | Esta acabando | Comprar 10',
+    ],
+    [
+      'Miauby amanha ate 8 reais comprar 5 caixas urgente losartana 50 EMS porque esta acabando e vende muito',
+      'Losartana 50 EMS',
+      'Urgente | Esta acabando | Vende muito | Comprar 5 caixas | Amanha | Ate R$ 8',
+    ],
+  ];
+
+  for (const [message, product, category] of cases) {
+    const parsed = parse(message);
+    assert.equal(parsed?.product, product, message);
+    assert.equal(parsed?.category, category, message);
+    assert.equal(parsed?.error, '', message);
+  }
+});
+
+test('diferencia apresentacao do produto da quantidade a comprar em qualquer setor', () => {
+  const cases = [
+    ['Miauby falta metformina 850mg 30cp comprar 5 caixas', 'Metformina 850mg 30cp', 'Comprar 5 caixas'],
+    ['Miauby falta dipirona gotas 20ml comprar 3 frascos', 'Dipirona gotas 20ml', 'Comprar 3 frascos'],
+    ['Miauby falta Bepantol Derma 30g comprar 2', 'Bepantol Derma 30g', 'Comprar 2'],
+    ['Miauby falta fralda Pampers Confort Sec G 36 unidades comprar 4 pacotes', 'Fralda Pampers Confort Sec G 36 unidades', 'Comprar 4 pacotes'],
+    ['Miauby falta nebulizador G-Tech urgente', 'Nebulizador G-Tech', 'Urgente'],
+    ['Miauby falta protetor solar Nivea FPS 60 200ml comprar 2', 'Protetor solar Nivea FPS 60 200ml', 'Comprar 2'],
+  ];
+
+  for (const [message, product, category] of cases) {
+    const parsed = parse(message);
+    assert.equal(parsed?.product, product, message);
+    assert.equal(parsed?.category, category, message);
+    assert.equal(parsed?.error, '', message);
+  }
+});
+
+test('preserva estado atual estoque prazo preco marca e observacoes na Categoria', () => {
+  const cases = [
+    ['Miauby losartana 50 acabou urgente', 'Losartana 50', 'Urgente | Acabou'],
+    ['Miauby omeprazol 20 so temos 2 caixas urgente', 'Omeprazol 20', 'Urgente | So temos 2 caixas'],
+    ['MIAUBY omeprazol 20 SO TEM 2 CAIXAS urgente', 'Omeprazol 20', 'Urgente | So tem 2 caixas'],
+    ['Miauby omeprazol 20 tem meia caixa', 'Omeprazol 20', 'Tem meia caixa'],
+    ['Miauby omeprazol 20 falta comprar 10 se estiver ate 4 reais', 'Omeprazol 20', 'Comprar 10 | Ate R$ 4'],
+    ['Miauby falta losartana 50 se tiver EMS melhor', 'Losartana 50', 'Preferir EMS'],
+    ['Miauby falta losartana 50 EMS', 'Losartana 50 EMS', ''],
+    ['Miauby falta losartana 50 somente EMS', 'Losartana 50', 'Somente EMS'],
+    ['Miauby falta losartana 50 qualquer laboratorio', 'Losartana 50', 'Qualquer laboratorio'],
+    ['Miauby falta bismujet muita gente esta procurando urgente', 'Bismujet', 'Urgente | Muita gente esta procurando'],
+    ['Miauby falta losartana 50 porque vende muito pega 5 caixas amanha', 'Losartana 50', 'Vende muito | Pegar 5 caixas | Amanha'],
+    ['Miauby falta dipirona 500mg nao pegar validade curta', 'Dipirona 500mg', 'Nao pegar validade curta'],
+    ['Miauby falta dipirona 500mg nao substituir', 'Dipirona 500mg', 'Nao substituir'],
+    ['Miauby falta dipirona 500mg pegar bastante', 'Dipirona 500mg', 'Pegar bastante'],
+    ['Miauby falta dipirona 500mg nao precisa muitas', 'Dipirona 500mg', 'Nao precisa muitas'],
+    ['Miauby falta dipirona 500mg comprar se tiver promocao', 'Dipirona 500mg', 'Comprar se tiver promocao'],
+    ['Miauby falta dipirona 500mg cliente reclama dessa marca', 'Dipirona 500mg', 'Cliente reclama dessa marca'],
+  ];
+
+  for (const [message, product, category] of cases) {
+    const parsed = parse(message);
+    assert.equal(parsed?.product, product, message);
+    assert.equal(parsed?.category, category, message);
+    assert.equal(parsed?.error, '', message);
+  }
+});
+
+test('diferencia demanda geral de reserva para pessoa especifica', () => {
+  assert.deepEqual(parse('Miauby tres clientes perguntaram por bismujet e nao temos'), {
+    matched: true,
+    trigger: 'sem_estoque',
+    product: 'Bismujet',
+    category: 'Muita procura | Nao temos',
+    error: '',
+  });
+
+  assert.equal(parse('Miauby encomenda bismujet para Maria'), null);
+  assert.equal(parse('Miauby Maria pediu bismujet porque acabou'), null);
+});
+
+test('bloqueia negacao da acao sem perder uma restricao negativa util', () => {
+  assert.equal(parse('Miauby losartana nao acabou'), null);
+  assert.equal(parse('Miauby nao coloca dipirona no falteiro'), null);
+
+  assert.deepEqual(parse('Miauby metformina esta acabando mas nao e urgente'), {
+    matched: true,
+    trigger: 'acabando',
+    product: 'Metformina',
+    category: 'Esta acabando | Nao urgente',
+    error: '',
+  });
 });
 
 test('monta confirmacao curta sem perder a prioridade', () => {

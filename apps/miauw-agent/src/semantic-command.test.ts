@@ -327,6 +327,51 @@ test('extrai quantidade natural e data relativa como contexto', () => {
   assert.ok(result.entities.some((entity) => entity.type === 'date' && entity.normalized === 'amanha'));
 });
 
+test('preserva contexto rico do Falteiro na mensagem canonica dos dois canais', () => {
+  for (const channel of ['internal', 'whatsapp'] as const) {
+    const result = interpretSemanticCommand(
+      'Miauby amanha ate 8 reais comprar 5 caixas urgente losartana 50 EMS porque esta acabando e vende muito',
+      { channel },
+    );
+    assert.equal(result.status, 'resolved', channel);
+    assert.equal(result.intent, 'registrar_falteiro', channel);
+    assert.match(result.canonical_message, /^falta\b/i, channel);
+    assert.match(result.canonical_message, /esta acabando/i, channel);
+    assert.match(result.canonical_message, /vende muito/i, channel);
+    assert.match(result.canonical_message, /comprar 5 caixas/i, channel);
+    assert.match(result.canonical_message, /amanha/i, channel);
+    assert.match(result.canonical_message, /ate 8 reais/i, channel);
+  }
+});
+
+test('entende estoque baixo e demanda geral sem transformar em Encomenda', () => {
+  for (const message of [
+    'Miauby losartana 50 zerou',
+    'Miauby omeprazol 20 estoque baixo',
+    'Miauby dipirona 500mg so tem 2 caixas',
+    'Miauby omeprazol 20 tem meia caixa',
+    'Miauby protetor Nivea vai acabar',
+    'Miauby tres clientes perguntaram por bismujet e nao temos',
+  ]) {
+    const result = resolved(message);
+    assert.equal(result.status, 'resolved', message);
+    assert.equal(result.intent, 'registrar_falteiro', message);
+  }
+
+  assert.equal(resolved('Miauby Maria pediu bismujet porque acabou').intent, 'criar_encomenda_cotacao');
+});
+
+test('nega somente a acao do Falteiro e preserva restricao negativa contextual', () => {
+  assert.equal(resolved('Miauby losartana nao acabou').status, 'blocked');
+  assert.equal(resolved('Miauby nao coloca dipirona no falteiro').status, 'blocked');
+
+  const contextual = resolved('Miauby metformina esta acabando mas nao e urgente');
+  assert.equal(contextual.status, 'resolved');
+  assert.equal(contextual.intent, 'registrar_falteiro');
+  assert.match(contextual.canonical_message, /nao e urgente/i);
+  assert.match(contextual.canonical_message, /esta acabando/i);
+});
+
 test('normaliza caixa, acentos e valores brasileiros sem perder o dado original', () => {
   const result = resolved('MÍÁÚBY SÁNGRIA 1.500,20 PARA MARIA');
   assert.equal(result.status, 'resolved');
