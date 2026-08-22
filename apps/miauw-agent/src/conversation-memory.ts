@@ -100,8 +100,9 @@ const CONFIRM_PATTERN = /^(?:sim|s|ss|pode|pode\s+sim|confirmo|confirma|isso|iss
 const REJECT_PATTERN = /^(?:nao|n|deixa|deixa\s+quieto|nao\s+precisa|cancela|esquece|melhor\s+nao)$/u;
 const CANCEL_REFERENCE_PATTERN = /\b(?:cancela|cancelar|remove|remover|exclui|excluir)\b/u;
 const REFERENCE_PATTERN = /\b(?:esse|essa|ele|ela|isso|esse\s+ai|essa\s+ai)\b/u;
-const ENCOMENDA_READ_PATTERN = /\b(?:encomenda|encomendas)\b/u;
-const ENCOMENDA_READ_CUE = /\b(?:qual|quais|lista|listar|mostra|mostrar|ver|veja|consulta|consultar|tem|ha|existe)\b/u;
+const ENCOMENDA_READ_PATTERN = /\b(?:encomendas?|encomendad[oa]s?)\b/u;
+const ENCOMENDA_READ_CUE = /\b(?:qual|quais|lista|listar|mostra|mostrar|ver|veja|consulta|consultar|procura|procurar|busca|buscar|tem|temos|ha|existe|existem)\b|\bme\s+(?:fala|fale|diga)\b/u;
+const ENCOMENDA_WRITE_CUE = /\b(?:criar|cria|crie|fazer|faz|faca|cadastrar|cadastra|cadastre|anotar|anota|anote|adicionar|adiciona|adicione|registrar|registra|registre|lancar|lanca|lance|colocar|coloca|coloque|inserir|insere|insira|botar|bota|bote|encomendar|reservar|reserva|reserve|guardar|guarda|guarde|separar|separa|separe)\b/u;
 
 export function emptyConversationState(
   identity: ConversationIdentity,
@@ -152,7 +153,7 @@ export function resolveConversationMessage(
   const wake = hasWakeWord(original);
   const initialExplicit = explicitInterpretation(original, options.channel);
   const canActivateInternalWithoutWake = identity.channel === 'internal'
-    && (isEncomendaRead(normalized) || initialExplicit.status !== 'none');
+    && (isEncomendaRead(normalized, original) || initialExplicit.status !== 'none');
   const stateMatches = stateBelongsTo(inputState, identity);
   const expired = Boolean(stateMatches && isExpired(inputState?.expiresAt, now));
   let state = stateMatches && !expired
@@ -206,10 +207,23 @@ export function resolveConversationMessage(
     );
   }
 
-  if (isEncomendaRead(normalized)) {
+  if (isEncomendaRead(normalized, original)) {
     state = touch({ ...state, currentTopic: 'encomendas', lastIntent: 'consultar_encomendas' }, now, conversationTtl);
-    const order = /\b(?:recente|recentes|nova|novas|ultima|ultimas)\b/.test(normalized) ? ' recentes' : '';
-    return resolution('route', 'explicit_encomenda_read', `Miauby listar encomendas${order}`, '', state);
+    return resolution('route', 'explicit_encomenda_read', original, '', state);
+  }
+
+  const contextualEncomendaLookup = state.currentTopic === 'encomendas' && isEncomendaContextLookup(normalized, original);
+  const contextualEncomenda = contextualEncomendaLookup
+    ? selectRecentEntity(normalized, state.recentEntities)
+    : null;
+  if (contextualEncomenda) {
+    state = touch({ ...state, lastCreatedEntity: contextualEncomenda, pendingSelection: null }, now, conversationTtl);
+    return resolution('selected', 'contextual_encomenda_selected', original, contextualEncomenda.label, state, contextualEncomenda);
+  }
+  if (contextualEncomendaLookup) {
+    const rewritten = `Miauby mostra encomenda ${original}`;
+    state = touch({ ...state, currentTopic: 'encomendas', lastIntent: 'consultar_encomendas' }, now, conversationTtl);
+    return resolution('route', 'contextual_encomenda_read', rewritten, '', state);
   }
 
   const explicit = initialExplicit;
@@ -337,7 +351,7 @@ function selectRecentEntity(normalized: string, entities: ConversationEntity[]):
   const contentTerms = normalized
     .replace(CANCEL_REFERENCE_PATTERN, ' ')
     .replace(REFERENCE_PATTERN, ' ')
-    .replace(/\b(?:qual|quais|e|a|o|da|de|do|pra|para)\b/g, ' ')
+    .replace(/\b(?:qual|quais|quem|tem|temos|existe|existem|pediu|pediram|dados|informacoes|telefone|fone|whatsapp|endereco|status|situacao|e|a|o|da|de|do|pra|para)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .split(' ')
@@ -375,9 +389,22 @@ function continuationProduct(message: string): string {
     .trim();
 }
 
-function isEncomendaRead(normalized: string): boolean {
-  return ENCOMENDA_READ_PATTERN.test(normalized) && ENCOMENDA_READ_CUE.test(normalized)
-    && !/\b(?:cria|criar|nova|novo|adiciona|registrar|encomendar)\b/.test(normalized);
+function isEncomendaRead(normalized: string, original = ''): boolean {
+  if (!ENCOMENDA_READ_PATTERN.test(normalized) || ENCOMENDA_WRITE_CUE.test(normalized)) return false;
+  const withoutWake = normalized.replace(/^(?:miauby|miauw)\s+/u, '');
+  if (/\b(?:nova|novo)\s+encomenda\b/u.test(withoutWake)) return false;
+  const prepositionalRead = /^encomenda\s+(?:de|da|do)\b/u.test(withoutWake);
+  if (/^encomenda\s+\S+/u.test(withoutWake) && !ENCOMENDA_READ_CUE.test(withoutWake) && !prepositionalRead) return false;
+  if (ENCOMENDA_READ_CUE.test(normalized)) return true;
+  if (/\?$/.test(String(original || '').trim())) return true;
+  if (prepositionalRead || /\bpedidos?\b.*\bencomendad[oa]s?\b/u.test(withoutWake)) return true;
+  return /^(?:(?:miauby|miauw)\s+)?encomendas?$/u.test(normalized);
+}
+
+function isEncomendaContextLookup(normalized: string, original = ''): boolean {
+  if (ENCOMENDA_WRITE_CUE.test(normalized)) return false;
+  return /\bquem\s+pediu\b|\b(?:qual|quais|tem|temos|existe|existem|telefone|fone|whatsapp|endereco|status|situacao|dados|informacoes)\b/u.test(normalized)
+    || /\?$/.test(String(original || '').trim());
 }
 
 function validPendingAction(value: ConversationPendingAction | null, now: Date): ConversationPendingAction | null {

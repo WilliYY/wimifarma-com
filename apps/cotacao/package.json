@@ -7,7 +7,7 @@
     "start": "node src/server.js",
     "check": "node --check src/server.js && node --check public/app.js",
     "test:falteiro": "node --test src/falteiro-command.test.js",
-    "test:encomendas": "node scripts/test-encomendas-extraction.mjs",
+    "test:encomendas": "node scripts/test-encomendas-extraction.mjs && node --test src/encomenda-query.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build:ts": "tsc -p tsconfig.build.json"
   },

@@ -77,6 +77,9 @@ Novos comandos devem adicionar uma especificacao ao registro central e testes de
 ### Encomenda
 
 - A intencao `criar_encomenda_cotacao` reconhece termos de Encomenda em qualquer posicao, incluindo pedido/reserva/separacao em linguagem natural, e preserva os comandos historicos de consulta.
+- A intencao de leitura `consultar_encomendas` tem precedencia quando a frase traz pergunta ou verbo de consulta, preserva o texto original e nunca entra na confirmacao de escrita. Frases de criacao continuam no fluxo forte existente; ambiguidade nao executa nenhuma das duas.
+- Interno e WhatsApp enviam a mesma frase ao `GET /cotacao/api/internal/encomendas?q=...`. `apps/cotacao/src/encomenda-query.js` centraliza filtros por produto, cliente, telefone, categoria/contexto, status e historico; os canais apenas apresentam o contrato devolvido.
+- Memoria conversacional guarda `rowId` e contexto curto para referencias como `e qual e da Maria?`, mas sempre consulta novamente a Cotacao antes de responder. Texto memorizado nunca e fonte de estado atual.
 - O parser PHP compartilhado pelos dois canais analisa a mensagem inteira e separa `produto`, `responsavel` (cliente), `telefone`, `quantidade`, `endereco`, `tipo_entrega`, `data_encomenda`, `horario`, `prioridade`, `referencia` e `observacao_livre`; dosagem, marca obrigatoria e apresentacao ficam no produto, enquanto preferencia de marca e quantidade do pedido ficam no contexto.
 - Cliente e telefone sao opcionais. Produto e obrigatorio, e ambiguidade real pede somente esse dado.
 - No WhatsApp, quando apenas o produto estiver faltando, o bridge preserva temporariamente cliente, telefone e contexto da Encomenda. A proxima resposta pode informar somente o produto; `cancelar` encerra a pendencia e um novo comando Miauby substitui o contexto antigo.

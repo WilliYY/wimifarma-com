@@ -4763,7 +4763,13 @@ async function maybeHandleStructuredConversation(
           },
         };
       }
-      const summary = await fetchCotacaoEncomendasSummary({ action: 'list', order: 'oldest', raw: 'structured-reference' }, 100);
+      const summary = await fetchCotacaoEncomendasSummary({
+        action: 'list',
+        order: 'oldest',
+        raw: 'structured-reference',
+        query: 'mostra todas as encomendas',
+        rowId: decision.selectedEntity.id,
+      }, 1);
       const item = summary.items.find((candidate) => candidate.rowId === decision.selectedEntity?.id);
       return item
         ? {
@@ -14612,6 +14618,8 @@ async function fetchCotacaoEncomendasSummary(command: CotacaoEncomendasCommand, 
     order: command.order,
     limit: String(limit),
   });
+  if (safeText(command.query, 500)) params.set('q', safeText(command.query, 500));
+  if (safeText(command.rowId, 80)) params.set('row_id', safeText(command.rowId, 80));
   const response = await fetch(`${COTACAO_INTERNAL_BASE_URL}/api/internal/encomendas?${params.toString()}`, {
     headers: {
       ...internalPhpJsonHeaders(COTACAO_INTERNAL_TOKEN),
@@ -14631,6 +14639,16 @@ async function fetchCotacaoEncomendasSummary(command: CotacaoEncomendasCommand, 
     total: Number(data.total || items.length),
     returned: Number(data.returned || items.length),
     order: safeText(data.order, 20) === 'newest' ? 'newest' : 'oldest',
+    filters: isRecord(data.filters) ? {
+      label: safeText(data.filters.label, 180),
+      scope: safeText(data.filters.scope, 40),
+      status: safeText(data.filters.status, 40),
+      requestedField: safeText(data.filters.requestedField, 40),
+      phone: safeText(data.filters.phone, 40),
+      terms: Array.isArray(data.filters.terms)
+        ? data.filters.terms.map((term) => safeText(term, 80)).filter(Boolean).slice(0, 20)
+        : [],
+    } : undefined,
   };
 }
 
@@ -14650,7 +14668,7 @@ async function rememberCotacaoEncomendasForConversation(
           index: offset + 1,
           type: 'encomenda',
           id: safeText(item.rowId, 160),
-          label: [item.produto, item.observacaoEncomenda || item.depoisEncomenda || item.textoCompleto]
+          label: [item.produto, item.cliente || item.detalhes || item.categoria || item.observacaoEncomenda || item.depoisEncomenda || item.textoCompleto]
             .map((value) => safeText(value, 180))
             .filter(Boolean)
             .join(' - '),
@@ -14681,6 +14699,13 @@ function cotacaoEncomendaFromRecord(item: JsonRecord): CotacaoEncomendaItem {
     ean: safeText(item.ean, 80),
     produto: safeText(item.produto, 160),
     quantidade: safeText(item.quantidade, 80),
+    categoria: safeText(item.categoria, 900),
+    detalhes: safeText(item.detalhes, 900),
+    cliente: safeText(item.cliente, 160),
+    telefone: safeText(item.telefone, 80),
+    endereco: safeText(item.endereco, 240),
+    previsao: safeText(item.previsao, 180),
+    status: safeText(item.status, 60),
     antesEncomenda: safeText(item.antesEncomenda, 220),
     depoisEncomenda: safeText(item.depoisEncomenda, 220),
     observacaoEncomenda: safeText(item.observacaoEncomenda, 260),

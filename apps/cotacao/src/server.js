@@ -17,6 +17,11 @@ import {
   hasEncomendaWord
 } from './encomendas.js';
 import {
+  decorateEncomendaReadItem,
+  filterEncomendaReadItems,
+  parseEncomendaReadQuery
+} from './encomenda-query.js';
+import {
   MAX_FALTEIRO_BATCH_ITEMS,
   formatFalteiroBatchConfirmation,
   formatFalteiroConfirmation,
@@ -3165,7 +3170,25 @@ app.get(`${BASE_PATH}/api/internal/encomenda-reminders/status`, requireInternalT
 app.get(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRoute(async (req, res) => {
   const quote = await getOrCreateDefaultQuote();
   const limit = Math.max(1, Math.min(Number.parseInt(String(req.query.limit || '30'), 10) || 30, 100));
-  const orderParam = normalizeInternalSearch(req.query.order || req.query.ordem || 'oldest');
+  const queryText = normalizeInternalText(req.query.q || req.query.query || '', 500);
+  const requestedRowId = normalizeInternalText(req.query.row_id || '', 80);
+  if (requestedRowId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedRowId)) {
+    return res.status(400).json({
+      ok: false,
+      error: 'Referencia de encomenda invalida.',
+      code: 'invalid_encomenda_row_id'
+    });
+  }
+  const parsedQuery = parseEncomendaReadQuery(queryText || 'encomendas?');
+  const query = parsedQuery && requestedRowId ? { ...parsedQuery, rowId: requestedRowId } : parsedQuery;
+  if (!query) {
+    return res.status(400).json({
+      ok: false,
+      error: 'Consulta de encomenda nao reconhecida.',
+      code: 'invalid_encomenda_read_query'
+    });
+  }
+  const orderParam = normalizeInternalSearch(req.query.order || req.query.ordem || query.order || 'oldest');
   const order = ['newest', 'recent', 'recentes', 'desc', 'nova', 'novas'].includes(orderParam) ? 'newest' : 'oldest';
   const result = await pgPool.query(
     `SELECT r.id,
@@ -3201,6 +3224,8 @@ app.get(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRoute
   );
 
   const items = [];
+  const currentRowIds = new Set();
+  const currentReminderIds = new Set();
   let itemsWithoutDetectedAt = 0;
   for (const row of result.rows) {
     const values = row.values || {};
@@ -3211,7 +3236,7 @@ app.get(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRoute
     const createdAt = encomendaCreatedAtForItem(row);
     if (!createdAt.exact) itemsWithoutDetectedAt += 1;
     const createdAtIso = isoDateOrNull(createdAt.value);
-    items.push({
+    const item = decorateEncomendaReadItem({
       rowId: String(row.id || ''),
       line: Number(row.position || 0),
       position: Number(row.position || 0),
@@ -3241,15 +3266,93 @@ app.get(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRoute
         resolvedAt: isoDateOrNull(row.resolved_at),
         canceledAt: isoDateOrNull(row.canceled_at)
       } : null,
+      historical: false,
       _sortAt: createdAtIso ? new Date(createdAtIso).getTime() : Number.MAX_SAFE_INTEGER
     });
+    items.push(item);
+    currentRowIds.add(item.rowId);
+    if (item.reminder?.id) currentReminderIds.add(item.reminder.id);
   }
 
-  items.sort((left, right) => {
+  let historicalItemsLoaded = 0;
+  if (query.scope === 'history') {
+    const historicalResult = await pgPool.query(
+      `SELECT er.id AS reminder_id,
+              er.row_id,
+              er.status AS reminder_status,
+              er.produto,
+              er.quantidade,
+              er.categoria,
+              er.original_text,
+              er.row_values,
+              er.detected_at,
+              er.remind_at,
+              er.sent_at,
+              er.resolved_at,
+              er.canceled_at,
+              r.position,
+              r.created_at AS row_created_at,
+              r.updated_at AS row_updated_at
+         FROM cotacao_v2_encomenda_reminders er
+         LEFT JOIN cotacao_v2_rows r
+           ON r.quote_id = er.quote_id
+          AND r.id = er.row_id
+        WHERE er.quote_id = $1
+        ORDER BY er.detected_at ASC, er.id ASC`,
+      [quote.id]
+    );
+
+    for (const row of historicalResult.rows) {
+      const reminderId = String(row.reminder_id || '');
+      const rowId = String(row.row_id || '');
+      if (currentReminderIds.has(reminderId) || currentRowIds.has(rowId)) continue;
+      const values = row.row_values || {};
+      const context = encomendaContextFromValues(values);
+      const parts = encomendaTextParts(values);
+      const createdAtIso = isoDateOrNull(row.detected_at || row.row_updated_at || row.row_created_at);
+      items.push(decorateEncomendaReadItem({
+        rowId,
+        line: Number(row.position || 0),
+        position: Number(row.position || 0),
+        ean: context.rowValues.ean,
+        produto: context.produto || String(row.produto || ''),
+        quantidade: context.quantidade || String(row.quantidade || ''),
+        categoria: context.categoria || String(row.categoria || ''),
+        textoCompleto: context.originalText || String(row.original_text || ''),
+        textoEncomenda: parts.text,
+        antesEncomenda: parts.before,
+        termoEncomenda: parts.term,
+        depoisEncomenda: parts.after,
+        observacaoEncomenda: context.observacaoEncomenda || parts.observation || '',
+        campoEncomenda: parts.sourceField,
+        createdAt: createdAtIso,
+        createdAtBr: row.detected_at ? formatBrDateTime(row.detected_at) : '',
+        createdAtSource: 'cotacao_v2_encomenda_reminders.detected_at',
+        createdAtExact: Boolean(row.detected_at),
+        rowCreatedAt: isoDateOrNull(row.row_created_at),
+        rowUpdatedAt: isoDateOrNull(row.row_updated_at),
+        reminder: {
+          id: reminderId,
+          status: String(row.reminder_status || ''),
+          detectedAt: isoDateOrNull(row.detected_at),
+          remindAt: isoDateOrNull(row.remind_at),
+          sentAt: isoDateOrNull(row.sent_at),
+          resolvedAt: isoDateOrNull(row.resolved_at),
+          canceledAt: isoDateOrNull(row.canceled_at)
+        },
+        historical: true,
+        _sortAt: createdAtIso ? new Date(createdAtIso).getTime() : Number.MAX_SAFE_INTEGER
+      }));
+      historicalItemsLoaded += 1;
+    }
+  }
+
+  const filteredItems = filterEncomendaReadItems(items, query);
+  filteredItems.sort((left, right) => {
     const time = order === 'newest' ? right._sortAt - left._sortAt : left._sortAt - right._sortAt;
     return time || left.position - right.position || left.rowId.localeCompare(right.rowId);
   });
-  const limitedItems = items.slice(0, limit).map(({ _sortAt, ...item }) => item);
+  const limitedItems = filteredItems.slice(0, limit).map(({ _sortAt, ...item }) => item);
 
   return res.json({
     ok: true,
@@ -3259,10 +3362,20 @@ app.get(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRoute
     quoteName: quote.name,
     order,
     limit,
-    total: items.length,
+    total: filteredItems.length,
     returned: limitedItems.length,
+    filters: {
+      scope: query.scope,
+      status: query.status,
+      requestedField: query.requestedField,
+      phone: query.phone,
+      terms: query.terms,
+      label: query.label,
+      rowId: requestedRowId
+    },
     diagnostics: {
       itemsWithoutDetectedAt,
+      historicalItemsLoaded,
       dateFallbackUsed: itemsWithoutDetectedAt > 0,
       fallbackMeaning: itemsWithoutDetectedAt > 0
         ? 'Algumas linhas nao tinham detected_at em cotacao_v2_encomenda_reminders; usei updated_at/created_at da linha como fallback.'

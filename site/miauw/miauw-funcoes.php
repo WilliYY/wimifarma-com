@@ -5209,6 +5209,54 @@ function miauw_structured_conversation_direct_reply(array $result): ?array
     );
 }
 
+function miauw_structured_encomendas_text(array $response, array $items, bool $selectedOnly = false): string
+{
+    $filters = is_array($response['filters'] ?? null) ? $response['filters'] : array();
+    $label = trim((string) ($filters['label'] ?? ''));
+    $scope = strtolower(trim((string) ($filters['scope'] ?? 'active')));
+    if (!$items) {
+        if ($label !== '') {
+            $where = $scope === 'history' ? 'no historico da Cotacao' : 'entre as encomendas ativas da Cotacao';
+            return 'Nao encontrei encomenda para "' . $label . '" ' . $where . '.';
+        }
+        return $scope === 'history'
+            ? 'Nenhuma encomenda encontrada no historico da Cotacao.'
+            : 'Nenhuma encomenda ativa na Cotacao.';
+    }
+
+    $total = max(0, (int) ($response['total'] ?? count($items)));
+    $heading = $selectedOnly
+        ? 'Encomenda consultada:'
+        : 'Encontrei ' . $total . ' ' . ($total === 1 ? 'encomenda' : 'encomendas') . ' na Cotacao:';
+    $lines = array($heading);
+    foreach ($items as $index => $item) {
+        $product = trim((string) ($item['produto'] ?? ''));
+        $quantity = trim((string) ($item['quantidade'] ?? ''));
+        $title = array_values(array_filter(array($product !== '' ? $product : 'Sem produto', $quantity), static fn (string $value): bool => $value !== ''));
+        $lines[] = ($index + 1) . '. ' . implode(' - ', $title);
+        $fields = array(
+            'EAN' => trim((string) ($item['ean'] ?? '')),
+            'Cliente' => trim((string) ($item['cliente'] ?? '')),
+            'Telefone' => trim((string) ($item['telefone'] ?? '')),
+            'Endereco' => trim((string) ($item['endereco'] ?? '')),
+            'Previsao' => trim((string) ($item['previsao'] ?? '')),
+            'Status' => trim((string) ($item['status'] ?? '')),
+            'Detalhes' => trim((string) ($item['detalhes'] ?? $item['categoria'] ?? $item['observacaoEncomenda'] ?? $item['depoisEncomenda'] ?? '')),
+            'Criada em' => trim((string) ($item['createdAtBr'] ?? '')),
+        );
+        foreach ($fields as $field => $value) {
+            if ($value !== '') {
+                $lines[] = $field . ': ' . $value;
+            }
+        }
+    }
+
+    if (!$selectedOnly && $total > count($items)) {
+        $lines[] = 'Mostrei ' . count($items) . ' de ' . $total . '.';
+    }
+    return implode("\n", $lines);
+}
+
 function miauw_structured_encomendas_reply(
     array $result,
     array $user,
@@ -5235,10 +5283,16 @@ function miauw_structured_encomendas_reply(
         return null;
     }
 
+    $selected = is_array($result['selectedEntity'] ?? null) ? $result['selectedEntity'] : null;
+    $query = is_array($selected) && trim((string) ($selected['id'] ?? '')) !== ''
+        ? 'Miauby mostra todas as encomendas'
+        : trim((string) ($result['message'] ?? 'Miauby mostra as encomendas'));
+    $selectedRowId = is_array($selected) ? trim((string) ($selected['id'] ?? '')) : '';
     try {
         $response = miauw_skill_cotacao_v2_internal_request('GET', '/api/internal/encomendas', array(), array(
-            'order' => 'oldest',
-            'limit' => 100,
+            'q' => $query,
+            'limit' => $selectedRowId !== '' ? 1 : 100,
+            'row_id' => $selectedRowId,
         ));
     } catch (Throwable $error) {
         return array(
@@ -5252,8 +5306,9 @@ function miauw_structured_encomendas_reply(
     }
 
     $items = array_values(array_filter((array) ($response['items'] ?? array()), 'is_array'));
-    $selected = is_array($result['selectedEntity'] ?? null) ? $result['selectedEntity'] : null;
+    $selectedOnly = false;
     if (is_array($selected) && trim((string) ($selected['id'] ?? '')) !== '') {
+        $selectedOnly = true;
         $selectedId = trim((string) $selected['id']);
         $items = array_values(array_filter($items, static function (array $item) use ($selectedId): bool {
             return trim((string) ($item['rowId'] ?? '')) === $selectedId;
@@ -5274,17 +5329,22 @@ function miauw_structured_encomendas_reply(
                 continue;
             }
             $product = trim((string) ($item['produto'] ?? ''));
-            $observation = trim((string) ($item['observacaoEncomenda'] ?? $item['depoisEncomenda'] ?? ''));
+            $customer = trim((string) ($item['cliente'] ?? ''));
+            $observation = trim((string) ($item['detalhes'] ?? $item['categoria'] ?? $item['observacaoEncomenda'] ?? $item['depoisEncomenda'] ?? ''));
             $entities[] = array(
                 'index' => $index + 1,
                 'type' => 'encomenda',
                 'id' => $id,
-                'label' => trim($product . ($observation !== '' ? ' - ' . $observation : '')),
+                'label' => trim($product . ($customer !== '' ? ' - ' . $customer : ($observation !== '' ? ' - ' . $observation : ''))),
                 'metadata' => array(
                     'line' => (int) ($item['line'] ?? 0),
                     'ean' => trim((string) ($item['ean'] ?? '')),
                     'produto' => $product,
                     'quantidade' => trim((string) ($item['quantidade'] ?? '')),
+                    'cliente' => $customer,
+                    'telefone' => trim((string) ($item['telefone'] ?? '')),
+                    'endereco' => trim((string) ($item['endereco'] ?? '')),
+                    'status' => trim((string) ($item['status'] ?? '')),
                     'observacao' => $observation,
                 ),
             );
@@ -5296,24 +5356,7 @@ function miauw_structured_encomendas_reply(
         ), (int) ($user['id'] ?? 0), $conversationId, $traceId);
     }
 
-    if (!$items) {
-        $text = 'Nenhuma encomenda ativa na Cotacao.';
-    } else {
-        $lines = array('Encomendas da Cotacao:');
-        foreach ($items as $index => $item) {
-            $parts = array_filter(array(
-                trim((string) ($item['ean'] ?? '')),
-                trim((string) ($item['produto'] ?? '')),
-                trim((string) ($item['quantidade'] ?? '')),
-            ), static fn (string $value): bool => $value !== '');
-            $lines[] = ($index + 1) . '. ' . implode(' - ', $parts);
-            $observation = trim((string) ($item['observacaoEncomenda'] ?? $item['depoisEncomenda'] ?? ''));
-            if ($observation !== '') {
-                $lines[] = 'Obs: ' . $observation;
-            }
-        }
-        $text = implode("\n", $lines);
-    }
+    $text = miauw_structured_encomendas_text($response, $items, $selectedOnly);
 
     return array(
         'text' => $text,

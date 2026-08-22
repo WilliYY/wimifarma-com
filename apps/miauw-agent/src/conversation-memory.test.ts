@@ -23,6 +23,7 @@ function activeState(): MiaubyConversationState {
 test('ativa a conversa e resolve uma entidade recente pelo nome', () => {
   const first = resolveConversationMessage('Miauby quais encomendas tem?', null, { ...identity, now: NOW });
   assert.equal(first.status, 'route');
+  assert.equal(first.message, 'Miauby quais encomendas tem?');
   assert.equal(first.state.active, true);
   assert.equal(first.state.currentTopic, 'encomendas');
 
@@ -39,6 +40,65 @@ test('ativa a conversa e resolve uma entidade recente pelo nome', () => {
   assert.equal(followUp.status, 'selected');
   assert.equal(followUp.selectedEntity?.id, 'row-1');
   assert.match(followUp.reply, /Losartana 50mg - Maria/i);
+
+  const whoOrdered = resolveConversationMessage('quem pediu essa amitriptilina?', withItems, { ...identity, now: NOW });
+  assert.equal(whoOrdered.selectedEntity?.id, 'row-2');
+
+  const hasLosartana = resolveConversationMessage('tem losartana?', withItems, { ...identity, now: NOW });
+  assert.equal(hasLosartana.selectedEntity?.id, 'row-1');
+
+  const withTwoLosartanas = applyConversationEffect(first.state, {
+    intent: 'consultar_encomendas',
+    topic: 'encomendas',
+    recentEntities: [
+      { index: 1, type: 'encomenda', id: 'row-1', label: 'Losartana 50mg - Maria' },
+      { index: 2, type: 'encomenda', id: 'row-3', label: 'Losartana 100mg - Ana' },
+    ],
+  }, NOW);
+  const filteredFollowUp = resolveConversationMessage('tem losartana?', withTwoLosartanas, { ...identity, now: NOW });
+  assert.equal(filteredFollowUp.status, 'route');
+  assert.equal(filteredFollowUp.reason, 'contextual_encomenda_read');
+  assert.match(filteredFollowUp.message, /encomenda.*losartana/i);
+});
+
+test('preserva filtros e reconhece formas naturais de consultar encomendas', () => {
+  for (const message of [
+    'Miauby qual e o telefone da encomenda de losartana da Maria?',
+    'MIAUBY quais pedidos estao encomendados?',
+    'Miauby o que tem encomendado?',
+    'Miauby quero ver as encomendas',
+    'Miauby encomenda da Maria',
+    'Miauby encomenda de atenolol farmacia popular',
+    'Miauby tem alguma encomenda pendente?',
+  ]) {
+    const result = resolveConversationMessage(message, null, { ...identity, now: NOW });
+    assert.equal(result.status, 'route', `Consulta nao roteada: ${message}`);
+    assert.equal(result.reason, 'explicit_encomenda_read');
+    assert.equal(result.message, message);
+    assert.equal(result.state.lastIntent, 'consultar_encomendas');
+  }
+});
+
+test('entende pedido encomendado sem exigir verbo em posicao fixa', () => {
+  const result = resolveConversationMessage('Miauby pedido encomendado', null, { ...identity, now: NOW });
+  assert.equal(result.reason, 'explicit_encomenda_read');
+});
+
+test('nao roteia criacao de encomenda como leitura', () => {
+  for (const message of [
+    'Miauby encomenda losartana 50mg para Maria',
+    'Miauby encomenda losartana 50mg para Maria?',
+    'Miauby faz uma encomenda de atenolol para Maria',
+    'Miauby nova encomenda de dipirona para Joao',
+    'Miauby cadastra encomenda de dipirona?',
+    'Miauby anota encomenda de losartana',
+    'Miauby coloca losartana na encomenda da Maria',
+  ]) {
+    const result = resolveConversationMessage(message, null, { ...identity, now: NOW });
+    assert.notEqual(result.reason, 'explicit_encomenda_read');
+  }
+  const genericOrders = resolveConversationMessage('Miauby quais pedidos tem?', null, { ...identity, now: NOW });
+  assert.notEqual(genericOrders.reason, 'explicit_encomenda_read');
 });
 
 test('preserva no Interno o comando explicito inicial sem palavra de ativacao', () => {

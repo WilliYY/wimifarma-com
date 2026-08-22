@@ -1,7 +1,78 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { mightBeFalteiroCommand } from './cotacao-command.js';
+import {
+  formatCotacaoEncomendasMessage,
+  mightBeFalteiroCommand,
+  parseCotacaoEncomendasCommand,
+} from './cotacao-command.js';
+
+test('encaminha consultas naturais de encomenda com a frase completa', () => {
+  for (const message of [
+    'Miauby quais encomendas tem ai?',
+    'Miauby tem encomenda?',
+    'MIAUBY mostra as encomendas recentes',
+    'Miauby quais pedidos estao encomendados?',
+    'Miauby o que tem encomendado?',
+    'Miauby quero ver as encomendas',
+    'Miauby encomenda da Maria',
+    'Miauby encomenda de atenolol farmacia popular',
+  ]) {
+    const command = parseCotacaoEncomendasCommand(message);
+    assert.ok(command, `Consulta nao reconhecida: ${message}`);
+    assert.equal(command.query, message.replace(/^Miauby\s+/i, '').replace(/[?!;]+$/g, '').trim());
+  }
+  assert.equal(parseCotacaoEncomendasCommand('Miauby mostra as encomendas recentes')?.order, 'newest');
+});
+
+test('nao confunde criacao de encomenda com consulta', () => {
+  assert.equal(parseCotacaoEncomendasCommand('Miauby encomenda losartana 50mg para Maria'), null);
+  assert.equal(parseCotacaoEncomendasCommand('Miauby encomenda losartana 50mg para Maria?'), null);
+  assert.equal(parseCotacaoEncomendasCommand('Miauby faz uma encomenda de atenolol para Maria'), null);
+  assert.equal(parseCotacaoEncomendasCommand('Miauby nova encomenda de dipirona para Joao'), null);
+  assert.equal(parseCotacaoEncomendasCommand('Miauby cadastra encomenda de dipirona?'), null);
+  assert.equal(parseCotacaoEncomendasCommand('Miauby anota encomenda de losartana'), null);
+  assert.equal(parseCotacaoEncomendasCommand('Miauby coloca losartana na encomenda da Maria'), null);
+  assert.equal(parseCotacaoEncomendasCommand('Miauby quais pedidos tem?'), null);
+});
+
+test('formata consulta com detalhes reais e resposta especifica sem resultado', () => {
+  const text = formatCotacaoEncomendasMessage({
+    items: [{
+      rowId: 'row-1',
+      ean: '',
+      produto: 'Losartana 50mg',
+      quantidade: '2 caixas',
+      categoria: 'Encomenda | Urgente | Maria Silva | (44) 99848-9494 | Rua Curitiba 2222',
+      detalhes: 'Encomenda | Urgente | Maria Silva | (44) 99848-9494 | Rua Curitiba 2222',
+      cliente: 'Maria Silva',
+      telefone: '(44) 99848-9494',
+      endereco: 'Rua Curitiba 2222',
+      status: 'pendente',
+      depoisEncomenda: '',
+      createdAtBr: '22/08/2026 14:30',
+      createdAt: '2026-08-22T17:30:00.000Z',
+    }],
+    total: 1,
+    returned: 1,
+    order: 'oldest',
+    filters: { label: 'losartana', scope: 'active', terms: ['losartana'] },
+  });
+  assert.match(text, /Encontrei 1 encomenda na Cotacao/i);
+  assert.match(text, /Losartana 50mg/);
+  assert.match(text, /Cliente: Maria Silva/);
+  assert.match(text, /Telefone: \(44\) 99848-9494/);
+  assert.match(text, /Endereco: Rua Curitiba 2222/);
+  assert.match(text, /Status: pendente/);
+  assert.match(text, /Detalhes: Encomenda \| Urgente/);
+
+  const empty = formatCotacaoEncomendasMessage({
+    items: [], total: 0, returned: 0, order: 'oldest',
+    filters: { label: 'atenolol', scope: 'active', terms: ['atenolol'] },
+  });
+  assert.match(empty, /atenolol/i);
+  assert.match(empty, /encontrei/i);
+});
 
 test('encaminha candidatos do Falteiro sem diferenciar maiusculas', () => {
   assert.equal(mightBeFalteiroCommand('MIAUBY FALTEIRO losartana'), true);

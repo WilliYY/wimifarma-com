@@ -4,6 +4,8 @@ export type CotacaoEncomendasCommand = {
   action: 'list';
   order: CotacaoEncomendasOrder;
   raw: string;
+  query?: string;
+  rowId?: string;
 };
 
 export type CotacaoEncomendaItem = {
@@ -12,6 +14,13 @@ export type CotacaoEncomendaItem = {
   ean: string;
   produto: string;
   quantidade: string;
+  categoria?: string;
+  detalhes?: string;
+  cliente?: string;
+  telefone?: string;
+  endereco?: string;
+  previsao?: string;
+  status?: string;
   antesEncomenda?: string;
   depoisEncomenda: string;
   observacaoEncomenda?: string;
@@ -26,9 +35,18 @@ export type CotacaoEncomendasSummary = {
   total: number;
   returned: number;
   order: CotacaoEncomendasOrder;
+  filters?: {
+    label?: string;
+    scope?: string;
+    status?: string;
+    requestedField?: string;
+    phone?: string;
+    terms?: string[];
+  };
 };
 
-const WRITE_INTENT_PATTERN = /\b(criar|cria|adicionar|adiciona|registrar|registra|lancar|lançar|colocar|coloca|inserir|insere|nova|novo)\b/;
+const WRITE_INTENT_PATTERN = /\b(criar|cria|crie|fazer|faz|faca|cadastrar|cadastra|cadastre|anotar|anota|anote|adicionar|adiciona|adicione|registrar|registra|registre|lancar|lançar|lanca|colocar|coloca|coloque|inserir|insere|insira|botar|bota|bote|encomendar|reservar|reserva|reserve|guardar|guarda|guarde|separar|separa|separe)\b/;
+const ENCOMENDA_READ_CUE = /\b(?:qual|quais|lista|listar|liste|mostra|mostrar|ver|veja|consulta|consultar|procura|procurar|busca|buscar|tem|temos|ha|existe|existem)\b|\bme\s+(?:fala|fale|diga)\b/;
 const RECENT_PATTERN = /\b(recentes?|novas?|ultimas?|últimas?|ultima|última|mais recentes?|mais novas?)\b/;
 const OLD_PATTERN = /\b(antigas?|velhas?|paradas?|mais antigas?)\b/;
 const FALTEIRO_CANDIDATE_PATTERNS = [
@@ -69,38 +87,54 @@ export function mightBeFalteiroCommand(message: string): boolean {
 export function parseCotacaoEncomendasCommand(message: string): CotacaoEncomendasCommand | null {
   const raw = stripActivationWord(message).replace(/[?!;]+$/g, '').trim();
   const normalized = normalizeIntentText(raw);
-  if (!normalized || !/\bencomendas?\b/.test(normalized)) return null;
+  if (!normalized || !/\b(?:encomendas?|encomendad[oa]s?)\b/.test(normalized)) return null;
   if (WRITE_INTENT_PATTERN.test(normalized)) return null;
-
-  const readPatterns = [
-    /^encomendas?(?:\s+(?:antigas?|velhas?|paradas?|recentes?|novas?|ultimas?|ultima|atuais?))?$/,
-    /^(?:lista|listar|mostra|mostrar|ver|veja|consulta|consultar)\s+encomendas?(?:\s+(?:antigas?|velhas?|paradas?|recentes?|novas?|ultimas?|ultima|atuais?))?$/,
-    /^o\s+que\s+(?:tem|ha|existe)\s+(?:de\s+|para\s+|pra\s+)?encomendas?$/,
-    /^pedidos?\s+encomendas?$/,
-  ];
-  if (!readPatterns.some((pattern) => pattern.test(normalized))) return null;
+  if (/\b(?:nova|novo)\s+encomenda\b/.test(normalized)) return null;
+  const prepositionalRead = /^encomenda\s+(?:de|da|do)\b/.test(normalized);
+  if (/^encomenda\s+\S+/.test(normalized) && !ENCOMENDA_READ_CUE.test(normalized) && !prepositionalRead) return null;
+  const explicitRead = ENCOMENDA_READ_CUE.test(normalized)
+    || /\?\s*$/.test(String(message || ''))
+    || /^encomendas?$/.test(normalized)
+    || prepositionalRead
+    || /\bpedidos?\b.*\bencomendad[oa]s?\b/.test(normalized);
+  if (!explicitRead) return null;
 
   return {
     action: 'list',
     order: RECENT_PATTERN.test(normalized) && !OLD_PATTERN.test(normalized) ? 'newest' : 'oldest',
     raw,
+    query: raw,
   };
 }
 
 export function formatCotacaoEncomendasMessage(summary: CotacaoEncomendasSummary): string {
   const items = Array.isArray(summary.items) ? summary.items.slice(0, 10) : [];
   if (!items.length) {
-    return 'Nenhuma encomenda ativa na Cotação 😼';
+    const label = cleanLineText(summary.filters?.label, 140);
+    return label
+      ? `Não encontrei encomenda ativa para "${label}" na Cotação.`
+      : 'Nenhuma encomenda ativa na Cotação 😼';
   }
 
   const blocks = items.map((item, index) => {
-    const ean = cleanLineText(item.ean, 80) || 'Sem EAN';
     const product = cleanLineText(item.produto, 120) || 'Sem produto';
     const quantity = cleanLineText(item.quantidade, 60);
-    const title = [`${index + 1}. ${ean}`, product, quantity].filter(Boolean).join(' — ');
+    const title = [`${index + 1}. ${product}`, quantity].filter(Boolean).join(' — ');
     const lines = [title];
-    const obs = cleanLineText(item.observacaoEncomenda || item.depoisEncomenda, 180);
-    if (obs) lines.push(`Obs: ${obs}`);
+    const ean = cleanLineText(item.ean, 80);
+    if (ean) lines.push(`EAN: ${ean}`);
+    const customer = cleanLineText(item.cliente, 120);
+    if (customer) lines.push(`Cliente: ${customer}`);
+    const phone = cleanLineText(item.telefone, 80);
+    if (phone) lines.push(`Telefone: ${phone}`);
+    const address = cleanLineText(item.endereco, 180);
+    if (address) lines.push(`Endereco: ${address}`);
+    const schedule = cleanLineText(item.previsao, 160);
+    if (schedule) lines.push(`Previsao: ${schedule}`);
+    const status = cleanLineText(item.status, 60);
+    if (status) lines.push(`Status: ${status}`);
+    const details = cleanLineText(item.detalhes || item.categoria || item.observacaoEncomenda || item.depoisEncomenda, 900);
+    if (details) lines.push(`Detalhes: ${details}`);
     const created = formatCreatedAt(item.createdAtBr || item.createdAt);
     if (created) lines.push(`Criada em: ${created}`);
     return lines.join('\n');
@@ -108,7 +142,8 @@ export function formatCotacaoEncomendasMessage(summary: CotacaoEncomendasSummary
 
   const total = Number.isFinite(summary.total) ? summary.total : items.length;
   const extra = total > items.length ? `\n\nMostrei ${items.length} de ${total}.` : '';
-  return `Encomendas da Cotação 😼\n\n${blocks.join('\n\n')}${extra}`;
+  const noun = total === 1 ? 'encomenda' : 'encomendas';
+  return `Encontrei ${total} ${noun} na Cotacao:\n\n${blocks.join('\n\n')}${extra}`;
 }
 
 export function formatCotacaoEncomendasDailyMessage(

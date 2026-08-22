@@ -901,6 +901,36 @@ miauw_eval_add('intent_tarefa_criacao', static function (): void {
     miauw_eval_assert(miauw_skill_tarefa_command_from_message('como criar tarefa no sistema?') === null, 'Pergunta sobre tarefa nao deve virar escrita.');
 });
 
+miauw_eval_add('consulta_encomendas_formatacao', static function (): void {
+    $response = array(
+        'total' => 1,
+        'filters' => array('scope' => 'active', 'label' => 'losartana maria'),
+    );
+    $items = array(array(
+        'produto' => 'Losartana 50mg',
+        'quantidade' => '2 caixas',
+        'ean' => '7890000000000',
+        'cliente' => 'Maria Silva',
+        'telefone' => '(44) 99848-9494',
+        'endereco' => 'Rua Curitiba 2222',
+        'previsao' => 'Entregar amanha depois das 18',
+        'status' => 'pendente',
+        'detalhes' => 'Encomenda | Urgente | Maria Silva | (44) 99848-9494 | Rua Curitiba 2222',
+        'createdAtBr' => '22/08/2026 14:30',
+    ));
+    $text = miauw_structured_encomendas_text($response, $items);
+    miauw_eval_assert_contains('Encontrei 1 encomenda na Cotacao', $text, 'Consulta nao informou a contagem no titulo.');
+    miauw_eval_assert_contains('Losartana 50mg', $text, 'Consulta perdeu o produto principal.');
+    miauw_eval_assert_contains('Cliente: Maria Silva', $text, 'Consulta perdeu o cliente.');
+    miauw_eval_assert_contains('Telefone: (44) 99848-9494', $text, 'Consulta perdeu o telefone.');
+    miauw_eval_assert_contains('Endereco: Rua Curitiba 2222', $text, 'Consulta perdeu o endereco.');
+    miauw_eval_assert_contains('Status: pendente', $text, 'Consulta perdeu o status.');
+    miauw_eval_assert_contains('Detalhes: Encomenda | Urgente', $text, 'Consulta resumiu demais a categoria.');
+
+    $empty = miauw_structured_encomendas_text($response, array());
+    miauw_eval_assert_contains('losartana maria', $empty, 'Resposta vazia nao explicou o filtro consultado.');
+});
+
 miauw_eval_add('intent_cotacao_encomenda', static function (): void {
     $cases = array(
         array('Miauby encomenda losartana 50 Maria 44 4984894', 'Losartana 50', 'Maria', '44 4984894'),

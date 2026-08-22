@@ -21,7 +21,7 @@ Nao ha tabela nem migracao nova. `miauw_memorias` e `miauby_memories` nao podem 
 
 O payload persistido possui `active`, `channel`, `userId`, `conversationId`, `sessionId`, `currentTopic`, `lastIntent`, `lastFilters`, `recentEntities`, `lastCreatedEntity`, `pendingAction`, `pendingSelection`, `pendingQuestion`, `lastInteractionAt`, `expiresAt`, `version` e `revision`.
 
-`recentEntities` guarda identificadores reais e metadados limitados. Ao responder sobre uma Encomenda selecionada, o canal consulta novamente a Cotacao pelo `rowId`; texto memorizado nunca e considerado estado atual do modulo.
+`recentEntities` guarda identificadores reais e metadados limitados. A frase original de `consultar_encomendas` e preservada para que produto, cliente, telefone, contexto e status nao sejam perdidos no roteamento. Ao responder sobre uma Encomenda selecionada, o canal consulta novamente a Cotacao pelo `row_id` UUID validado, antes de aplicar o limite da lista e incluindo o historico real quando necessario; texto memorizado nunca e considerado estado atual do modulo.
 
 ## Prioridade e referencias
 
