@@ -38,7 +38,7 @@ export function rowReminderFragments(values = {}) {
   ];
   return fields
     .map(([label, value]) => {
-      const clean = normalizeEncomendaText(value, 240);
+      const clean = normalizeEncomendaText(value, 700);
       return clean ? `${label}: ${clean}` : '';
     })
     .filter(Boolean);
@@ -80,13 +80,31 @@ export function extractQuantityFromText(value) {
   return normalizeEncomendaText(`${match[1]}${match[2] ? ` ${match[2]}` : ''}`, 80);
 }
 
+export function buildEncomendaRowValues({ produto, quantidade, responsavel, telefone, categoriaExtra } = {}) {
+  const cleanProduct = normalizeEncomendaText(produto, 220);
+  const cleanQuantity = normalizeEncomendaText(quantidade, 80) || '1';
+  const cleanResponsible = normalizeEncomendaText(responsavel, 70);
+  const cleanPhone = normalizeEncomendaText(telefone, 32);
+  const cleanExtra = normalizeEncomendaText(categoriaExtra, 600);
+  const quantityContext = cleanQuantity !== '1' && !/\bquantidade\b/i.test(cleanExtra)
+    ? `Quantidade: ${cleanQuantity}`
+    : '';
+  const categoryParts = ['Encomenda', cleanResponsible, cleanPhone, quantityContext, cleanExtra].filter(Boolean);
+
+  return {
+    produto: cleanProduct,
+    quantidade: cleanQuantity,
+    categoria: normalizeEncomendaText([...new Set(categoryParts)].join(' | '), 900),
+  };
+}
+
 export function encomendaTextParts(values = {}) {
   const fields = [
     ['categoria', values.categoria],
     ['produto', values.produto],
     ['quantidade', values.quantidade]
   ];
-  const fallbackText = normalizeEncomendaText(rowReminderFragments(values).join(' | '), 700);
+  const fallbackText = normalizeEncomendaText(rowReminderFragments(values).join(' | '), 1200);
   const source = fields
     .map(([field, value]) => ({ field, text: normalizeEncomendaText(value, 700) }))
     .find((item) => hasEncomendaWord(item.text))
@@ -128,7 +146,7 @@ export function encomendaContextFromValues(values = {}) {
   const quantidade = quantityRaw
     ? (hasEncomendaWord(quantityRaw) ? extractQuantityFromText(quantityRaw) : quantityRaw)
     : '';
-  const categoria = normalizeEncomendaText(values.categoria, 220);
+  const categoria = normalizeEncomendaText(values.categoria, 900);
   return {
     hasEncomenda,
     produto,

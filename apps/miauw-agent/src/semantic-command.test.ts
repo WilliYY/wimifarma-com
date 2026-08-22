@@ -201,6 +201,8 @@ test('reconhece Encomenda em ordem livre e em frases naturais', () => {
     'Miauby reservar losartana 50 para Maria 44 4984894',
     'Miauby separar losartana 50 para Maria',
     'Miauby encomenda Maria Losartana 50mg',
+    'Miauby Maria Rua Curitiba 2222 encomenda losartana 50 44 2343432',
+    'Miauby encomenda urgente 2 caixas losartana 50mg 30cp EMS para Maria 44 99848-9494 Rua Curitiba 2222 entregar amanha depois das 18 perto da igreja ligar antes',
   ];
 
   for (const message of messages) {
@@ -208,6 +210,12 @@ test('reconhece Encomenda em ordem livre e em frases naturais', () => {
     assert.equal(result.intent, 'criar_encomenda_cotacao', message);
     assert.match(result.canonical_message, /^encomenda\b/i, message);
   }
+
+  const complete = resolved('Miauby encomenda urgente 2 caixas losartana 50mg 30cp EMS para Maria 44 99848-9494 Rua Curitiba 2222 entregar amanha depois das 18 perto da igreja ligar antes');
+  assert.match(complete.canonical_message, /2 caixas/i);
+  assert.match(complete.canonical_message, /Rua Curitiba 2222/i);
+  assert.match(complete.canonical_message, /amanha/i);
+  assert.match(complete.canonical_message, /ligar antes/i);
 });
 
 test('preserva consultas de Encomenda sem transforma-las em escrita', () => {

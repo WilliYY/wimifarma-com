@@ -11,6 +11,7 @@ import pg from 'pg';
 import { createClient } from 'redis';
 import { Server } from 'socket.io';
 import {
+  buildEncomendaRowValues,
   encomendaContextFromValues,
   encomendaTextParts,
   hasEncomendaWord
@@ -3532,10 +3533,11 @@ app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, as
 
 app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRoute(async (req, res) => {
   const produto = normalizeInternalText(req.body?.produto, 220);
+  const quantidade = normalizeInternalText(req.body?.quantidade, 80) || '1';
   const responsavel = normalizeInternalText(req.body?.responsavel, 70);
   const telefone = normalizeInternalText(req.body?.telefone, 32);
-  const observacao = normalizeInternalText(req.body?.observacao, 180);
-  const categoriaExtra = normalizeInternalText(req.body?.categoria_extra, 80);
+  const observacao = normalizeInternalText(req.body?.observacao, 700);
+  const categoriaExtra = normalizeInternalText(req.body?.categoria_extra, 600);
   const requestId = normalizeInternalText(req.body?.request_id || req.body?.idempotency_key, 160);
   const requestedSource = normalizeInternalSearch(req.body?.source);
   const source = requestedSource === 'whatsapp' ? 'whatsapp' : 'interno';
@@ -3567,13 +3569,14 @@ app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRout
   }
 
   const quote = await getOrCreateDefaultQuote();
-  const categoryParts = ['Encomenda', responsavel, telefone, categoriaExtra].filter(Boolean);
-  const categoria = normalizeInternalText([...new Set(categoryParts)].join(' '), 300);
-  const rowValues = {
+  const rowValues = buildEncomendaRowValues({
     produto,
-    quantidade: '1',
-    categoria
-  };
+    quantidade,
+    responsavel,
+    telefone,
+    categoriaExtra,
+  });
+  const categoria = rowValues.categoria;
   const client = await pgPool.connect();
   let row = null;
   let event = null;
@@ -3657,6 +3660,7 @@ app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRout
           source: 'miauby_encomenda',
           requestId,
           produto,
+          quantidade,
           responsavel,
           telefone,
           observacao
@@ -3699,6 +3703,7 @@ app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRout
       rowId: row?.id || '',
       position: row?.position || 0,
       produto,
+      quantidade,
       responsavel,
       telefone,
       categoria,

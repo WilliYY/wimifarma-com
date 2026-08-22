@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  buildEncomendaRowValues,
   encomendaContextFromValues,
   encomendaTextParts,
   hasEncomendaWord
@@ -73,6 +74,38 @@ const similarA = extract({ produto: 'dipirona', quantidade: '1', categoria: 'enc
 const similarB = extract({ produto: 'dipirona', quantidade: '1', categoria: 'encomenda João 20' });
 assert.equal(similarA.obs, 'João 10');
 assert.equal(similarB.obs, 'João 20');
+
+const contextual = extract({
+  produto: 'losartana 50mg 30cp EMS',
+  quantidade: '2 caixas',
+  categoria: 'Encomenda | Maria | 44998489494 | Urgente - Quantidade: 2 caixas - Endereco: Rua Curitiba 2222 - Tipo: Entrega - Data: amanha - Horario: depois das 18 - Referencia: perto da igreja - Obs: ligar antes'
+});
+assert.equal(contextual.produto, 'losartana 50mg 30cp EMS');
+assert.equal(contextual.quantidade, '2 caixas');
+assert.match(contextual.obs, /Maria/);
+assert.match(contextual.obs, /Rua Curitiba 2222/);
+assert.match(contextual.obs, /depois das 18/);
+assert.match(contextual.obs, /ligar antes/);
+
+const rowValues = buildEncomendaRowValues({
+  produto: 'losartana 50mg 30cp EMS',
+  quantidade: '2 caixas',
+  responsavel: 'Maria',
+  telefone: '44998489494',
+  categoriaExtra: 'Urgente - Endereco: Rua Curitiba 2222 - Tipo: Entrega'
+});
+assert.deepEqual(rowValues, {
+  produto: 'losartana 50mg 30cp EMS',
+  quantidade: '2 caixas',
+  categoria: 'Encomenda | Maria | 44998489494 | Quantidade: 2 caixas | Urgente - Endereco: Rua Curitiba 2222 - Tipo: Entrega'
+});
+
+const quantityAlreadyDescribed = buildEncomendaRowValues({
+  produto: 'dipirona 500mg',
+  quantidade: '3 unidades',
+  categoriaExtra: 'Quantidade: 3 unidades - Data: amanha'
+});
+assert.equal(quantityAlreadyDescribed.categoria, 'Encomenda | Quantidade: 3 unidades - Data: amanha');
 
 assert.match(productQuantityAndNote.original, /Produto: dipirona/);
 assert.match(productQuantityAndNote.original, /Categoria: encomenda João 10/);

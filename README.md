@@ -26,6 +26,7 @@ O sistema centraliza a presenca web e ferramentas internas da Wimifarma:
 - Miauby, assistente interno com integracao OpenAI e recursos de diagnostico, liberado automaticamente para toda conta ativa autenticada; o painel Miauby WhatsApp continua com permissao individual separada.
 - Miauby Whatsapp para acompanhar canal, webhook, fila, outbox, Evolution API, Meta Cloud API e automacoes n8n de smoke/watchdog, chegada de pedidos e fechamento de caixa por endpoint interno tokenizado.
 - Desde 2026-08-16, Miauby Interno e Miauby WhatsApp registram produtos no Falteiro da Cotacao por intencao natural de falta de estoque, compra ou reposicao, sem depender de ordem, caixa ou sintaxe fixa. A Cotacao interpreta produto/apresentacao e resolve aliases de categoria contra os rotulos reais, preferindo a categoria composta mais especifica; perguntas, negacoes e categorias incertas nao escrevem. A gravacao ocupa atomicamente a primeira linha com `PRODUTO` vazio.
+- A Encomenda pelo Miauby tambem e contextual: separa produto/apresentacao, cliente, telefone, quantidade, endereco, retirada/entrega, data, horario, prioridade, referencia e observacao, exige confirmacao e grava de forma idempotente na Cotacao.
 
 O objetivo tecnico da migracao e sair de uma hospedagem HostGator limitada e evoluir em uma VPS mais flexivel, com Docker, controle de versao, deploy rastreavel e espaco para novos modulos.
 

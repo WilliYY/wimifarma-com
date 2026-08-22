@@ -954,6 +954,108 @@ miauw_eval_add('intent_cotacao_encomenda', static function (): void {
     miauw_eval_assert(miauw_skill_cotacao_encomenda_command_from_message('Miauby separar dinheiro para o caixa') === null, 'Separacao financeira nao pode virar encomenda.');
 });
 
+miauw_eval_add('intent_cotacao_encomenda_contexto_completo', static function (): void {
+    $addressCases = array(
+        array('Miauby encomenda losartana 50 Maria 44 2343432 Rua Curitiba 2222', 'Losartana 50', 'Maria', '44 2343432', 'Rua Curitiba 2222'),
+        array('Miauby Maria Rua Curitiba 2222 encomenda losartana 50 44 2343432', 'Losartana 50', 'Maria', '44 2343432', 'Rua Curitiba 2222'),
+        array('Miauby losartana 50 encomenda Rua Curitiba 2222 Maria 44 2343432', 'Losartana 50', 'Maria', '44 2343432', 'Rua Curitiba 2222'),
+        array('Miauby Rua Curitiba 2222 Maria encomenda losartana 50', 'Losartana 50', 'Maria', '', 'Rua Curitiba 2222'),
+        array('Miauby encomenda losartana 50 Maria Curitiba 2222', 'Losartana 50', 'Maria', '', 'Curitiba 2222'),
+        array('Miauby encomenda losartana 50 Maria Av Brasil 450', 'Losartana 50', 'Maria', '', 'Av Brasil 450'),
+        array('Miauby encomenda losartana 50 Maria Rua Parana nº 120', 'Losartana 50', 'Maria', '', 'Rua Parana nº 120'),
+        array('Miauby encomenda losartana 50 Maria Rua das Flores 88 casa 2', 'Losartana 50', 'Maria', '', 'Rua das Flores 88 casa 2'),
+        array('Miauby encomenda losartana 50 Maria Rua Curitiba 2222 apartamento 4 bloco B', 'Losartana 50', 'Maria', '', 'Rua Curitiba 2222 apartamento 4 bloco B'),
+    );
+
+    foreach ($addressCases as $case) {
+        $command = miauw_skill_cotacao_encomenda_command_from_message((string) $case[0]);
+        miauw_eval_assert(is_array($command), 'Encomenda com endereco nao detectada: ' . (string) $case[0]);
+        miauw_eval_assert_same(miauw_skill_normalized((string) $case[1]), miauw_skill_normalized((string) ($command['produto'] ?? '')), 'Endereco contaminou produto: ' . (string) $case[0]);
+        miauw_eval_assert_same(miauw_skill_normalized((string) $case[2]), miauw_skill_normalized((string) ($command['responsavel'] ?? '')), 'Cliente incorreto com endereco: ' . (string) $case[0]);
+        miauw_eval_assert_same(preg_replace('/\D+/', '', (string) $case[3]), preg_replace('/\D+/', '', (string) ($command['telefone'] ?? '')), 'Telefone incorreto com endereco: ' . (string) $case[0]);
+        miauw_eval_assert_same(miauw_skill_normalized((string) $case[4]), miauw_skill_normalized((string) ($command['endereco'] ?? '')), 'Endereco incorreto: ' . (string) $case[0]);
+        miauw_eval_assert_contains(miauw_skill_normalized((string) $case[4]), miauw_skill_normalized((string) ($command['categoria_extra'] ?? '')), 'Endereco nao foi preservado na categoria: ' . (string) $case[0]);
+    }
+
+    $complete = miauw_skill_cotacao_encomenda_command_from_message(
+        'Miauby encomenda urgente 2 caixas losartana 50mg 30cp EMS para Maria 44 99848-9494 Rua Curitiba 2222 entregar amanha depois das 18 perto da igreja ligar antes'
+    );
+    miauw_eval_assert(is_array($complete), 'Encomenda completa nao foi detectada.');
+    miauw_eval_assert_same('losartana 50mg 30cp ems', miauw_skill_normalized((string) ($complete['produto'] ?? '')), 'Produto, apresentacao e marca nao foram preservados.');
+    miauw_eval_assert_same('2 caixas', miauw_skill_normalized((string) ($complete['quantidade'] ?? '')), 'Quantidade encomendada incorreta.');
+    miauw_eval_assert_same('maria', miauw_skill_normalized((string) ($complete['responsavel'] ?? '')), 'Cliente da encomenda completa incorreto.');
+    miauw_eval_assert_same('44998489494', preg_replace('/\D+/', '', (string) ($complete['telefone'] ?? '')), 'Telefone da encomenda completa incorreto.');
+    miauw_eval_assert_same('rua curitiba 2222', miauw_skill_normalized((string) ($complete['endereco'] ?? '')), 'Endereco da encomenda completa incorreto.');
+    miauw_eval_assert_same('entrega', miauw_skill_normalized((string) ($complete['tipo_entrega'] ?? '')), 'Tipo de entrega incorreto.');
+    miauw_eval_assert_same('amanha', miauw_skill_normalized((string) ($complete['data_encomenda'] ?? '')), 'Data contextual incorreta.');
+    miauw_eval_assert_same('depois das 18', miauw_skill_normalized((string) ($complete['horario'] ?? '')), 'Horario contextual incorreto.');
+    miauw_eval_assert_same('urgente', miauw_skill_normalized((string) ($complete['prioridade'] ?? '')), 'Prioridade da encomenda incorreta.');
+    miauw_eval_assert_contains('perto da igreja', miauw_skill_normalized((string) ($complete['referencia'] ?? '')), 'Referencia nao foi preservada.');
+    miauw_eval_assert_contains('ligar antes', miauw_skill_normalized((string) ($complete['observacao_livre'] ?? '')), 'Observacao livre nao foi preservada.');
+
+    $pickup = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda Bepantol Derma 30g Maria vai buscar amanha de manha');
+    miauw_eval_assert(is_array($pickup), 'Encomenda para retirada nao foi detectada.');
+    miauw_eval_assert_same('bepantol derma 30g', miauw_skill_normalized((string) ($pickup['produto'] ?? '')), 'Produto de marca foi separado incorretamente.');
+    miauw_eval_assert_same('retirada', miauw_skill_normalized((string) ($pickup['tipo_entrega'] ?? '')), 'Retirada nao foi reconhecida.');
+    miauw_eval_assert_same('amanha', miauw_skill_normalized((string) ($pickup['data_encomenda'] ?? '')), 'Data da retirada incorreta.');
+    miauw_eval_assert_same('de manha', miauw_skill_normalized((string) ($pickup['horario'] ?? '')), 'Periodo da retirada incorreto.');
+
+    $noPhone = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda losartana 50 Maria Rua Curitiba 2222');
+    miauw_eval_assert_same('', (string) ($noPhone['telefone'] ?? ''), 'Numero do endereco nao pode virar telefone.');
+
+    $phoneOnly = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda losartana 50 44 99848-9494');
+    miauw_eval_assert_same('losartana 50', miauw_skill_normalized((string) ($phoneOnly['produto'] ?? '')), 'Produto com cliente apenas por telefone incorreto.');
+    miauw_eval_assert_same('', miauw_skill_normalized((string) ($phoneOnly['responsavel'] ?? '')), 'Telefone nao pode virar cliente.');
+
+    $recipient = miauw_skill_cotacao_encomenda_command_from_message('Miauby Maria pediu losartana 50 mas entregar para Joao');
+    miauw_eval_assert_same('maria', miauw_skill_normalized((string) ($recipient['responsavel'] ?? '')), 'Destinatario substituiu o cliente original.');
+    miauw_eval_assert_contains('entregar para joao', miauw_skill_normalized((string) ($recipient['observacao_livre'] ?? '')), 'Destinatario nao foi preservado como observacao.');
+
+    $freeNotes = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda dipirona Medley Maria avisar no whatsapp nao substituir cliente tem receita');
+    miauw_eval_assert_same('dipirona medley', miauw_skill_normalized((string) ($freeNotes['produto'] ?? '')), 'Marca Medley nao ficou no produto.');
+    miauw_eval_assert_contains('avisar no whatsapp', miauw_skill_normalized((string) ($freeNotes['observacao_livre'] ?? '')), 'Aviso por WhatsApp foi descartado.');
+    miauw_eval_assert_contains('nao substituir', miauw_skill_normalized((string) ($freeNotes['observacao_livre'] ?? '')), 'Preferencia de substituicao foi descartada.');
+    miauw_eval_assert_contains('cliente tem receita', miauw_skill_normalized((string) ($freeNotes['observacao_livre'] ?? '')), 'Informacao de receita foi descartada.');
+
+    $referenceCases = array(
+        array('Miauby encomenda dipirona 500mg Maria bairro Centro', 'bairro centro'),
+        array('Miauby encomenda dipirona 500mg Maria Jardim Italia', 'jardim italia'),
+        array('Miauby encomenda dipirona 500mg Maria ao lado da padaria', 'ao lado da padaria'),
+        array('Miauby encomenda dipirona 500mg Maria em frente ao posto', 'em frente ao posto'),
+        array('Miauby encomenda dipirona 500mg Maria casa azul', 'casa azul'),
+        array('Miauby encomenda dipirona 500mg Maria portao preto', 'portao preto'),
+        array('Miauby encomenda dipirona 500mg Maria proximo da escola', 'proximo da escola'),
+        array('Miauby encomenda dipirona 500mg Maria fundos', 'fundos'),
+    );
+    foreach ($referenceCases as $case) {
+        $command = miauw_skill_cotacao_encomenda_command_from_message((string) $case[0]);
+        miauw_eval_assert_same((string) $case[1], miauw_skill_normalized((string) ($command['referencia'] ?? '')), 'Referencia contextual incorreta: ' . (string) $case[0]);
+        miauw_eval_assert_same('dipirona 500mg', miauw_skill_normalized((string) ($command['produto'] ?? '')), 'Referencia contaminou produto: ' . (string) $case[0]);
+        miauw_eval_assert_same('maria', miauw_skill_normalized((string) ($command['responsavel'] ?? '')), 'Referencia contaminou cliente: ' . (string) $case[0]);
+    }
+
+    $scheduledPickup = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda dipirona 500mg Maria retirar sexta as 17h');
+    miauw_eval_assert_same('retirada', miauw_skill_normalized((string) ($scheduledPickup['tipo_entrega'] ?? '')), 'Retirada agendada nao foi reconhecida.');
+    miauw_eval_assert_same('sexta', miauw_skill_normalized((string) ($scheduledPickup['data_encomenda'] ?? '')), 'Dia da retirada nao foi preservado.');
+    miauw_eval_assert_same('as 17h', miauw_skill_normalized((string) ($scheduledPickup['horario'] ?? '')), 'Horario da retirada nao foi preservado.');
+
+    $deliveryPeriod = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda dipirona 500mg Maria manda entregar hoje a tarde');
+    miauw_eval_assert_same('entrega', miauw_skill_normalized((string) ($deliveryPeriod['tipo_entrega'] ?? '')), 'Entrega natural nao foi reconhecida.');
+    miauw_eval_assert_same('hoje', miauw_skill_normalized((string) ($deliveryPeriod['data_encomenda'] ?? '')), 'Data da entrega natural incorreta.');
+    miauw_eval_assert_same('a tarde', miauw_skill_normalized((string) ($deliveryPeriod['horario'] ?? '')), 'Periodo da entrega natural incorreto.');
+
+    $wordQuantity = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda tres unidades dipirona 500mg Neo Quimica para Maria');
+    miauw_eval_assert_same('3 unidades', miauw_skill_normalized((string) ($wordQuantity['quantidade'] ?? '')), 'Quantidade por extenso nao foi normalizada.');
+    miauw_eval_assert_same('dipirona 500mg neo quimica', miauw_skill_normalized((string) ($wordQuantity['produto'] ?? '')), 'Marca composta nao ficou no produto.');
+    $presentationOnly = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda dipirona 500mg 30cp Maria');
+    miauw_eval_assert_same('', miauw_skill_normalized((string) ($presentationOnly['quantidade'] ?? '')), 'Apresentacao 30cp virou quantidade da encomenda.');
+    miauw_eval_assert_same('dipirona 500mg 30cp', miauw_skill_normalized((string) ($presentationOnly['produto'] ?? '')), 'Apresentacao 30cp saiu do produto.');
+
+    $deliveryNote = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda amoxicilina 500mg Maria nao entregar antes das 18h falar com a filha');
+    miauw_eval_assert_contains('nao entregar antes das 18h', miauw_skill_normalized((string) ($deliveryNote['observacao_livre'] ?? '')), 'Restricao de horario foi descartada.');
+    miauw_eval_assert_contains('falar com a filha', miauw_skill_normalized((string) ($deliveryNote['observacao_livre'] ?? '')), 'Pessoa de contato foi descartada.');
+});
+
 miauw_eval_add('intent_cotacao_urgente', static function (): void {
     $command = miauw_skill_cotacao_urgente_command_from_message('dipirona gotas esta em falta na loja');
 

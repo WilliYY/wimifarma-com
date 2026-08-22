@@ -324,6 +324,7 @@ export type InternalRequiredRequestPayload = (
 
 export type InternalCreateItemPayload = InternalRequiredActorPayload & InternalRequiredRequestPayload & {
   produto: string;
+  quantidade?: string;
   responsavel?: string;
   telefone?: string;
   observacao?: string;

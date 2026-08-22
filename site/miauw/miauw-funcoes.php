@@ -4178,9 +4178,23 @@ function miauw_confirmation_summary(string $tool, array $command): string
             trim((string) ($command['responsavel'] ?? '')),
             trim((string) ($command['telefone'] ?? '')),
         )));
+        $context = array_values(array_filter(array(
+            trim((string) ($command['quantidade'] ?? '')) !== '' ? 'Quantidade: ' . trim((string) $command['quantidade']) : '',
+            trim((string) ($command['endereco'] ?? '')) !== '' ? 'Endereco: ' . trim((string) $command['endereco']) : '',
+            trim((string) ($command['tipo_entrega'] ?? '')),
+            trim((string) ($command['data_encomenda'] ?? '')),
+            trim((string) ($command['horario'] ?? '')),
+            trim((string) ($command['prioridade'] ?? '')),
+            trim((string) ($command['referencia'] ?? '')),
+            trim((string) ($command['observacao_livre'] ?? '')),
+        )));
+        if (!$context && trim((string) ($command['categoria_extra'] ?? '')) !== '') {
+            $context[] = trim((string) $command['categoria_extra']);
+        }
         return 'Criar encomenda na Cotacao: '
             . trim((string) ($command['produto'] ?? 'produto nao informado'))
-            . ($details ? ' — ' . implode(' — ', $details) : '') . '.';
+            . ($details ? ' — ' . implode(' — ', $details) : '')
+            . ($context ? ' — ' . implode(' — ', $context) : '') . '.';
     }
 
     if ($tool === 'criar_conta_gestao') {
@@ -7722,15 +7736,23 @@ function miauw_openai_tools(): array
         array(
             'type' => 'function',
             'name' => 'criar_encomenda_cotacao',
-            'description' => 'Cria encomenda controlada na Cotacao Geral quando houver produto. Cliente, telefone e informacoes extras sao opcionais. Nao use para consulta; use buscar_cotacao para procurar.',
+            'description' => 'Cria encomenda controlada na Cotacao Geral quando houver produto. Extraia quantidade, cliente, telefone, endereco, entrega ou retirada, data, horario, prioridade, referencia e observacoes em qualquer ordem. Nao use para consulta; use buscar_cotacao para procurar.',
             'parameters' => array(
                 'type' => 'object',
                 'properties' => array(
                     'produto' => array('type' => 'string', 'minLength' => 2, 'maxLength' => 220),
+                    'quantidade' => array('type' => 'string', 'maxLength' => 80),
                     'responsavel' => array('type' => 'string', 'minLength' => 2, 'maxLength' => 100),
                     'telefone' => array('type' => 'string', 'maxLength' => 32),
-                    'categoria_extra' => array('type' => 'string', 'maxLength' => 160),
-                    'observacao' => array('type' => 'string', 'maxLength' => 260),
+                    'endereco' => array('type' => 'string', 'maxLength' => 220),
+                    'tipo_entrega' => array('type' => 'string', 'maxLength' => 20),
+                    'data_encomenda' => array('type' => 'string', 'maxLength' => 60),
+                    'horario' => array('type' => 'string', 'maxLength' => 60),
+                    'prioridade' => array('type' => 'string', 'maxLength' => 40),
+                    'referencia' => array('type' => 'string', 'maxLength' => 260),
+                    'observacao_livre' => array('type' => 'string', 'maxLength' => 320),
+                    'categoria_extra' => array('type' => 'string', 'maxLength' => 600),
+                    'observacao' => array('type' => 'string', 'maxLength' => 700),
                 ),
                 'required' => array('produto'),
                 'additionalProperties' => false,
@@ -8182,7 +8204,17 @@ function miauw_openai_tool_result(string $name, array $args): string
         try {
             $result = miauw_skill_create_cotacao_encomenda(array(
                 'produto' => (string) ($args['produto'] ?? ''),
+                'quantidade' => (string) ($args['quantidade'] ?? ''),
                 'responsavel' => (string) ($args['responsavel'] ?? ''),
+                'telefone' => (string) ($args['telefone'] ?? ''),
+                'endereco' => (string) ($args['endereco'] ?? ''),
+                'tipo_entrega' => (string) ($args['tipo_entrega'] ?? ''),
+                'data_encomenda' => (string) ($args['data_encomenda'] ?? ''),
+                'horario' => (string) ($args['horario'] ?? ''),
+                'prioridade' => (string) ($args['prioridade'] ?? ''),
+                'referencia' => (string) ($args['referencia'] ?? ''),
+                'observacao_livre' => (string) ($args['observacao_livre'] ?? ''),
+                'categoria_extra' => (string) ($args['categoria_extra'] ?? ''),
                 'observacao_usuario' => (string) ($args['observacao'] ?? ''),
                 'raw_message' => 'tool_call_criar_encomenda_cotacao',
             ));
