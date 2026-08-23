@@ -10,6 +10,7 @@ import {
 } from './conversation-memory-client.js';
 
 export const STRUCTURED_CONVERSATION_STATE_KEY = 'structured_conversation';
+const STRUCTURED_CONVERSATION_RETENTION_DAYS = 7;
 
 export type ConversationStateTransitionInput = {
   storageHash: string;
@@ -45,11 +46,21 @@ export async function hasActiveConversationState(pool: Pool, storageHashes: stri
 
   await pool.query(
     `UPDATE miauw_whatsapp_conversation_states
-        SET status = 'expired', updated_at = NOW()
+        SET status = 'expired',
+            payload = '{}'::jsonb,
+            consumed_at = COALESCE(consumed_at, NOW()),
+            updated_at = NOW()
       WHERE state_key = $1
         AND status = 'pending'
         AND expires_at <= NOW()`,
     [STRUCTURED_CONVERSATION_STATE_KEY],
+  );
+  await pool.query(
+    `DELETE FROM miauw_whatsapp_conversation_states
+      WHERE state_key = $1
+        AND status IN ('consumed', 'cancelled', 'expired')
+        AND updated_at < NOW() - ($2::int * INTERVAL '1 day')`,
+    [STRUCTURED_CONVERSATION_STATE_KEY, STRUCTURED_CONVERSATION_RETENTION_DAYS],
   );
   const result = await pool.query<{ exists: string }>(
     `SELECT '1' AS exists
@@ -81,12 +92,22 @@ export async function transitionConversationState(
     );
     await client.query(
       `UPDATE miauw_whatsapp_conversation_states
-          SET status = 'expired', updated_at = NOW()
+          SET status = 'expired',
+              payload = '{}'::jsonb,
+              consumed_at = COALESCE(consumed_at, NOW()),
+              updated_at = NOW()
         WHERE sender_phone_hash = $1
           AND state_key = $2
           AND status = 'pending'
           AND expires_at <= NOW()`,
       [storageHash, STRUCTURED_CONVERSATION_STATE_KEY],
+    );
+    await client.query(
+      `DELETE FROM miauw_whatsapp_conversation_states
+        WHERE state_key = $1
+          AND status IN ('consumed', 'cancelled', 'expired')
+          AND updated_at < NOW() - ($2::int * INTERVAL '1 day')`,
+      [STRUCTURED_CONVERSATION_STATE_KEY, STRUCTURED_CONVERSATION_RETENTION_DAYS],
     );
     const stored = await client.query<StateRow>(
       `SELECT payload
@@ -111,6 +132,11 @@ export async function transitionConversationState(
     });
 
     if (!resolved.ok || !resolved.result) {
+      await client.query('COMMIT');
+      return resolved;
+    }
+
+    if (!stored.rows[0] && resolved.result.status === 'inactive') {
       await client.query('COMMIT');
       return resolved;
     }

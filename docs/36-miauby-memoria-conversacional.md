@@ -48,6 +48,8 @@ Confirmacoes e recusas so valem quando ha uma acao pendente da mesma identidade.
 
 Cada transicao persistida usa transacao Postgres, `pg_advisory_xact_lock`, leitura `FOR UPDATE` e revisao do estado. Duas confirmacoes concorrentes da mesma pendencia resultam em um unico consumo.
 
+Estados estruturados vencidos tem o `payload` apagado na primeira manutencao seguinte. Registros `consumed`, `cancelled` ou `expired` sao removidos depois de 7 dias, e mensagens sem contexto ativo nao criam linhas vazias no Postgres.
+
 ## Compatibilidade e seguranca
 
 Pendencias legadas de confirmacao, selecao, relatorio e coleta de campos sao resolvidas antes da memoria estruturada. Formatos antigos continuam validos. No WhatsApp, a continuacao sem `miauby` so e aceita para contato permitido com contexto ativo e nao vencido. Se o estado nao puder ser revalidado entre o webhook e o processamento, o canal pede uma nova mensagem com `Miauby` e nao entrega o texto sem prefixo ao parser operacional.

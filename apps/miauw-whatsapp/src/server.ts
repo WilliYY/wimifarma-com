@@ -2428,6 +2428,10 @@ async function ensureSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_conversation_states_pending
       ON miauw_whatsapp_conversation_states (expires_at, sender_phone_hash)
       WHERE status = 'pending';
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_conversation_states_retention
+      ON miauw_whatsapp_conversation_states (updated_at)
+      WHERE state_key = 'structured_conversation'
+        AND status IN ('consumed', 'cancelled', 'expired');
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_contact_modules_enabled
       ON miauw_whatsapp_contact_modules (module_key, phone_hash)
       WHERE enabled = TRUE;

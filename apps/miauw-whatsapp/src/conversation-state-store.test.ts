@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Pool } from 'pg';
 
-import { transitionConversationState } from './conversation-state-store.js';
+import { hasActiveConversationState, transitionConversationState } from './conversation-state-store.js';
 import type { ConversationStatePayload } from './conversation-memory-client.js';
 
 test('serializes concurrent confirmations and consumes a pending action once', async () => {
@@ -42,7 +42,40 @@ test('serializes concurrent confirmations and consumes a pending action once', a
   assert.deepEqual([first.result?.status, second.result?.status].sort(), ['confirm', 'reply']);
 });
 
-function result(status: 'confirm' | 'reply', state: ConversationStatePayload) {
+test('does not persist an inactive message without prior conversation state', async () => {
+  const pool = new FakePool(null);
+  const resolver = async () => result('inactive', {
+    active: false,
+    revision: 0,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  });
+  const resolved = await transitionConversationState(pool as unknown as Pool, {
+    storageHash: 'b'.repeat(64),
+    storageMask: 'audit',
+    sourceEventId: null,
+    traceId: 'trace',
+    message: 'sem contexto',
+    channel: 'internal',
+    userId: '20',
+    conversationId: '30',
+    sessionId: 'session-audit',
+  }, { resolverUrl: 'url', resolverToken: 'token', resolverTimeoutMs: 500, resolver: resolver as never });
+
+  assert.equal(resolved.result?.status, 'inactive');
+  assert.equal(pool.insertions, 0);
+  assert.equal(pool.currentState, null);
+});
+
+test('wipes expired payloads and prunes retained structured states', async () => {
+  const pool = new FakePool(null);
+  const active = await hasActiveConversationState(pool as unknown as Pool, ['c'.repeat(64)]);
+
+  assert.equal(active, false);
+  assert.equal(pool.statements.some((sql) => /payload\s*=\s*'\{\}'::jsonb/i.test(sql)), true);
+  assert.equal(pool.statements.some((sql) => /DELETE FROM miauw_whatsapp_conversation_states/i.test(sql)), true);
+});
+
+function result(status: 'confirm' | 'reply' | 'inactive', state: ConversationStatePayload) {
   return Promise.resolve({
     ok: true,
     error: '',
@@ -51,7 +84,7 @@ function result(status: 'confirm' | 'reply', state: ConversationStatePayload) {
       reason: status,
       message: '',
       reply: '',
-      state: { ...state, active: true, expiresAt: new Date(Date.now() + 60_000).toISOString() },
+      state: { ...state, active: status !== 'inactive', expiresAt: new Date(Date.now() + 60_000).toISOString() },
       selectedEntity: null,
       pendingAction: null,
     },
@@ -59,25 +92,38 @@ function result(status: 'confirm' | 'reply', state: ConversationStatePayload) {
 }
 
 class FakePool {
-  private state: ConversationStatePayload;
+  private state: ConversationStatePayload | null;
   private locked = false;
   private waiters: Array<() => void> = [];
+  readonly statements: string[] = [];
+  insertions = 0;
 
-  constructor(initial: ConversationStatePayload) {
+  constructor(initial: ConversationStatePayload | null) {
     this.state = initial;
+  }
+
+  get currentState(): ConversationStatePayload | null {
+    return this.state;
+  }
+
+  async query(sql: string) {
+    this.statements.push(sql);
+    return { rows: [] };
   }
 
   async connect() {
     let ownsLock = false;
     return {
       query: async (sql: string, params: unknown[] = []) => {
+        this.statements.push(sql);
         if (sql.includes('pg_advisory_xact_lock')) {
           await this.acquire();
           ownsLock = true;
           return { rows: [] };
         }
-        if (sql.includes('SELECT payload')) return { rows: [{ payload: this.state }] };
+        if (sql.includes('SELECT payload')) return { rows: this.state ? [{ payload: this.state }] : [] };
         if (sql.includes('INSERT INTO miauw_whatsapp_conversation_states')) {
+          this.insertions += 1;
           this.state = JSON.parse(String(params[3] || '{}'));
           return { rows: [] };
         }
