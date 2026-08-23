@@ -54,6 +54,11 @@ import {
 } from './cashback-command.js';
 import { formatMiaubyResponse } from './response-format.js';
 import { hasActivationPrefix, parseActivationPrefix } from './activation-prefix.js';
+import {
+  buildMiaubyAudioTtsPrompt,
+  DEFAULT_AUDIO_TTS_STYLE,
+  DEFAULT_AUDIO_TTS_VOICE,
+} from './audio-voice.js';
 
 const { Pool } = pg;
 
@@ -760,9 +765,9 @@ const AUDIO_TRANSCRIBE_PROVIDER = (textEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_PROV
 const AUDIO_TTS_PROVIDER = (textEnv('MIAUW_WHATSAPP_AUDIO_TTS_PROVIDER') || 'gemini').toLowerCase();
 const AUDIO_TRANSCRIBE_MODEL = textEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL') || GEMINI_MODEL;
 const AUDIO_TTS_MODEL = textEnv('MIAUW_WHATSAPP_AUDIO_TTS_MODEL') || 'gemini-2.5-flash-preview-tts';
-const AUDIO_TTS_VOICE = textEnv('MIAUW_WHATSAPP_AUDIO_TTS_VOICE') || 'Zephyr';
+const AUDIO_TTS_VOICE = textEnv('MIAUW_WHATSAPP_AUDIO_TTS_VOICE') || DEFAULT_AUDIO_TTS_VOICE;
 const AUDIO_TTS_STYLE = safeText(textEnv('MIAUW_WHATSAPP_AUDIO_TTS_STYLE'), 320)
-  || 'voz aguda, brilhante e brincalhona de gato curioso; humana e clara, levemente felina, sem imitar pessoa real, sem cantar, sem miar demais e sem ficar grave ou masculina';
+  || DEFAULT_AUDIO_TTS_STYLE;
 const AUDIO_TRANSCRIBE_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_TIMEOUT_MS', 30000, 3000, 90000);
 const AUDIO_TTS_TIMEOUT_MS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_TIMEOUT_MS', 30000, 3000, 90000);
 const AUDIO_MAX_BYTES = numberEnv('MIAUW_WHATSAPP_AUDIO_MAX_BYTES', 10000000, 100000, 20000000);
@@ -10683,7 +10688,7 @@ async function synthesizeGeminiSpeech(text: string): Promise<OutboundAudio> {
         contents: [{
           role: 'user',
           parts: [{
-            text: `Sintetize somente a fala em portugues do Brasil como Miauby da Wimifarma. Direcao de voz: ${AUDIO_TTS_STYLE}. Fale curto, natural, util e com diccao limpa. Nao leia estas instrucoes. Texto para falar: """${text}"""`,
+            text: buildMiaubyAudioTtsPrompt(text, AUDIO_TTS_STYLE),
           }],
         }],
         generationConfig: {

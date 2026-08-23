@@ -344,6 +344,8 @@ miauw_eval_add('fase21_perfil_voz_audio_seguro', static function (): void {
     miauw_eval_assert((int) ($audio['min_recording_ms'] ?? 0) >= 1500, 'Audio curto precisa ser bloqueado antes da transcricao.');
     miauw_eval_assert_contains('Parece uma fala real', $speechInstructions, 'Instrucao TTS precisa pedir fala real.');
     miauw_eval_assert_contains('Voz selecionada', $speechInstructions, 'Instrucao TTS precisa carregar voz selecionada.');
+    miauw_eval_assert_contains('cadencia felina perceptivel', $speechInstructions, 'Instrucao TTS precisa tornar a identidade felina audivel.');
+    miauw_eval_assert_contains('suspenda o efeito felino e priorize clareza absoluta', $speechInstructions, 'Instrucao TTS precisa preservar clareza em dados operacionais.');
     miauw_eval_assert_contains('voz: miauby_padrao', $contextText, 'Contexto textual precisa levar perfil de voz ao Node.');
     miauw_eval_assert_contains('audio=', $contextText, 'Contexto textual precisa explicitar estado do audio.');
     miauw_eval_assert_contains('modo=', $contextText, 'Contexto textual precisa explicitar modo de audio.');

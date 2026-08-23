@@ -2278,6 +2278,8 @@ function miauw_agent_speech_instructions(array $user): string
         'Ritmo: ' . (string) ($ttsHint['pace'] ?? ($voiceProfile['tempo'] ?? 'natural')) . '. Emocao: ' . (string) ($ttsHint['emotion'] ?? 'curioso_pratico') . '.',
         'Voz selecionada: ' . (string) ($speechVoice['label'] ?? miauw_agent_speech_voice()) . ' - ' . (string) ($speechVoice['temper'] ?? '') . '.',
         (string) ($speechVoice['instructions'] ?? ''),
+        'Textura vocal: aguda, agil e marota, com cadencia felina perceptivel e finais levemente ronronados apenas em falas leves; sem miados repetidos nem caricatura.',
+        'Em valores, nomes, codigos, alertas e confirmacoes, suspenda o efeito felino e priorize clareza absoluta.',
         'Use pausas curtas, entonacao de conversa e pequenas inflexoes de humor seco quando couber.',
         'Nao leia markdown, asteriscos, codigo, URLs longas, nomes de endpoint ou detalhes tecnicos.',
         'Se houver risco ou acao forte, soe firme e diga que precisa confirmar na tela.',

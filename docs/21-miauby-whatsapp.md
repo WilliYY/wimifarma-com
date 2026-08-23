@@ -167,7 +167,7 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_AUDIO_TTS_PROVIDER=gemini`
 - `MIAUW_WHATSAPP_AUDIO_TTS_MODEL=gemini-2.5-flash-preview-tts`
 - `MIAUW_WHATSAPP_AUDIO_TTS_VOICE=Zephyr`
-- `MIAUW_WHATSAPP_AUDIO_TTS_STYLE=voz aguda, brilhante e brincalhona de gato curioso; humana e clara, levemente felina, sem imitar pessoa real, sem cantar, sem miar demais e sem ficar grave ou masculina`
+- `MIAUW_WHATSAPP_AUDIO_TTS_STYLE=voz aguda, brilhante, agil e brincalhona de uma gata curiosa; sorriso vocal maroto, cadencia felina perceptivel e finais levemente ronronados apenas em falas leves; humana e perfeitamente clara em portugues do Brasil, sem imitar pessoa real, sem cantar, sem miados repetidos, sem caricatura e sem infantilizar alertas`
 - `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_TIMEOUT_MS=30000`
 - `MIAUW_WHATSAPP_AUDIO_TTS_TIMEOUT_MS=30000`
 - `MIAUW_WHATSAPP_AUDIO_MAX_BYTES=10000000`
@@ -335,7 +335,7 @@ Se o Gemini falhar no modo hibrido, o bridge cai para o core Miauby apenas como 
 O audio do WhatsApp usa Gemini em duas etapas independentes:
 
 1. Entrada: o bridge guarda somente referencia sanitizada da midia recebida. No processamento da fila, ele baixa a midia via Evolution `/chat/getBase64FromMediaMessage/{instance}` ou via Media API da Meta, envia para `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL` e usa apenas a transcricao validada para seguir no roteador. Se a transcricao parecer chute/glossario interno, o evento recebe metadado sanitizado de falha e o usuario recebe `Nao consegui entender bem esse audio. Me manda em texto ou grava de novo falando uma frase clara.`.
-2. Saida: se `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=true`, a resposta textual ja validada vira fala por `MIAUW_WHATSAPP_AUDIO_TTS_MODEL`. `MIAUW_WHATSAPP_AUDIO_TTS_VOICE=Zephyr` e `MIAUW_WHATSAPP_AUDIO_TTS_STYLE` orientam uma voz mais aguda, brilhante e levemente felina para o Miauby, sem clonagem de voz ou imitacao de pessoa real. Quando o Gemini devolve PCM, o bridge empacota como WAV antes de enviar. Se envio de audio falhar, cai para texto pelo mesmo transporte e registra `provider_reply_fallback` em `miauw_whatsapp_error_logs`.
+2. Saida: se `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=true`, a resposta textual ja validada vira fala por `MIAUW_WHATSAPP_AUDIO_TTS_MODEL`. `MIAUW_WHATSAPP_AUDIO_TTS_VOICE=Zephyr` permanece como base brilhante, enquanto `MIAUW_WHATSAPP_AUDIO_TTS_STYLE` orienta gata curiosa, cadencia felina perceptivel e finais levemente ronronados somente em falas leves, sem clonagem, miados repetidos ou caricatura. Valores, nomes, codigos, alertas e confirmacoes suspendem o efeito felino e priorizam clareza absoluta. Quando o Gemini devolve PCM, o bridge empacota como WAV antes de enviar. Se envio de audio falhar, cai para texto pelo mesmo transporte e registra `provider_reply_fallback` em `miauw_whatsapp_error_logs`.
 
 O audio nao substitui guardrails. Escritas fortes seguem exigindo pendencia e confirmacao; mensagens de audio sem dados suficientes devem pedir o menor dado faltante; `sim/nao` por audio so tem efeito se a transcricao encontrar uma pendencia valida. Toda alteracao futura de comando no Miauby WhatsApp tambem precisa considerar o caminho de audio, porque audio confiavel vira texto e deve passar pelo mesmo parser local/roteador, enquanto audio duvidoso nunca deve virar comando.
 
@@ -600,6 +600,7 @@ Valide localmente o app:
 ```powershell
 cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\miauw-whatsapp
 npm.cmd run check
+npm.cmd test
 npm.cmd run build
 ```
 
@@ -633,4 +634,4 @@ Desde 2026-08-22, continuacoes curtas usam o contrato compartilhado de `apps/mia
 2. Configurar webhook da instancia.
 3. Preencher `MIAUW_WHATSAPP_ALLOWED_SENDERS` com remetentes autorizados.
 4. Testar com um remetente em allowlist e prefixo `miauby`.
-5. Depois avaliar audio, midias e liberacao controlada sem prefixo.
+5. Manter audio e midias restritos a contatos autorizados, revisar qualidade/custo e so depois avaliar liberacao controlada sem prefixo.

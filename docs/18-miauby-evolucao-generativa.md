@@ -203,6 +203,7 @@ Nota de nomenclatura/migracao: `Miauby` e o nome canonico de produto. O prefixo 
   - `miauw_agent_speech_voices()` limita vozes base a `marin`, `cedar`, `ash`, `coral` e `verse`;
   - `/miauw/diagnostico.php` permite salvar a voz base em `miauw_configuracoes.miauw_speech_voice`, sem versionar segredo e sem reiniciar container;
   - o prompt de TTS recebeu instrucoes fortes de fala real, ritmo, energia e regra para usar video/voz externa apenas como inspiracao geral autorizada, nunca como clonagem de pessoa/personagem;
+  - em 2026-08-23, a voz base `marin` foi preservada e o prompt passou a pedir textura aguda/marota, cadencia felina perceptivel e finais levemente ronronados apenas em falas leves; valores, nomes, codigos, alertas e confirmacoes suspendem o efeito felino para manter clareza absoluta, sem miados repetidos nem caricatura;
   - `site/miauw/miauw-evals.php` cobre status Fase 21, seletor de voz, playback por blob, contrato de voz, TTS e export de tools em `fase21-voice-playback-profile-selector`.
 - Complemento operacional da Fase 21:
   - o Miauby ganhou tools de Gestao no registry: `resumo_gestao` como leitura baixa e `criar_conta_gestao` como escrita forte;
@@ -309,7 +310,7 @@ Desde 2026-06-03, todo comando textual criado ou melhorado no Miauby WhatsApp de
 Regra por origem:
 
 - WhatsApp: pode receber texto, audio transcrito e midia quando a feature existir. Comandos operacionais seguem allowlist, card liberado, usuario vinculado, idempotencia e confirmacao quando aplicavel.
-- Miauby interno: trabalha apenas com texto. Ele nao deve ler imagem, foto, PDF, audio ou comprovante Pix; quando um fluxo do WhatsApp depender de midia, o interno aprende somente o fallback textual/manual.
+- Miauby interno: pode receber audio somente pelo fluxo temporario `gravar -> transcrever -> revisar -> enviar`, sem armazenar bytes e sem executar escrita pela voz. Ele nao deve ler imagem, foto, PDF ou comprovante Pix; quando um fluxo do WhatsApp depender dessas midias, o interno aprende somente o fallback textual/manual.
 - Responsavel no interno: vem automaticamente da sessao do usuario logado (`core_users.id`, `username`, `display_name`). O operador nao precisa digitar o proprio nome; se digitar outro responsavel, a permissao precisa ser validada antes de aceitar.
 - Responsavel no WhatsApp: vem do numero vinculado/allowlist. Nome digitado diferente nao vence o vinculo do numero sem regra explicita/permissao.
 - Ambos: devem registrar origem correta (`miauby_whatsapp` ou `miauby_interno`), usuario/responsavel resolvido, logs/historico e resposta curta no estilo Miauby.
