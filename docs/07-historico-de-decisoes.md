@@ -1874,3 +1874,32 @@ Riscos/cuidados:
 - Nao atualizar a Evolution para `latest`, `v2.3.6` ou `v2.3.7` sem stack isolada, backup e pareamento real.
 - Recriar somente `wimifarma-evolution-api`; preservar Postgres, Redis, instancia, API key e webhook.
 - Depois do QR, validar `connectionState=open`, webhook, recebimento real e envio real.
+
+## 2026-08-23 - Miauby combina memoria curta e persistente segura
+
+Decisao:
+
+- Preservar a memoria de sessao de 30 minutos e adicionar um resumo persistente por usuario/canal em `miauw_whatsapp_conversation_states` com `state_key='persistent_user_context'`.
+- Renovar o resumo por 180 dias de uso, mantendo no maximo uma linha atualizavel por usuario/canal.
+- Persistir somente topico, intencao, filtros e referencias limitadas; nunca persistir texto integral, confirmacao, selecao, pergunta pendente, conversa ou sessao.
+- Limpar memoria curta e persistente no reset explicito.
+
+Motivo:
+
+- Permitir continuidade depois de nova conversa ou reinicio sem transformar memoria antiga em autorizacao para uma acao.
+- Evitar peso crescente no servidor e reduzir retencao desnecessaria de texto/PII.
+
+Impacto:
+
+- `apps/miauw-agent/src/conversation-memory.ts`
+- `apps/miauw-whatsapp/src/conversation-memory-client.ts`
+- `apps/miauw-whatsapp/src/conversation-state-store.ts`
+- `apps/miauw-whatsapp/src/server.ts`
+- `docs/36-miauby-memoria-conversacional.md`
+
+Riscos/cuidados:
+
+- WhatsApp continua exigindo `Miauby` para reativar uma nova sessao; memoria duravel nao autoriza continuacao silenciosa.
+- IDs lembrados devem ser reconsultados no modulo oficial antes de responder ou escrever.
+- `sim`, `nao`, ordinais e escolhas nunca podem atravessar sessao pela memoria persistente.
+- Em 2026-08-23, 131 avisos historicos de automacao/OCR/fila foram revisados no Postgres de producao com `resolved_at` e motivo auditavel, sem excluir os registros; nao havia aviso novo nas 24 horas anteriores.

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   applyConversationEffect,
   emptyConversationState,
+  persistentConversationMemoryFromState,
   resolveConversationMessage,
   type MiaubyConversationState,
 } from './conversation-memory.js';
@@ -390,4 +391,107 @@ test('ativa com saudacao acentuada e pontuada', () => {
   const result = resolveConversationMessage('Olá, Miauby, me ajuda', null, { ...identity, now: NOW });
   assert.equal(result.state.active, true);
   assert.notEqual(result.status, 'inactive');
+});
+
+test('restaura contexto seguro em uma nova sessao apos ativacao valida', () => {
+  const first = resolveConversationMessage('Miauby quais encomendas tem?', null, { ...identity, now: NOW });
+  const withItems = applyConversationEffect(first.state, {
+    intent: 'consultar_encomendas',
+    topic: 'encomendas',
+    filters: { cliente: 'Maria' },
+    recentEntities: [{ index: 1, type: 'encomenda', id: 'row-1', label: 'Losartana 50mg - Maria' }],
+  }, NOW);
+  const persistentState = persistentConversationMemoryFromState(withItems, NOW);
+  const nextIdentity = { ...identity, conversationId: '100', sessionId: 'session-b' };
+
+  const restored = resolveConversationMessage('Miauby qual telefone dela?', null, {
+    ...nextIdentity,
+    now: NOW,
+    persistentState,
+  });
+
+  assert.equal(restored.status, 'selected');
+  assert.equal(restored.selectedEntity?.id, 'row-1');
+  assert.equal(restored.state.sessionId, 'session-b');
+  assert.equal(restored.state.pendingAction, null);
+  assert.equal(restored.persistentState?.currentTopic, 'encomendas');
+});
+
+test('memoria persistente nao ativa WhatsApp sem Miauby e ignora identidade ou validade invalida', () => {
+  const source = applyConversationEffect(activeState(), {
+    intent: 'consultar_encomendas',
+    topic: 'encomendas',
+    recentEntities: [{ index: 1, type: 'encomenda', id: 'row-1', label: 'Losartana - Maria' }],
+  }, NOW);
+  const persistentState = persistentConversationMemoryFromState(source, NOW);
+  const whatsappIdentity = { ...identity, channel: 'whatsapp' as const, sessionId: 'whatsapp' };
+
+  assert.equal(resolveConversationMessage('e a da Maria?', null, {
+    ...whatsappIdentity,
+    now: NOW,
+    persistentState: { ...persistentState, channel: 'whatsapp' },
+  }).status, 'inactive');
+
+  const foreign = resolveConversationMessage('Miauby e a da Maria?', null, {
+    ...identity,
+    conversationId: '100',
+    sessionId: 'session-b',
+    now: NOW,
+    persistentState: { ...persistentState, userId: 'outro-usuario' },
+  });
+  assert.equal(foreign.selectedEntity, null);
+
+  const expired = resolveConversationMessage('Miauby e a da Maria?', null, {
+    ...identity,
+    conversationId: '101',
+    sessionId: 'session-c',
+    now: NOW,
+    persistentState: { ...persistentState, expiresAt: new Date(NOW.getTime() - 1).toISOString() },
+  });
+  assert.equal(expired.selectedEntity, null);
+});
+
+test('memoria persistente nunca carrega confirmacoes selecoes ou perguntas entre sessoes', () => {
+  const pending = applyConversationEffect(activeState(), {
+    topic: 'encomendas',
+    recentEntities: [{ index: 1, type: 'encomenda', id: 'row-1', label: 'Losartana - Maria' }],
+    pendingAction: {
+      id: 'cancel-row-1',
+      intent: 'cancelar_encomenda',
+      entity: { index: 1, type: 'encomenda', id: 'row-1', label: 'Losartana - Maria' },
+      createdAt: NOW.toISOString(),
+      expiresAt: new Date(NOW.getTime() + 60_000).toISOString(),
+    },
+    pendingSelection: {
+      intent: 'cancelar_encomenda',
+      entities: [{ index: 1, type: 'encomenda', id: 'row-1', label: 'Losartana - Maria' }],
+      createdAt: NOW.toISOString(),
+      expiresAt: new Date(NOW.getTime() + 60_000).toISOString(),
+    },
+    pendingQuestion: {
+      key: 'report_date',
+      prompt: 'Qual dia?',
+      createdAt: NOW.toISOString(),
+      expiresAt: new Date(NOW.getTime() + 60_000).toISOString(),
+    },
+  }, NOW);
+  const persistentState = persistentConversationMemoryFromState(pending, NOW);
+
+  assert.equal('pendingAction' in persistentState, false);
+  assert.equal('pendingSelection' in persistentState, false);
+  assert.equal('pendingQuestion' in persistentState, false);
+
+  const next = resolveConversationMessage('Miauby sim', null, {
+    ...identity,
+    conversationId: '100',
+    sessionId: 'session-b',
+    now: NOW,
+    persistentState,
+  });
+  assert.notEqual(next.status, 'confirm');
+  assert.equal(next.state.pendingAction, null);
+
+  const reset = resolveConversationMessage('Miauby limpa contexto', pending, { ...identity, now: NOW });
+  assert.equal(reset.status, 'reset');
+  assert.equal(reset.persistentState, null);
 });

@@ -1,4 +1,5 @@
-import type { Pool } from 'pg';
+import crypto from 'node:crypto';
+import type { Pool, PoolClient } from 'pg';
 
 import {
   applyConversationMemoryEffect,
@@ -6,10 +7,12 @@ import {
   type ConversationChannel,
   type ConversationEffectPayload,
   type ConversationMemoryResult,
+  type ConversationPersistentStatePayload,
   type ConversationStatePayload,
 } from './conversation-memory-client.js';
 
 export const STRUCTURED_CONVERSATION_STATE_KEY = 'structured_conversation';
+export const PERSISTENT_CONVERSATION_STATE_KEY = 'persistent_user_context';
 const STRUCTURED_CONVERSATION_RETENTION_DAYS = 7;
 
 export type ConversationStateTransitionInput = {
@@ -82,14 +85,16 @@ export async function transitionConversationState(
 ): Promise<ConversationMemoryResult> {
   const storageHash = cleanHash(input.storageHash);
   if (!storageHash) return unavailable('invalid_conversation_storage_hash');
+  const persistentHash = persistentStorageHash(input.channel, input.userId);
+  if (!persistentHash) return unavailable('invalid_persistent_conversation_identity');
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query(
-      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-      [`${STRUCTURED_CONVERSATION_STATE_KEY}:${storageHash}`],
-    );
+    await lockConversationStates(client, [
+      `${STRUCTURED_CONVERSATION_STATE_KEY}:${storageHash}`,
+      `${PERSISTENT_CONVERSATION_STATE_KEY}:${persistentHash}`,
+    ]);
     await client.query(
       `UPDATE miauw_whatsapp_conversation_states
           SET status = 'expired',
@@ -104,10 +109,10 @@ export async function transitionConversationState(
     );
     await client.query(
       `DELETE FROM miauw_whatsapp_conversation_states
-        WHERE state_key = $1
+        WHERE state_key = ANY($1::text[])
           AND status IN ('consumed', 'cancelled', 'expired')
           AND updated_at < NOW() - ($2::int * INTERVAL '1 day')`,
-      [STRUCTURED_CONVERSATION_STATE_KEY, STRUCTURED_CONVERSATION_RETENTION_DAYS],
+      [[STRUCTURED_CONVERSATION_STATE_KEY, PERSISTENT_CONVERSATION_STATE_KEY], STRUCTURED_CONVERSATION_RETENTION_DAYS],
     );
     const stored = await client.query<StateRow>(
       `SELECT payload
@@ -119,6 +124,28 @@ export async function transitionConversationState(
         FOR UPDATE`,
       [storageHash, STRUCTURED_CONVERSATION_STATE_KEY],
     );
+    await client.query(
+      `UPDATE miauw_whatsapp_conversation_states
+          SET status = 'expired',
+              payload = '{}'::jsonb,
+              consumed_at = COALESCE(consumed_at, NOW()),
+              updated_at = NOW()
+        WHERE sender_phone_hash = $1
+          AND state_key = $2
+          AND status = 'pending'
+          AND expires_at <= NOW()`,
+      [persistentHash, PERSISTENT_CONVERSATION_STATE_KEY],
+    );
+    const persistent = await client.query<StateRow>(
+      `SELECT payload
+         FROM miauw_whatsapp_conversation_states
+        WHERE sender_phone_hash = $1
+          AND state_key = $2
+          AND status = 'pending'
+          AND expires_at > NOW()
+        FOR UPDATE`,
+      [persistentHash, PERSISTENT_CONVERSATION_STATE_KEY],
+    );
     const resolver = options.resolver || resolveConversationMemory;
     const resolved = await resolver(input.message, {
       url: options.resolverUrl,
@@ -129,6 +156,7 @@ export async function transitionConversationState(
       conversationId: input.conversationId,
       sessionId: input.sessionId,
       state: stored.rows[0]?.payload || null,
+      persistentState: persistent.rows[0]?.payload || null,
     });
 
     if (!resolved.ok || !resolved.result) {
@@ -146,31 +174,21 @@ export async function transitionConversationState(
       ? 'pending'
       : resolved.result.status === 'expired' ? 'expired' : 'cancelled';
     const expiresAt = validFutureIso(state.expiresAt);
-    await client.query(
-      `INSERT INTO miauw_whatsapp_conversation_states (
-         sender_phone_hash, state_key, sender_phone_mask, payload, status,
-         source_event_id, trace_id, expires_at, consumed_at
-       ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::timestamptz, NULL)
-       ON CONFLICT (sender_phone_hash, state_key) DO UPDATE SET
-         sender_phone_mask = EXCLUDED.sender_phone_mask,
-         payload = EXCLUDED.payload,
-         status = EXCLUDED.status,
-         source_event_id = EXCLUDED.source_event_id,
-         trace_id = EXCLUDED.trace_id,
-         expires_at = EXCLUDED.expires_at,
-         consumed_at = CASE WHEN EXCLUDED.status = 'pending' THEN NULL ELSE NOW() END,
-         updated_at = NOW()`,
-      [
-        storageHash,
-        STRUCTURED_CONVERSATION_STATE_KEY,
-        String(input.storageMask || '').slice(0, 40),
-        JSON.stringify(state),
-        status,
-        input.sourceEventId || null,
-        String(input.traceId || '').slice(0, 32),
-        expiresAt,
-      ],
-    );
+    await upsertConversationState(client, {
+      storageHash,
+      stateKey: STRUCTURED_CONVERSATION_STATE_KEY,
+      storageMask: input.storageMask,
+      payload: state,
+      status,
+      sourceEventId: input.sourceEventId,
+      traceId: input.traceId,
+      expiresAt,
+    });
+    if (resolved.result.status === 'reset') {
+      await clearPersistentConversationState(client, persistentHash);
+    } else if (state.active === true && isRecord(resolved.result.persistentState)) {
+      await upsertPersistentConversationState(client, persistentHash, input, resolved.result.persistentState);
+    }
     await client.query('COMMIT');
     return resolved;
   } catch (error) {
@@ -188,13 +206,15 @@ export async function applyStoredConversationEffect(
 ): Promise<boolean> {
   const storageHash = cleanHash(input.storageHash);
   if (!storageHash) return false;
+  const persistentHash = persistentStorageHash(input.channel, input.userId);
+  if (!persistentHash) return false;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query(
-      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-      [`${STRUCTURED_CONVERSATION_STATE_KEY}:${storageHash}`],
-    );
+    await lockConversationStates(client, [
+      `${STRUCTURED_CONVERSATION_STATE_KEY}:${storageHash}`,
+      `${PERSISTENT_CONVERSATION_STATE_KEY}:${persistentHash}`,
+    ]);
     const stored = await client.query<StateRow>(
       `SELECT payload
          FROM miauw_whatsapp_conversation_states
@@ -219,6 +239,7 @@ export async function applyStoredConversationEffect(
       conversationId: input.conversationId,
       sessionId: input.sessionId,
       state,
+      persistentState: null,
     });
     if (!applied.ok || !applied.state) {
       await client.query('COMMIT');
@@ -241,6 +262,9 @@ export async function applyStoredConversationEffect(
         validFutureIso(applied.state.expiresAt),
       ],
     );
+    if (isRecord(applied.persistentState)) {
+      await upsertPersistentConversationState(client, persistentHash, input, applied.persistentState);
+    }
     await client.query('COMMIT');
     return true;
   } catch (error) {
@@ -249,6 +273,88 @@ export async function applyStoredConversationEffect(
   } finally {
     client.release();
   }
+}
+
+type UpsertStateInput = {
+  storageHash: string;
+  stateKey: string;
+  storageMask: string;
+  payload: ConversationStatePayload;
+  status: string;
+  sourceEventId: string | null;
+  traceId: string;
+  expiresAt: string;
+};
+
+async function upsertConversationState(client: PoolClient, input: UpsertStateInput): Promise<void> {
+  await client.query(
+    `INSERT INTO miauw_whatsapp_conversation_states (
+       sender_phone_hash, state_key, sender_phone_mask, payload, status,
+       source_event_id, trace_id, expires_at, consumed_at
+     ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::timestamptz, NULL)
+     ON CONFLICT (sender_phone_hash, state_key) DO UPDATE SET
+       sender_phone_mask = EXCLUDED.sender_phone_mask,
+       payload = EXCLUDED.payload,
+       status = EXCLUDED.status,
+       source_event_id = EXCLUDED.source_event_id,
+       trace_id = EXCLUDED.trace_id,
+       expires_at = EXCLUDED.expires_at,
+       consumed_at = CASE WHEN EXCLUDED.status = 'pending' THEN NULL ELSE NOW() END,
+       updated_at = NOW()`,
+    [
+      input.storageHash,
+      input.stateKey,
+      String(input.storageMask || '').slice(0, 40),
+      JSON.stringify(input.payload),
+      input.status,
+      input.sourceEventId || null,
+      String(input.traceId || '').slice(0, 32),
+      input.expiresAt,
+    ],
+  );
+}
+
+async function upsertPersistentConversationState(
+  client: PoolClient,
+  persistentHash: string,
+  input: Pick<ConversationStateTransitionInput, 'channel' | 'storageMask' | 'sourceEventId' | 'traceId'>,
+  payload: ConversationPersistentStatePayload,
+): Promise<void> {
+  await upsertConversationState(client, {
+    storageHash: persistentHash,
+    stateKey: PERSISTENT_CONVERSATION_STATE_KEY,
+    storageMask: `persistent:${input.channel}:${input.storageMask}`,
+    payload,
+    status: 'pending',
+    sourceEventId: input.sourceEventId,
+    traceId: input.traceId,
+    expiresAt: validFutureIso(payload.expiresAt),
+  });
+}
+
+async function clearPersistentConversationState(client: PoolClient, persistentHash: string): Promise<void> {
+  await client.query(
+    `UPDATE miauw_whatsapp_conversation_states
+        SET payload = '{}'::jsonb,
+            status = 'cancelled',
+            consumed_at = COALESCE(consumed_at, NOW()),
+            updated_at = NOW()
+      WHERE sender_phone_hash = $1
+        AND state_key = $2`,
+    [persistentHash, PERSISTENT_CONVERSATION_STATE_KEY],
+  );
+}
+
+async function lockConversationStates(client: PoolClient, values: string[]): Promise<void> {
+  for (const value of [...new Set(values)].sort()) {
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [value]);
+  }
+}
+
+function persistentStorageHash(channel: ConversationChannel, userId: string): string {
+  const cleanUserId = String(userId || '').trim();
+  if (!cleanUserId) return '';
+  return crypto.createHash('sha256').update(`persistent:${channel}:${cleanUserId}`).digest('hex');
 }
 
 function validFutureIso(value: unknown): string {
@@ -260,6 +366,10 @@ function validFutureIso(value: unknown): string {
 function cleanHash(value: unknown): string {
   const clean = String(value || '').trim().toLowerCase();
   return /^[a-f0-9]{64}$/.test(clean) ? clean : '';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
 function unavailable(error: string): ConversationMemoryResult {

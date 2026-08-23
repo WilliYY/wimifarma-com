@@ -2432,6 +2432,10 @@ async function ensureSchema(): Promise<void> {
       ON miauw_whatsapp_conversation_states (updated_at)
       WHERE state_key = 'structured_conversation'
         AND status IN ('consumed', 'cancelled', 'expired');
+    CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_persistent_context_retention
+      ON miauw_whatsapp_conversation_states (updated_at)
+      WHERE state_key = 'persistent_user_context'
+        AND status IN ('consumed', 'cancelled', 'expired');
     CREATE INDEX IF NOT EXISTS idx_miauw_whatsapp_contact_modules_enabled
       ON miauw_whatsapp_contact_modules (module_key, phone_hash)
       WHERE enabled = TRUE;

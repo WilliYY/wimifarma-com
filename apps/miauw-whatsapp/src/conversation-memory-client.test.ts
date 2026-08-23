@@ -13,11 +13,13 @@ test('returns the structured resolver result from the shared agent', async () =>
     conversationId: 'phone-hash',
     sessionId: 'whatsapp',
     state: { active: true, revision: 3 },
+    persistentState: { version: 1, currentTopic: 'encomendas' },
     fetchImpl: async (_input, init) => {
       const payload = JSON.parse(String(init?.body || '{}'));
       assert.equal(payload.message, 'o segundo');
       assert.equal(payload.user_id, '42');
       assert.equal(payload.state.revision, 3);
+      assert.equal(payload.persistent_state.currentTopic, 'encomendas');
       return new Response(JSON.stringify({
         ok: true,
         result: {
@@ -26,6 +28,7 @@ test('returns the structured resolver result from the shared agent', async () =>
           message: 'Miauby encomendas da Maria',
           reply: '',
           state: { active: true, revision: 4 },
+          persistentState: { version: 1, currentTopic: 'encomendas' },
           selectedEntity: { id: 'row-2', type: 'encomenda', label: 'Maria' },
           pendingAction: null,
         },
@@ -36,6 +39,7 @@ test('returns the structured resolver result from the shared agent', async () =>
   assert.equal(result.ok, true);
   assert.equal(result.result?.status, 'selected');
   assert.equal(result.result?.selectedEntity?.id, 'row-2');
+  assert.equal(result.result?.persistentState?.currentTopic, 'encomendas');
 });
 
 test('fails closed when the shared resolver is unavailable', async () => {
@@ -48,6 +52,7 @@ test('fails closed when the shared resolver is unavailable', async () => {
     conversationId: '12',
     sessionId: 'abc',
     state: null,
+    persistentState: null,
     fetchImpl: async () => {
       throw new Error('offline');
     },
@@ -71,12 +76,15 @@ test('applies structured entities through the shared agent', async () => {
     conversationId: 'phone-hash',
     sessionId: 'whatsapp',
     state: { active: true, revision: 2 },
+    persistentState: null,
     fetchImpl: async () => new Response(JSON.stringify({
       ok: true,
       state: { active: true, revision: 3, recentEntities: [{ id: 'row-7' }] },
+      persistent_state: { version: 1, currentTopic: 'encomendas' },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
   });
 
   assert.equal(result.ok, true);
   assert.deepEqual(result.state?.recentEntities, [{ id: 'row-7' }]);
+  assert.equal(result.persistentState?.currentTopic, 'encomendas');
 });

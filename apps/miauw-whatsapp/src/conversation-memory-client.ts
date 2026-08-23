@@ -1,5 +1,6 @@
 export type ConversationChannel = 'internal' | 'whatsapp';
 export type ConversationStatePayload = Record<string, unknown>;
+export type ConversationPersistentStatePayload = Record<string, unknown>;
 
 export type ConversationEntityPayload = {
   id: string;
@@ -15,6 +16,7 @@ export type ConversationResolutionPayload = {
   message: string;
   reply: string;
   state: ConversationStatePayload;
+  persistentState?: ConversationPersistentStatePayload | null;
   selectedEntity: ConversationEntityPayload | null;
   pendingAction: Record<string, unknown> | null;
   diagnostics?: {
@@ -55,6 +57,7 @@ type ResolveOptions = {
   conversationId: string;
   sessionId: string;
   state: ConversationStatePayload | null;
+  persistentState: ConversationPersistentStatePayload | null;
   fetchImpl?: typeof fetch;
 };
 
@@ -66,6 +69,7 @@ type ResolverResponse = {
 type EffectResponse = {
   ok?: boolean;
   state?: unknown;
+  persistent_state?: unknown;
 };
 
 export async function resolveConversationMemory(
@@ -94,6 +98,7 @@ export async function resolveConversationMemory(
         conversation_id: options.conversationId,
         session_id: options.sessionId,
         state: options.state,
+        persistent_state: options.persistentState,
       }),
       signal: controller.signal,
     });
@@ -110,8 +115,8 @@ export async function resolveConversationMemory(
 export async function applyConversationMemoryEffect(
   effect: ConversationEffectPayload,
   options: Omit<ResolveOptions, 'fetchImpl'> & { fetchImpl?: typeof fetch },
-): Promise<{ ok: boolean; state: ConversationStatePayload | null }> {
-  if (!options.url || !options.token || !options.state) return { ok: false, state: null };
+): Promise<{ ok: boolean; state: ConversationStatePayload | null; persistentState: ConversationPersistentStatePayload | null }> {
+  if (!options.url || !options.token || !options.state) return { ok: false, state: null, persistentState: null };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(100, options.timeoutMs));
   const fetchImpl = options.fetchImpl || fetch;
@@ -135,10 +140,14 @@ export async function applyConversationMemoryEffect(
     });
     const body = await response.json().catch(() => null) as EffectResponse | null;
     return response.ok && body?.ok === true && isRecord(body.state)
-      ? { ok: true, state: body.state }
-      : { ok: false, state: null };
+      ? {
+        ok: true,
+        state: body.state,
+        persistentState: isRecord(body.persistent_state) ? body.persistent_state : null,
+      }
+      : { ok: false, state: null, persistentState: null };
   } catch {
-    return { ok: false, state: null };
+    return { ok: false, state: null, persistentState: null };
   } finally {
     clearTimeout(timeout);
   }

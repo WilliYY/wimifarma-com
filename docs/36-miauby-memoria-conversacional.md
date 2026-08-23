@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Miauby Interno e Miauby WhatsApp compartilham memoria curta e estruturada para continuar uma conversa sem reenviar todo o historico ao modelo. Depois da ativacao inicial, frases como `qual e da Maria?`, `o segundo`, `cancela ela`, `sim`, `e amitriptilina` e `agora 42` podem aproveitar o contexto valido da mesma identidade. O Interno preserva a compatibilidade de comandos explicitos sem a palavra `Miauby`; o WhatsApp continua exigindo o prefixo para iniciar uma conversa, mas aceita saudacoes como `oi Miauby`, `ola Miauby`, `bom dia Miauby`, `boa tarde Miauby` e `boa noite Miauby`.
+Miauby Interno e Miauby WhatsApp compartilham memoria curta de sessao e memoria persistente estruturada para continuar uma conversa sem reenviar todo o historico ao modelo. Depois da ativacao inicial, frases como `qual e da Maria?`, `o segundo`, `cancela ela`, `sim`, `e amitriptilina` e `agora 42` podem aproveitar o contexto valido da mesma identidade. O Interno preserva a compatibilidade de comandos explicitos sem a palavra `Miauby`; o WhatsApp continua exigindo o prefixo para iniciar uma conversa, mas aceita saudacoes como `oi Miauby`, `ola Miauby`, `bom dia Miauby`, `boa tarde Miauby` e `boa noite Miauby`.
 
 Essa memoria auxilia a interpretacao. Ela nao substitui o banco do modulo, nao concede permissoes, nao executa escrita e nao torna `apps/miauby` dono do Miauby Interno.
 
@@ -10,16 +10,18 @@ Essa memoria auxilia a interpretacao. Ela nao substitui o banco do modulo, nao c
 
 - `apps/miauw-agent/src/conversation-memory.ts` e o redutor deterministico e sem efeitos colaterais.
 - `POST /miauw/agent/conversation/resolve` interpreta mensagem + estado; `POST /miauw/agent/conversation/effect` aplica efeitos estruturados devolvidos por um executor.
-- `apps/miauw-whatsapp/src/conversation-state-store.ts` e o dono da persistencia curta e reutiliza `miauw_whatsapp_conversation_states` com `state_key='structured_conversation'`.
+- `apps/miauw-whatsapp/src/conversation-state-store.ts` e o dono da persistencia e reutiliza `miauw_whatsapp_conversation_states` com `state_key='structured_conversation'` para a sessao e `state_key='persistent_user_context'` para o resumo duravel.
 - O Interno continua em `site/miauw/api.php`; ele usa a ponte interna tokenizada do WhatsApp para ler e transicionar o mesmo contrato persistente.
 - Confirmacoes, permissoes, validacoes, idempotencia e escritas continuam nos executores PHP/Node ja existentes.
 - `apps/miauby` permanece migracao sombra e nao participa deste fluxo como fonte oficial.
 
-Nao ha tabela nem migracao nova. `miauw_memorias` e `miauby_memories` nao podem guardar este contexto temporario.
+Nao ha tabela nem migracao nova. Cada usuario possui no maximo uma linha persistente por canal, sem historico integral de mensagens. `miauw_memorias` e `miauby_memories` nao participam deste fluxo.
 
 ## Contrato do estado
 
-O payload persistido possui `active`, `channel`, `userId`, `conversationId`, `sessionId`, `currentTopic`, `lastIntent`, `lastFilters`, `recentEntities`, `lastCreatedEntity`, `pendingAction`, `pendingSelection`, `pendingQuestion`, `lastInteractionAt`, `expiresAt`, `version` e `revision`.
+O payload curto de sessao possui `active`, `channel`, `userId`, `conversationId`, `sessionId`, `currentTopic`, `lastIntent`, `lastFilters`, `recentEntities`, `lastCreatedEntity`, `pendingAction`, `pendingSelection`, `pendingQuestion`, `lastInteractionAt`, `expiresAt`, `version` e `revision`.
+
+O payload persistente e uma projecao permitida por lista fechada: `channel`, `userId`, `currentTopic`, `lastIntent`, `lastFilters`, `recentEntities`, `lastCreatedEntity`, `updatedAt`, `expiresAt` e `version`. Ele nunca possui `conversationId`, `sessionId`, mensagem integral, `pendingAction`, `pendingSelection` ou `pendingQuestion`. Portanto uma nova sessao pode lembrar assunto, filtros e referencias, mas nunca herda um `sim/nao`, uma escolha ou uma acao pronta para executar.
 
 `recentEntities` guarda identificadores reais e metadados limitados. A frase original de `consultar_encomendas` e preservada para que produto, cliente, telefone, contexto e status nao sejam perdidos no roteamento. Ao responder sobre uma Encomenda selecionada, o canal consulta novamente a Cotacao pelo `row_id` UUID validado, antes de aplicar o limite da lista e incluindo o historico real quando necessario; texto memorizado nunca e considerado estado atual do modulo.
 
@@ -40,19 +42,23 @@ Confirmacoes e recusas so valem quando ha uma acao pendente da mesma identidade.
 
 - Interno: identidade por `userId + conversationId + hash da sessao`.
 - WhatsApp: identidade e armazenamento por hash salgado do contato autorizado.
+- Memoria persistente: identidade separada por `channel + userId`; Interno e WhatsApp nao misturam contexto entre si.
 - Um usuario, canal, conversa ou sessao diferente nao pode confirmar o estado de outro.
 - `MIAUBY_CONVERSATION_TTL` controla a conversa, com padrao de 1800 segundos.
 - `MIAUBY_PENDING_ACTION_TTL` controla a acao pendente, com padrao de 300 segundos e sempre menor ou igual ao TTL da conversa.
+- O resumo persistente vence depois de 180 dias sem uso e renova sua validade a cada interacao valida. Isso limita dados antigos sem perder continuidade entre sessoes e reinicios.
 - `MIAUBY_WHATSAPP_CONTINUATION_WITHOUT_PREFIX` controla continuacoes sem prefixo no WhatsApp; allowlist e vinculo continuam obrigatorios.
-- `encerra conversa`, `sair do miauby`, `miauby sair`, `limpa contexto` e `miauby encerra` apagam o contexto curto.
+- `encerra conversa`, `sair do miauby`, `miauby sair`, `limpa contexto` e `miauby encerra` apagam o contexto curto e o persistente.
 
-Cada transicao persistida usa transacao Postgres, `pg_advisory_xact_lock`, leitura `FOR UPDATE` e revisao do estado. Duas confirmacoes concorrentes da mesma pendencia resultam em um unico consumo.
+Cada transicao usa uma unica transacao Postgres, locks consultivos ordenados para as chaves curta e persistente, leitura `FOR UPDATE` e revisao do estado. Duas confirmacoes concorrentes da mesma pendencia resultam em um unico consumo.
 
-Estados estruturados vencidos tem o `payload` apagado na primeira manutencao seguinte. Registros `consumed`, `cancelled` ou `expired` sao removidos depois de 7 dias, e mensagens sem contexto ativo nao criam linhas vazias no Postgres.
+Estados estruturados vencidos tem o `payload` apagado na primeira manutencao seguinte. Registros `consumed`, `cancelled` ou `expired` sao removidos depois de 7 dias, e mensagens sem contexto ativo nao criam linhas vazias no Postgres. O resumo persistente ocupa uma unica linha atualizavel por usuario/canal, evitando crescimento por mensagem.
 
 ## Compatibilidade e seguranca
 
 Pendencias legadas de confirmacao, selecao, relatorio e coleta de campos sao resolvidas antes da memoria estruturada. Formatos antigos continuam validos. No WhatsApp, a continuacao sem `miauby` so e aceita para contato permitido com contexto ativo e nao vencido. Se o estado nao puder ser revalidado entre o webhook e o processamento, o canal pede uma nova mensagem com `Miauby` e nao entrega o texto sem prefixo ao parser operacional.
+
+Uma nova sessao do WhatsApp nao e ativada silenciosamente pela memoria persistente: continua exigindo `Miauby`. No Interno, somente uma ativacao ou comando explicito valido restaura o resumo. Memoria vencida, de outro usuario ou de outro canal e ignorada. IDs e rotulos persistidos continuam sendo apenas referencias; o modulo oficial deve revalidar entidade, permissao e estado atual antes de qualquer resposta ou escrita.
 
 Uma referencia como `cancela ela` pode formar uma acao pendente, mas so e executada se existir executor oficial, autorizado e idempotente para aquele tipo. A Cotacao ainda nao possui cancelamento contextual seguro de Encomenda; nesse caso a confirmacao termina de forma fechada, informa a limitacao e nao altera linha alguma.
 
@@ -72,5 +78,9 @@ Cada resolucao devolve diagnostico estruturado com `rawMessage`, `sessionActive`
 - identidade A pendente e identidade B dizendo `sim` sem execucao;
 - duas confirmacoes concorrentes consumindo exatamente uma vez;
 - reset explicito removendo entidades e pendencias.
+- nova sessao restaurando topico/filtros/referencias somente depois de ativacao valida;
+- nova sessao sem herdar confirmacao, selecao ou pergunta pendente;
+- memoria persistente vencida, de outro usuario ou canal sendo ignorada;
+- reinicio dos containers preservando o resumo persistente e reset removendo as duas camadas;
 - prefixo `Miauby:` exatamente uma vez em ambos os canais;
 - diagnostico de contexto sem entidade ou estado de outra identidade.

@@ -53,6 +53,19 @@ export type MiaubyConversationState = ConversationIdentity & {
   expiresAt: string;
 };
 
+export type MiaubyPersistentConversationMemory = {
+  version: 1;
+  channel: SemanticChannel;
+  userId: string;
+  currentTopic: string;
+  lastIntent: string;
+  lastFilters: Record<string, string | number | boolean>;
+  recentEntities: ConversationEntity[];
+  lastCreatedEntity: ConversationEntity | null;
+  updatedAt: string;
+  expiresAt: string;
+};
+
 export type ConversationEffect = {
   intent?: string;
   topic?: string;
@@ -94,6 +107,7 @@ export type ConversationResolution = {
   state: MiaubyConversationState;
   selectedEntity: ConversationEntity | null;
   pendingAction: ConversationPendingAction | null;
+  persistentState: MiaubyPersistentConversationMemory | null;
   semantic: SemanticInterpretation;
   diagnostics: ConversationDiagnostics;
 };
@@ -102,10 +116,12 @@ export type ResolveConversationOptions = ConversationIdentity & {
   now?: Date;
   conversationTtlSeconds?: number;
   pendingActionTtlSeconds?: number;
+  persistentState?: MiaubyPersistentConversationMemory | null;
 };
 
 const DEFAULT_CONVERSATION_TTL_SECONDS = 30 * 60;
 const DEFAULT_PENDING_ACTION_TTL_SECONDS = 5 * 60;
+const DEFAULT_PERSISTENT_MEMORY_TTL_SECONDS = 180 * 24 * 60 * 60;
 const MAX_RECENT_ENTITIES = 20;
 const RESET_PATTERN = /^(?:miauby\s+)?(?:encerra(?:\s+(?:a\s+)?conversa)?|sair(?:\s+do\s+miauby)?|limpa(?:r)?\s+(?:o\s+)?contexto)$/u;
 const CONFIRM_PATTERN = /^(?:sim|s|ss|pode|pode\s+sim|pode\s+fazer|confirmo|confirma|isso|isso\s+mesmo|e\s+esse|esse\s+mesmo|beleza|blz|ok|okay|correto|faz|faz\s+sim|manda|vai|vai\s+sim)$/u;
@@ -140,6 +156,26 @@ export function emptyConversationState(
     pendingQuestion: null,
     lastInteractionAt: instant.toISOString(),
     expiresAt: addSeconds(instant, ttlSeconds).toISOString(),
+  };
+}
+
+export function persistentConversationMemoryFromState(
+  state: MiaubyConversationState,
+  now = new Date(),
+  ttlSeconds = DEFAULT_PERSISTENT_MEMORY_TTL_SECONDS,
+): MiaubyPersistentConversationMemory {
+  const instant = validDate(now);
+  return {
+    version: 1,
+    channel: state.channel,
+    userId: cleanIdentity(state.userId),
+    currentTopic: cleanText(state.currentTopic, 80),
+    lastIntent: cleanText(state.lastIntent, 100),
+    lastFilters: sanitizeFilters(state.lastFilters),
+    recentEntities: sanitizeEntities(state.recentEntities),
+    lastCreatedEntity: sanitizeEntity(state.lastCreatedEntity),
+    updatedAt: instant.toISOString(),
+    expiresAt: addSeconds(instant, positiveTtl(ttlSeconds, DEFAULT_PERSISTENT_MEMORY_TTL_SECONDS)).toISOString(),
   };
 }
 
@@ -192,7 +228,7 @@ export function resolveConversationMessage(
   }
 
   if (!state.active) {
-    state = emptyConversationState(identity, now, conversationTtl);
+    state = restorePersistentConversationState(identity, options.persistentState, now, conversationTtl);
   }
 
   const pendingAction = validPendingAction(state.pendingAction, now);
@@ -508,6 +544,47 @@ function stateBelongsTo(state: MiaubyConversationState | null, identity: Convers
     && cleanIdentity(state.sessionId) === cleanIdentity(identity.sessionId));
 }
 
+function restorePersistentConversationState(
+  identity: ConversationIdentity,
+  input: MiaubyPersistentConversationMemory | null | undefined,
+  now: Date,
+  ttlSeconds: number,
+): MiaubyConversationState {
+  const state = emptyConversationState(identity, now, ttlSeconds);
+  const memory = sanitizePersistentConversationMemory(input, identity, now);
+  if (!memory) return state;
+  return {
+    ...state,
+    currentTopic: memory.currentTopic,
+    lastIntent: memory.lastIntent,
+    lastFilters: memory.lastFilters,
+    recentEntities: memory.recentEntities,
+    lastCreatedEntity: memory.lastCreatedEntity,
+  };
+}
+
+function sanitizePersistentConversationMemory(
+  input: MiaubyPersistentConversationMemory | null | undefined,
+  identity: ConversationIdentity,
+  now: Date,
+): MiaubyPersistentConversationMemory | null {
+  if (!input || typeof input !== 'object') return null;
+  if (input.channel !== identity.channel || cleanIdentity(input.userId) !== cleanIdentity(identity.userId)) return null;
+  if (isExpired(input.expiresAt, now)) return null;
+  return {
+    version: 1,
+    channel: identity.channel,
+    userId: cleanIdentity(identity.userId),
+    currentTopic: cleanText(input.currentTopic, 80),
+    lastIntent: cleanText(input.lastIntent, 100),
+    lastFilters: sanitizeFilters(input.lastFilters),
+    recentEntities: sanitizeEntities(input.recentEntities),
+    lastCreatedEntity: sanitizeEntity(input.lastCreatedEntity),
+    updatedAt: validIso(input.updatedAt, now.toISOString()),
+    expiresAt: validIso(input.expiresAt, now.toISOString()),
+  };
+}
+
 function sanitizeState(
   state: MiaubyConversationState,
   identity: ConversationIdentity,
@@ -575,6 +652,9 @@ function resolution(
     state,
     selectedEntity,
     pendingAction,
+    persistentState: state.active
+      ? persistentConversationMemoryFromState(state, new Date(state.lastInteractionAt))
+      : null,
     semantic,
     diagnostics: {
       rawMessage: cleanText(rawMessage, 1000),

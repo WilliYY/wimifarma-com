@@ -6,9 +6,11 @@ import { z } from 'zod';
 
 import {
   applyConversationEffect,
+  persistentConversationMemoryFromState,
   resolveConversationMessage,
   type ConversationEffect,
   type MiaubyConversationState,
+  type MiaubyPersistentConversationMemory,
 } from './conversation-memory.js';
 import { hasInvalidDailyReportDate, inferDailyReportToolRequest, reportPeriodArgsFromMessage } from './report-routing.js';
 import { interpretSemanticCommand, type SemanticChannel } from './semantic-command.js';
@@ -1607,6 +1609,9 @@ app.post(`${basePath}/conversation/resolve`, requireInternalToken, (req, res) =>
   const state = req.body?.state && typeof req.body.state === 'object'
     ? req.body.state as MiaubyConversationState
     : null;
+  const persistentState = req.body?.persistent_state && typeof req.body.persistent_state === 'object'
+    ? req.body.persistent_state as MiaubyPersistentConversationMemory
+    : null;
 
   if (message === '' || userId === '' || conversationId === '' || sessionId === '') {
     res.status(400).json({
@@ -1620,7 +1625,7 @@ app.post(`${basePath}/conversation/resolve`, requireInternalToken, (req, res) =>
   res.json({
     ok: true,
     side_effects: false,
-    conversation_version: '1.0.0',
+    conversation_version: '1.1.0',
     conversation_ttl_seconds: conversationTtlSeconds,
     pending_action_ttl_seconds: pendingActionTtlSeconds,
     result: resolveConversationMessage(message, state, {
@@ -1630,6 +1635,7 @@ app.post(`${basePath}/conversation/resolve`, requireInternalToken, (req, res) =>
       sessionId,
       conversationTtlSeconds,
       pendingActionTtlSeconds,
+      persistentState,
     }),
   });
 });
@@ -1661,11 +1667,13 @@ app.post(`${basePath}/conversation/effect`, requireInternalToken, (req, res) => 
     return;
   }
 
+  const updatedState = applyConversationEffect(state as MiaubyConversationState, effect, new Date(), conversationTtlSeconds);
   res.json({
     ok: true,
     side_effects: false,
-    conversation_version: '1.0.0',
-    state: applyConversationEffect(state as MiaubyConversationState, effect, new Date(), conversationTtlSeconds),
+    conversation_version: '1.1.0',
+    state: updatedState,
+    persistent_state: persistentConversationMemoryFromState(updatedState),
   });
 });
 

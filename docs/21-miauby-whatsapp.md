@@ -110,7 +110,7 @@ Tabelas criadas pelo servico:
 - `miauw_whatsapp_error_logs`: falhas sanitizadas de fila, envio e HTTP, com origem, severidade, trace curto, mascara do contato, resumo e contexto limpo para diagnostico.
 - `miauw_whatsapp_automation_runs`: execucoes de automacoes internas, como Tarefa, encomenda da Cotacao e rotinas n8n, com origem, modulo, status, modo notify, dry-run, destinatarios, enviados, falhas, fingerprint e detalhes sanitizados.
 - `miauw_whatsapp_channel_events`: memoria curta compartilhada entre Miauby interno e WhatsApp, com resumo sanitizado de entrada/saida, canal, motor, status, trace, hash/mascara do contato e metadados limpos.
-- `miauw_whatsapp_conversation_states`: estado curto e isolado por hash do telefone para completar tipo/data de relatorio, sem telefone cru e com expiracao automatica.
+- `miauw_whatsapp_conversation_states`: estados isolados e expiraveis. `structured_conversation` guarda a sessao curta; `persistent_user_context` guarda somente topico, intencao, filtros e referencias permitidas por 180 dias renovaveis, uma linha por usuario/canal, sem mensagem integral nem confirmacao/selecao/pergunta pendente.
 
 O bloqueio por ferias usa tabelas do Postgres core, nao o banco dedicado do bridge:
 
@@ -259,6 +259,7 @@ Principais variaveis:
 - `POST /miauw/whatsapp/webhook`: webhook da Evolution API ou Meta Cloud API.
 - `POST /miauw/whatsapp/worker/run`: processamento manual protegido por token interno.
 - `POST /miauw/whatsapp/internal/memory`: endpoint interno tokenizado da memoria curta compartilhada. Aceita `record`, `record_batch` e `recent`; grava/consulta `miauw_whatsapp_channel_events` no Postgres do bridge e deve receber somente texto resumido/sanitizado, hash/mascara e metadados limpos.
+- O mesmo endpoint aceita os modos internos `conversation_resolve` e `conversation_effect`: ambos transacionam a sessao curta e o resumo persistente no Postgres. O reset explicito limpa as duas camadas; uma nova sessao nunca recupera `pendingAction`, `pendingSelection` ou `pendingQuestion`.
 - `POST /miauw/whatsapp/internal/integration-status`: endpoint interno tokenizado para auditoria da integracao Miauby interno x Miauby WhatsApp. Ele nao envia mensagem real e nao executa escrita operacional; consulta dados reais do Postgres do bridge, testa `agent-context.php`, testa `/internal/memory`, testa o health do `wimifarma-miauw-agent`, resume fila/outbox, ultima mensagem enviada, ultimo evento de memoria e ultima falha acionavel.
 - `POST /miauw/whatsapp/internal/evolution-status`: endpoint interno tokenizado para auditoria do transporte Evolution API. Ele nao envia mensagem real; consulta `connectionState`, `webhook/find`, pausa do provider e dados reais de fila/outbox/eventos do provider `evolution`, retornando URL de webhook sem query/token, metadados da ultima mensagem enviada, ultimo evento recebido e ultima falha atual sem telefone cru nem conteudo textual da mensagem.
 - `GET /miauw/whatsapp/internal/allowlist/by-user`: endpoint interno por token de cabecalho para listar contatos vinculados a um `core_users.id`, retornando somente dados seguros (`id`, mascara, nome, status, cards e snapshot do usuario). O modulo Usuarios usa essa leitura tambem para reconciliar seu snapshot seguro no core quando o painel abre ou apos vincular numero, sem telefone cru e sem envio de mensagem real.
