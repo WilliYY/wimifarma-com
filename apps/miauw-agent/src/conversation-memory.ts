@@ -75,6 +75,17 @@ export type ConversationResolutionStatus =
   | 'confirm'
   | 'reject';
 
+export type ConversationDiagnostics = {
+  rawMessage: string;
+  sessionActive: boolean;
+  pendingAction: string;
+  currentTopic: string;
+  resolvedIntent: string;
+  contextUsed: boolean;
+  referencedEntity: { type: string; id: string } | null;
+  confidence: number;
+};
+
 export type ConversationResolution = {
   status: ConversationResolutionStatus;
   reason: string;
@@ -84,6 +95,7 @@ export type ConversationResolution = {
   selectedEntity: ConversationEntity | null;
   pendingAction: ConversationPendingAction | null;
   semantic: SemanticInterpretation;
+  diagnostics: ConversationDiagnostics;
 };
 
 export type ResolveConversationOptions = ConversationIdentity & {
@@ -95,11 +107,11 @@ export type ResolveConversationOptions = ConversationIdentity & {
 const DEFAULT_CONVERSATION_TTL_SECONDS = 30 * 60;
 const DEFAULT_PENDING_ACTION_TTL_SECONDS = 5 * 60;
 const MAX_RECENT_ENTITIES = 20;
-const RESET_PATTERN = /^(?:miauby\s+)?(?:encerra(?:\s+(?:a\s+)?conversa)?|sair\s+do\s+miauby|limpa(?:r)?\s+(?:o\s+)?contexto)$/u;
-const CONFIRM_PATTERN = /^(?:sim|s|ss|pode|pode\s+sim|confirmo|confirma|isso|isso\s+mesmo|beleza|blz|ok|faz|manda|vai)$/u;
-const REJECT_PATTERN = /^(?:nao|n|deixa|deixa\s+quieto|nao\s+precisa|cancela|esquece|melhor\s+nao)$/u;
+const RESET_PATTERN = /^(?:miauby\s+)?(?:encerra(?:\s+(?:a\s+)?conversa)?|sair(?:\s+do\s+miauby)?|limpa(?:r)?\s+(?:o\s+)?contexto)$/u;
+const CONFIRM_PATTERN = /^(?:sim|s|ss|pode|pode\s+sim|pode\s+fazer|confirmo|confirma|isso|isso\s+mesmo|e\s+esse|esse\s+mesmo|beleza|blz|ok|okay|correto|faz|faz\s+sim|manda|vai|vai\s+sim)$/u;
+const REJECT_PATTERN = /^(?:nao|n|nn|nao\s+quero|deixa|deixa\s+quieto|nao\s+precisa|cancela|esquece|melhor\s+nao|volta)$/u;
 const CANCEL_REFERENCE_PATTERN = /\b(?:cancela|cancelar|remove|remover|exclui|excluir)\b/u;
-const REFERENCE_PATTERN = /\b(?:esse|essa|ele|ela|isso|esse\s+ai|essa\s+ai)\b/u;
+const REFERENCE_PATTERN = /\b(?:esse|essa|estes|estas|este|esta|ele|ela|eles|elas|dele|dela|deles|delas|isso|esse\s+ai|essa\s+ai)\b/u;
 const ENCOMENDA_READ_PATTERN = /\b(?:encomendas?|encomendad[oa]s?)\b/u;
 const ENCOMENDA_READ_CUE = /\b(?:qual|quais|lista|listar|mostra|mostrar|ver|veja|consulta|consultar|procura|procurar|busca|buscar|tem|temos|ha|existe|existem)\b|\bme\s+(?:fala|fale|diga)\b/u;
 const ENCOMENDA_WRITE_CUE = /\b(?:criar|cria|crie|fazer|faz|faca|cadastrar|cadastra|cadastre|anotar|anota|anote|adicionar|adiciona|adicione|registrar|registra|registre|lancar|lanca|lance|colocar|coloca|coloque|inserir|insere|insira|botar|bota|bote|encomendar|reservar|reserva|reserve|guardar|guarda|guarde|separar|separa|separe)\b/u;
@@ -189,11 +201,11 @@ export function resolveConversationMessage(
   }
   if (pendingAction) {
     if (CONFIRM_PATTERN.test(normalized)) {
-      state = touch({ ...state, pendingAction: null }, now, conversationTtl);
+      state = touch({ ...state, pendingAction: null, pendingSelection: null }, now, conversationTtl);
       return resolution('confirm', 'pending_action_confirmed', original, '', state, null, pendingAction);
     }
     if (REJECT_PATTERN.test(normalized)) {
-      state = touch({ ...state, pendingAction: null }, now, conversationTtl);
+      state = touch({ ...state, pendingAction: null, pendingSelection: null }, now, conversationTtl);
       return resolution('reject', 'pending_action_rejected', original, 'Cancelado. Nenhuma acao foi executada.', state, null, pendingAction);
     }
     return resolution(
@@ -223,7 +235,7 @@ export function resolveConversationMessage(
   if (contextualEncomendaLookup) {
     const rewritten = `Miauby mostra encomenda ${original}`;
     state = touch({ ...state, currentTopic: 'encomendas', lastIntent: 'consultar_encomendas' }, now, conversationTtl);
-    return resolution('route', 'contextual_encomenda_read', rewritten, '', state);
+    return resolution('route', 'contextual_encomenda_read', rewritten, '', state, null, null, emptySemantic(), original);
   }
 
   const explicit = initialExplicit;
@@ -233,7 +245,7 @@ export function resolveConversationMessage(
   }
   if (explicit.status === 'resolved') {
     state = applySemantic(state, explicit, now, conversationTtl);
-    return resolution('route', 'explicit_intent', explicit.canonical_message || original, '', state, null, null, explicit);
+    return resolution('route', 'explicit_intent', explicit.canonical_message || original, '', state, null, null, explicit, original);
   }
 
   const pendingSelection = validPendingSelection(state.pendingSelection, now);
@@ -244,15 +256,10 @@ export function resolveConversationMessage(
   const selected = selectRecentEntity(normalized, candidates)
     || (REFERENCE_PATTERN.test(normalized) ? sanitizeEntity(state.lastCreatedEntity) : null);
   if (selected) {
-    if (CANCEL_REFERENCE_PATTERN.test(normalized)) {
-      const pending: ConversationPendingAction = {
-        id: `cancelar_encomenda:${selected.id}:${now.getTime()}`,
-        intent: selected.type === 'encomenda' ? 'cancelar_encomenda' : `cancelar_${selected.type}`,
-        entity: selected,
-        createdAt: now.toISOString(),
-        expiresAt: addSeconds(now, pendingTtl).toISOString(),
-      };
-      state = touch({ ...state, pendingAction: pending }, now, conversationTtl);
+    const selectedIntent = cleanText(pendingSelection?.intent, 100);
+    if (CANCEL_REFERENCE_PATTERN.test(normalized) || selectedIntent.startsWith('cancelar_')) {
+      const pending = createPendingAction(selected, selectedIntent, now, pendingTtl);
+      state = touch({ ...state, lastCreatedEntity: selected, pendingAction: pending, pendingSelection: null }, now, conversationTtl);
       return resolution(
         'pending_action',
         'referenced_action_requires_confirmation',
@@ -266,6 +273,23 @@ export function resolveConversationMessage(
     state = touch({ ...state, lastCreatedEntity: selected, pendingSelection: null }, now, conversationTtl);
     return resolution('selected', 'recent_entity_selected', original, selected.label, state, selected);
   }
+  if (CANCEL_REFERENCE_PATTERN.test(normalized) && REFERENCE_PATTERN.test(normalized) && candidates.length > 1) {
+    const entityTypes = [...new Set(candidates.map((entity) => entity.type))];
+    const selection: ConversationPendingSelection = {
+      intent: entityTypes.length === 1 ? `cancelar_${entityTypes[0]}` : 'cancelar_referencia',
+      entities: candidates.slice(0, 10),
+      createdAt: now.toISOString(),
+      expiresAt: addSeconds(now, pendingTtl).toISOString(),
+    };
+    state = touch({ ...state, pendingSelection: selection }, now, conversationTtl);
+    return resolution(
+      'reply',
+      'ambiguous_recent_entity',
+      original,
+      `Qual delas? ${selection.entities.map((entity) => `${entity.index}. ${entity.label}`).join(' | ')}`,
+      state,
+    );
+  }
 
   const pendingQuestion = validPendingQuestion(state.pendingQuestion, now);
   if (state.pendingQuestion && !pendingQuestion) {
@@ -275,15 +299,38 @@ export function resolveConversationMessage(
     return resolution('route', 'pending_question_answered', original, '', state);
   }
 
+  if (CONFIRM_PATTERN.test(normalized) || REJECT_PATTERN.test(normalized)) {
+    state = touch(state, now, conversationTtl);
+    return resolution(
+      'reply',
+      'confirmation_without_pending_action',
+      original,
+      'Nao ha nenhuma confirmacao pendente. Diga o que voce quer fazer.',
+      state,
+    );
+  }
+
   if (state.currentTopic === 'falteiro' && state.lastIntent === 'registrar_falteiro') {
     const product = continuationProduct(original);
     if (product) {
       const rewritten = `Miauby falta ${product}`;
       const semantic = interpretSemanticCommand(rewritten, { channel: options.channel });
+      if (semantic.status === 'resolved' && semantic.intent === 'registrar_falteiro') {
+        state = applySemantic(state, semantic, now, conversationTtl);
+        return resolution('route', 'topic_continuation', semantic.canonical_message || rewritten, '', state, null, null, semantic, original);
+      }
+    }
+  }
+
+  if (state.currentTopic === 'cashback' && state.lastIntent === 'criar_cashback_rapido') {
+    const amount = continuationCashbackAmount(original);
+    if (amount) {
+      const rewritten = `Miauby cashback ${amount}`;
+      const semantic = interpretSemanticCommand(rewritten, { channel: options.channel });
       state = semantic.status === 'resolved'
         ? applySemantic(state, semantic, now, conversationTtl)
         : touch(state, now, conversationTtl);
-      return resolution('route', 'topic_continuation', semantic.canonical_message || rewritten, '', state, null, null, semantic);
+      return resolution('route', 'topic_continuation', semantic.canonical_message || rewritten, '', state, null, null, semantic, original);
     }
   }
 
@@ -344,6 +391,8 @@ function topicFor(intent: string, module: string): string {
 
 function selectRecentEntity(normalized: string, entities: ConversationEntity[]): ConversationEntity | null {
   if (!entities.length) return null;
+  if (/\b(?:de|do|da)\s+cima\b/u.test(normalized)) return entities[0] || null;
+  if (/\b(?:de|do|da)\s+baixo\b/u.test(normalized)) return entities[entities.length - 1] || null;
   if (/\b(?:ultimo|ultima)\b/u.test(normalized)) return entities[entities.length - 1] || null;
   const position = selectionIndex(normalized);
   if (position > 0) return entities.find((entity) => entity.index === position) || null;
@@ -380,13 +429,42 @@ function selectionIndex(normalized: string): number {
 }
 
 function continuationProduct(message: string): string {
+  if (/[?？]/u.test(String(message || ''))) return '';
   const normalized = normalize(message);
-  if (!/\b(?:tambem|mais)\b/.test(normalized)) return '';
-  return String(message || '')
+  if (!/^(?:e\s+)|\b(?:tambem|mais)\b/.test(normalized)) return '';
+  const candidate = String(message || '')
     .replace(/\b(?:tamb[eé]m|mais)\b/giu, ' ')
     .replace(/^\s*(?:e\s+)?/iu, '')
     .replace(/\s+/g, ' ')
     .trim();
+  const normalizedCandidate = normalize(candidate);
+  if (!normalizedCandidate || /^(?:obrigad[oa]|valeu|certo|beleza|ok|okay|tudo\s+bem|entendi|perfeito|pronto|so\s+isso|nada|depois|amanha|hoje|ontem|sim|nao)$/u.test(normalizedCandidate)) {
+    return '';
+  }
+  return candidate;
+}
+
+function continuationCashbackAmount(message: string): string {
+  const match = normalize(message).match(/^(?:agora|outro|outra|mais\s+um|mais\s+uma)\s+(?:de\s+)?(?:r\s*)?(\d{1,7}(?:[.,]\d{1,2})?)$/u);
+  return match?.[1] || '';
+}
+
+function createPendingAction(
+  entity: ConversationEntity,
+  requestedIntent: string,
+  now: Date,
+  ttlSeconds: number,
+): ConversationPendingAction {
+  const intent = requestedIntent.startsWith('cancelar_') && requestedIntent !== 'cancelar_referencia'
+    ? requestedIntent
+    : entity.type === 'encomenda' ? 'cancelar_encomenda' : `cancelar_${entity.type}`;
+  return {
+    id: `${intent}:${entity.id}:${now.getTime()}`,
+    intent,
+    entity,
+    createdAt: now.toISOString(),
+    expiresAt: addSeconds(now, ttlSeconds).toISOString(),
+  };
 }
 
 function isEncomendaRead(normalized: string, original = ''): boolean {
@@ -482,8 +560,37 @@ function resolution(
   selectedEntity: ConversationEntity | null = null,
   pendingAction: ConversationPendingAction | null = null,
   semantic: SemanticInterpretation = emptySemantic(),
+  rawMessage = message,
 ): ConversationResolution {
-  return { status, reason, message, reply, state, selectedEntity, pendingAction, semantic };
+  const referencedEntity = selectedEntity || pendingAction?.entity || null;
+  const semanticConfidence = Number(semantic.confidence || 0);
+  const confidence = semanticConfidence > 0
+    ? semanticConfidence
+    : ['selected', 'pending_action', 'confirm', 'reject'].includes(status) ? 1 : state.active ? 0.75 : 0;
+  return {
+    status,
+    reason,
+    message,
+    reply,
+    state,
+    selectedEntity,
+    pendingAction,
+    semantic,
+    diagnostics: {
+      rawMessage: cleanText(rawMessage, 1000),
+      sessionActive: state.active,
+      pendingAction: cleanText(pendingAction?.intent || state.pendingAction?.intent, 100),
+      currentTopic: cleanText(state.currentTopic, 80),
+      resolvedIntent: cleanText(semantic.intent || pendingAction?.intent || state.lastIntent, 100),
+      contextUsed: Boolean(
+        referencedEntity
+        || /^(?:pending_|contextual_|recent_|topic_)/u.test(reason)
+        || reason === 'ambiguous_recent_entity'
+      ),
+      referencedEntity: referencedEntity ? { type: referencedEntity.type, id: referencedEntity.id } : null,
+      confidence: Math.max(0, Math.min(1, confidence)),
+    },
+  };
 }
 
 function sanitizeEntities(values: ConversationEntity[] | undefined): ConversationEntity[] {
@@ -527,7 +634,7 @@ function normalize(value: string): string {
 }
 
 function hasWakeWord(value: string): boolean {
-  return /^\s*(?:miauby|miauw|miau)\b/iu.test(String(value || ''));
+  return /^\s*(?:(?:oi|ol[aá]|bom\s+dia|boa\s+tarde|boa\s+noite)[\s,:-]+)?(?:miauby|miauw|miau)\b/iu.test(String(value || ''));
 }
 
 function ensureWake(value: string): string {

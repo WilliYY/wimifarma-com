@@ -17,6 +17,16 @@ export type ConversationResolutionPayload = {
   state: ConversationStatePayload;
   selectedEntity: ConversationEntityPayload | null;
   pendingAction: Record<string, unknown> | null;
+  diagnostics?: {
+    rawMessage: string;
+    sessionActive: boolean;
+    pendingAction: string;
+    currentTopic: string;
+    resolvedIntent: string;
+    contextUsed: boolean;
+    referencedEntity: { type: string; id: string } | null;
+    confidence: number;
+  };
 };
 
 export type ConversationMemoryResult = {

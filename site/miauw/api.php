@@ -342,6 +342,9 @@ try {
         if ($widgetMode && function_exists('miauw_widget_compact_reply')) {
             $reply['text'] = miauw_widget_compact_reply((string) ($reply['text'] ?? ''), $message);
         }
+        if (function_exists('miauw_format_visible_reply')) {
+            $reply['text'] = miauw_format_visible_reply((string) ($reply['text'] ?? ''));
+        }
         $assistantMessageId = miauw_add_message($conversationId, null, 'assistant', $reply['text'], $reply['model'], (bool) $reply['fallback']);
         $shadowCompare = !$silentConfirmation && function_exists('miauw_agent_shadow_maybe')
             ? miauw_agent_shadow_maybe(

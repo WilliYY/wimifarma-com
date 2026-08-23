@@ -248,3 +248,146 @@ test('mantem estado isolado por identidade e permite reset explicito', () => {
   assert.equal(reset.state.active, false);
   assert.equal(reset.state.recentEntities.length, 0);
 });
+
+test('ativa com saudacao e aceita todas as respostas curtas de confirmacao e recusa', () => {
+  const activated = resolveConversationMessage('oi Miauby, me ajuda', null, { ...identity, now: NOW });
+  assert.equal(activated.state.active, true);
+  assert.notEqual(activated.status, 'inactive');
+
+  const entity = { index: 1, type: 'encomenda', id: 'row-1', label: 'Losartana - Maria' };
+  const base = applyConversationEffect(activated.state, {
+    pendingAction: {
+      id: 'cancel-row-1',
+      intent: 'cancelar_encomenda',
+      entity,
+      createdAt: NOW.toISOString(),
+      expiresAt: new Date(NOW.getTime() + 60_000).toISOString(),
+    },
+  }, NOW);
+
+  for (const answer of ['okay', 'faz sim', 'pode fazer', 'vai sim', 'correto', 'e esse', 'esse mesmo']) {
+    const result = resolveConversationMessage(answer, base, { ...identity, now: NOW });
+    assert.equal(result.status, 'confirm', answer);
+    assert.equal(result.pendingAction?.entity?.id, 'row-1', answer);
+  }
+  for (const answer of ['nn', 'nao quero', 'volta']) {
+    const result = resolveConversationMessage(answer, base, { ...identity, now: NOW });
+    assert.equal(result.status, 'reject', answer);
+    assert.equal(result.state.pendingAction, null, answer);
+  }
+});
+
+test('sim e nao sem pendencia nunca viram comandos ou acoes antigas', () => {
+  const state = resolveConversationMessage('Miauby quais encomendas tem?', null, { ...identity, now: NOW }).state;
+  for (const answer of ['sim', 'pode', 'nao', 'deixa']) {
+    const result = resolveConversationMessage(answer, state, { ...identity, now: NOW });
+    assert.equal(result.status, 'reply', answer);
+    assert.equal(result.reason, 'confirmation_without_pending_action', answer);
+    assert.match(result.reply, /nenhuma confirmacao pendente/i, answer);
+  }
+});
+
+test('entende pronomes, posicoes visuais e desambigua antes de cancelar', () => {
+  const state = applyConversationEffect(activeState(), {
+    topic: 'encomendas',
+    recentEntities: [
+      { index: 1, type: 'encomenda', id: '1', label: 'Losartana - Maria' },
+      { index: 2, type: 'encomenda', id: '2', label: 'Amitriptilina - Joao' },
+    ],
+  }, NOW);
+
+  assert.equal(resolveConversationMessage('qual telefone dela?', applyConversationEffect(state, {
+    recentEntities: [{ index: 1, type: 'encomenda', id: '1', label: 'Losartana - Maria' }],
+  }, NOW), { ...identity, now: NOW }).selectedEntity?.id, '1');
+  assert.equal(resolveConversationMessage('o de cima', state, { ...identity, now: NOW }).selectedEntity?.id, '1');
+  assert.equal(resolveConversationMessage('o de baixo', state, { ...identity, now: NOW }).selectedEntity?.id, '2');
+
+  const ambiguous = resolveConversationMessage('cancela ela', state, { ...identity, now: NOW });
+  assert.equal(ambiguous.status, 'reply');
+  assert.equal(ambiguous.reason, 'ambiguous_recent_entity');
+  assert.equal(ambiguous.state.pendingSelection?.entities.length, 2);
+  assert.match(ambiguous.reply, /qual delas/i);
+
+  const picked = resolveConversationMessage('a de losartana', ambiguous.state, { ...identity, now: NOW });
+  assert.equal(picked.status, 'pending_action');
+  assert.equal(picked.pendingAction?.intent, 'cancelar_encomenda');
+  assert.equal(picked.pendingAction?.entity?.id, '1');
+  assert.equal(picked.state.pendingSelection, null);
+
+  const confirmed = resolveConversationMessage('sim', picked.state, { ...identity, now: NOW });
+  assert.equal(confirmed.status, 'confirm');
+  assert.equal(confirmed.state.pendingSelection, null);
+});
+
+test('continua Falteiro e Cashback apenas com marcadores contextuais seguros', () => {
+  const falteiro = resolveConversationMessage('Miauby falta losartana', null, { ...identity, now: NOW });
+  const nextProduct = resolveConversationMessage('e amitriptilina', falteiro.state, { ...identity, now: NOW });
+  assert.equal(nextProduct.reason, 'topic_continuation');
+  assert.match(nextProduct.message, /falta amitriptilina/i);
+
+  const cashback = resolveConversationMessage('Miauby cashback 35', null, { ...identity, now: NOW });
+  assert.equal(cashback.state.lastIntent, 'criar_cashback_rapido');
+  const nextCashback = resolveConversationMessage('agora 42', cashback.state, { ...identity, now: NOW });
+  assert.equal(nextCashback.reason, 'topic_continuation');
+  assert.match(nextCashback.message, /cashback 42/i);
+
+  const unsafeBareNumber = resolveConversationMessage('42', cashback.state, { ...identity, now: NOW });
+  assert.equal(unsafeBareNumber.reason, 'active_conversation');
+  assert.notEqual(unsafeBareNumber.semantic.intent, 'criar_cashback_rapido');
+
+  const unsafeQuestion = resolveConversationMessage('e amanha?', falteiro.state, { ...identity, now: NOW });
+  assert.notEqual(unsafeQuestion.reason, 'topic_continuation');
+  for (const socialReply of ['e obrigado', 'e tudo bem', 'e valeu']) {
+    assert.notEqual(
+      resolveConversationMessage(socialReply, falteiro.state, { ...identity, now: NOW }).reason,
+      'topic_continuation',
+      socialReply,
+    );
+  }
+});
+
+test('aceita todos os resets pedidos e limpa o estado por completo', () => {
+  const state = applyConversationEffect(activeState(), {
+    intent: 'consultar_encomendas',
+    topic: 'encomendas',
+    filters: { cliente: 'Maria' },
+    recentEntities: [{ index: 1, type: 'encomenda', id: '1', label: 'Losartana - Maria' }],
+  }, NOW);
+  for (const command of ['miauby sair', 'encerra conversa', 'limpa contexto']) {
+    const result = resolveConversationMessage(command, state, { ...identity, now: NOW });
+    assert.equal(result.status, 'reset', command);
+    assert.equal(result.state.active, false, command);
+    assert.equal(result.state.currentTopic, '', command);
+    assert.equal(result.state.lastIntent, '', command);
+    assert.deepEqual(result.state.lastFilters, {}, command);
+    assert.deepEqual(result.state.recentEntities, [], command);
+    assert.equal(result.state.pendingAction, null, command);
+    assert.equal(result.state.pendingSelection, null, command);
+  }
+});
+
+test('explica como o contexto foi resolvido sem expor estado de outra identidade', () => {
+  const state = applyConversationEffect(activeState(), {
+    topic: 'encomendas',
+    intent: 'consultar_encomendas',
+    recentEntities: [{ index: 1, type: 'encomenda', id: '1', label: 'Losartana - Maria' }],
+  }, NOW);
+  const result = resolveConversationMessage('qual telefone dela?', state, { ...identity, now: NOW });
+
+  assert.equal(result.diagnostics.rawMessage, 'qual telefone dela?');
+  assert.equal(result.diagnostics.sessionActive, true);
+  assert.equal(result.diagnostics.currentTopic, 'encomendas');
+  assert.equal(result.diagnostics.resolvedIntent, 'consultar_encomendas');
+  assert.equal(result.diagnostics.contextUsed, true);
+  assert.deepEqual(result.diagnostics.referencedEntity, { type: 'encomenda', id: '1' });
+  assert.ok(result.diagnostics.confidence > 0);
+
+  const explicit = resolveConversationMessage('Miauby falta Losartana 50mg', null, { ...identity, now: NOW });
+  assert.equal(explicit.diagnostics.rawMessage, 'Miauby falta Losartana 50mg');
+});
+
+test('ativa com saudacao acentuada e pontuada', () => {
+  const result = resolveConversationMessage('Olá, Miauby, me ajuda', null, { ...identity, now: NOW });
+  assert.equal(result.state.active, true);
+  assert.notEqual(result.status, 'inactive');
+});

@@ -5138,6 +5138,24 @@ function miauw_structured_conversation_resolve(
     ));
     $result = is_array($bridge['result'] ?? null) ? $bridge['result'] : null;
 
+    if (is_array($result) && function_exists('miauw_trace_record')) {
+        $diagnostics = is_array($result['diagnostics'] ?? null) ? $result['diagnostics'] : array();
+        miauw_trace_record('miauw_conversation_context', 'resolved', array(
+            'type' => 'interpretacao',
+            'summary' => 'Contexto conversacional estruturado resolvido.',
+            'payload' => array(
+                'rawMessage' => miauw_substr(trim((string) ($diagnostics['rawMessage'] ?? $message)), 0, 240),
+                'sessionActive' => !empty($diagnostics['sessionActive']),
+                'pendingAction' => trim((string) ($diagnostics['pendingAction'] ?? '')),
+                'currentTopic' => trim((string) ($diagnostics['currentTopic'] ?? '')),
+                'resolvedIntent' => trim((string) ($diagnostics['resolvedIntent'] ?? '')),
+                'contextUsed' => !empty($diagnostics['contextUsed']),
+                'referencedEntity' => is_array($diagnostics['referencedEntity'] ?? null) ? $diagnostics['referencedEntity'] : null,
+                'confidence' => (float) ($diagnostics['confidence'] ?? 0),
+            ),
+        ));
+    }
+
     return is_array($bridge) && !empty($bridge['ok']) && is_array($result) ? $result : null;
 }
 
@@ -6897,6 +6915,20 @@ function miauw_vague_problem_reply(string $message, string $pageContext = ''): ?
     return 'Detectei bronca vaga ' . $where . ' e deixei no diagnostico interno.'
         . "\nMe manda so o trio: o que clicou, o que apareceu e um print."
         . "\nAi eu paro de adivinhar pelo cheiro do teclado.";
+}
+
+function miauw_format_visible_reply(string $text): string
+{
+    $text = trim($text);
+    if ($text === '') {
+        return '';
+    }
+    while (preg_match('/^miauby\s*:/iu', $text) === 1) {
+        $next = preg_replace('/^miauby\s*:\s*/iu', '', $text, 1);
+        $text = is_string($next) ? trim($next) : $text;
+    }
+
+    return $text === '' ? 'Miauby:' : 'Miauby: ' . $text;
 }
 
 function miauw_widget_compact_reply(string $text, string $message = ''): string

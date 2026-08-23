@@ -1519,6 +1519,8 @@ miauw_eval_add('fase23_memoria_conversacional_contrato_seguro', static function 
         'reply' => '',
     ));
     miauw_eval_assert_contains('Nada foi alterado', (string) ($confirm['text'] ?? ''), 'Confirmacao sem executor precisa falhar fechada.');
+    miauw_eval_assert_same('Miauby: Tudo certo.', miauw_format_visible_reply('Tudo certo.'), 'Resposta interna perdeu o prefixo central.');
+    miauw_eval_assert_same('Miauby: Tudo certo.', miauw_format_visible_reply('Miauby: Miauby: Tudo certo.'), 'Prefixo Miauby foi duplicado.');
 });
 
 $passed = 0;

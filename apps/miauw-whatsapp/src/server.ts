@@ -52,6 +52,8 @@ import {
   buildQuickCashbackRequest,
   formatQuickCashbackReply,
 } from './cashback-command.js';
+import { formatMiaubyResponse } from './response-format.js';
+import { hasActivationPrefix, parseActivationPrefix } from './activation-prefix.js';
 
 const { Pool } = pg;
 
@@ -2193,18 +2195,12 @@ function extractIncomingMessage(payload: unknown): IncomingMessage | null {
 
 function stripActivationPrefix(text: string): { accepted: boolean; text: string; reason: string } {
   const clean = text.trim();
-  if (!REQUIRE_PREFIX) return { accepted: true, text: clean, reason: '' };
-  const lower = clean.toLowerCase();
-  if (lower === PREFIX) {
-    return { accepted: false, text: '', reason: 'empty_after_prefix' };
-  }
-  if (lower.startsWith(`${PREFIX} `) || lower.startsWith(`${PREFIX},`) || lower.startsWith(`${PREFIX}:`)) {
-    return { accepted: true, text: clean.slice(PREFIX.length).replace(/^[\s,:-]+/, '').trim(), reason: '' };
-  }
+  const parsed = parseActivationPrefix(clean, PREFIX, REQUIRE_PREFIX);
+  if (parsed.accepted || parsed.reason === 'empty_after_prefix') return parsed;
   if (FORCED_GEMINI_PREFIX_PATTERN.test(clean)) {
     return { accepted: true, text: clean, reason: '' };
   }
-  return { accepted: false, text: '', reason: 'missing_prefix' };
+  return parsed;
 }
 
 function isMissingPrefixHelpOnly(row?: QueueRow): boolean {
@@ -4384,7 +4380,10 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       ? await createPendingConfirmation(row, reply.confirmation)
       : undefined;
     const replyLimit = ['missing_prefix_help_only', 'n8n_status'].includes(reply.reason) ? 4000 : 1800;
-    const replyText = safeOutboundText(formatReplyTextWithConfirmation(reply.text, confirmation, canSendInteractiveConfirmation(confirmation)), replyLimit);
+    const replyText = safeOutboundText(
+      formatMiaubyResponse(formatReplyTextWithConfirmation(reply.text, confirmation, canSendInteractiveConfirmation(confirmation))),
+      replyLimit,
+    );
     if (!replyText) throw new Error('miauby_empty_reply');
     const audioReply = shouldSendAudioReply(replyAsAudio, confirmation)
       ? await buildAudioReply(replyText, row).catch(async (error) => {
@@ -4740,11 +4739,19 @@ async function maybeHandleStructuredConversation(
     }
 
     const decision = resolved.result;
+    const diagnostics = decision.diagnostics;
     await mergeWhatsappEventSummaryByTrace(row.trace_id, {
       structured_conversation_status: decision.status,
       structured_conversation_reason: decision.reason,
       structured_conversation_revision: Number(decision.state.revision || 0),
       structured_conversation_topic: safeText(decision.state.currentTopic, 80),
+      structured_conversation_raw_message: safeText(diagnostics?.rawMessage || cleanMessage, 240),
+      structured_conversation_session_active: diagnostics?.sessionActive === true,
+      structured_conversation_pending_action: safeText(diagnostics?.pendingAction, 100),
+      structured_conversation_resolved_intent: safeText(diagnostics?.resolvedIntent, 100),
+      structured_conversation_context_used: diagnostics?.contextUsed === true,
+      structured_conversation_referenced_entity: diagnostics?.referencedEntity || null,
+      structured_conversation_confidence: Number(diagnostics?.confidence || 0),
     });
 
     if (decision.status === 'route') {
@@ -6411,11 +6418,7 @@ function activationMentioned(message: string): boolean {
 }
 
 function hasExplicitActivationPrefix(message: string): boolean {
-  const clean = message.trim().toLowerCase();
-  return clean === PREFIX
-    || clean.startsWith(`${PREFIX} `)
-    || clean.startsWith(`${PREFIX},`)
-    || clean.startsWith(`${PREFIX}:`);
+  return hasActivationPrefix(message, PREFIX);
 }
 
 function stripActivationWord(message: string): string {
