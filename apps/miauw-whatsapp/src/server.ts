@@ -53,7 +53,7 @@ import {
   formatQuickCashbackReply,
 } from './cashback-command.js';
 import { formatMiaubyResponse } from './response-format.js';
-import { hasActivationPrefix, parseActivationPrefix } from './activation-prefix.js';
+import { hasActivationPrefix, parseActivationPrefix, parseAudioActivationTranscript } from './activation-prefix.js';
 import {
   buildMiaubyAudioTtsPrompt,
   DEFAULT_AUDIO_TTS_STYLE,
@@ -4140,8 +4140,27 @@ async function processQueueRow(row: QueueRow): Promise<void> {
     if (incomingAudio && AUDIO_INPUT_ENABLED) {
       try {
         const transcript = await transcribeQueuedAudio(row);
-        effectiveBodyText = transcript;
-        row.body_text = transcript;
+        const audioActivation = parseAudioActivationTranscript(transcript, PREFIX, REQUIRE_PREFIX);
+        const audioActivationMode = !REQUIRE_PREFIX
+          ? 'prefix_not_required'
+          : (audioActivation.accepted
+              ? (audioActivation.reason === 'audio_prefix_phonetic' ? 'phonetic_prefix' : 'exact_prefix')
+              : audioActivation.reason);
+        effectiveBodyText = audioActivation.accepted ? audioActivation.text : '';
+        row.body_text = audioActivation.accepted ? audioActivation.text : transcript;
+        audioFailureReason = audioActivation.accepted ? '' : audioActivation.reason;
+        const audioSummary = {
+          audio_transcribed: true,
+          audio_transcribe_provider: AUDIO_TRANSCRIBE_PROVIDER,
+          audio_transcribe_model: AUDIO_TRANSCRIBE_MODEL,
+          audio_activation_mode: audioActivationMode,
+          activation_prefix_accepted: REQUIRE_PREFIX && audioActivation.accepted,
+          activation_prefix_from_audio: audioActivation.accepted,
+        };
+        row.payload_summary = {
+          ...row.payload_summary,
+          ...audioSummary,
+        };
         await pgPool.query(
           `UPDATE miauw_whatsapp_events
               SET body_text = $2,
@@ -4153,22 +4172,9 @@ async function processQueueRow(row: QueueRow): Promise<void> {
             row.id,
             transcript,
             transcript.length,
-            JSON.stringify({
-              audio_transcribed: true,
-              audio_transcribe_provider: AUDIO_TRANSCRIBE_PROVIDER,
-              audio_transcribe_model: AUDIO_TRANSCRIBE_MODEL,
-            }),
+            JSON.stringify(audioSummary),
           ],
         );
-        if (REQUIRE_PREFIX) {
-          const prefix = stripActivationPrefix(transcript);
-          if (!prefix.accepted) {
-            effectiveBodyText = '';
-            audioFailureReason = 'missing_prefix';
-          } else {
-            effectiveBodyText = prefix.text;
-          }
-        }
       } catch (error) {
         markGeminiSpendGuardIfNeeded(error);
         audioFailureReason = safeError(error);
@@ -4363,12 +4369,19 @@ async function processQueueRow(row: QueueRow): Promise<void> {
 
     let audioFailureReply: ReplyResult | null = null;
     if (incomingAudio && AUDIO_INPUT_ENABLED && !effectiveBodyText) {
+      let failureText = AUDIO_TRANSCRIPTION_UNCLEAR_REPLY;
+      let failureRouteReason = 'audio_transcription_failed_or_untrusted';
+      if (REQUIRE_PREFIX && audioFailureReason === 'missing_prefix') {
+        failureText = `Ouvi o audio, mas neste ambiente ele precisa comecar com "${PREFIX}". Exemplo: "${PREFIX} pedidos de hoje".`;
+        failureRouteReason = 'audio_missing_prefix';
+      } else if (audioFailureReason === 'empty_after_prefix') {
+        failureText = `Ouvi "${PREFIX}", mas faltou o pedido. Exemplo: "${PREFIX} pedidos de hoje".`;
+        failureRouteReason = 'audio_empty_after_prefix';
+      }
       audioFailureReply = {
-        text: REQUIRE_PREFIX && audioFailureReason === 'missing_prefix'
-          ? `Ouvi o audio, mas neste ambiente ele precisa comecar com "${PREFIX}". Exemplo: "${PREFIX} pedidos de hoje".`
-          : AUDIO_TRANSCRIPTION_UNCLEAR_REPLY,
+        text: failureText,
         engine: 'blocked',
-        reason: audioFailureReason === 'missing_prefix' ? 'audio_missing_prefix' : 'audio_transcription_failed_or_untrusted',
+        reason: failureRouteReason,
       };
       replyAsAudio = false;
     }
@@ -11181,6 +11194,7 @@ function publicStatus(): JsonRecord {
     openai_configured: openAiReady,
     openai_model: OPENAI_MODEL,
     audio_input_enabled: AUDIO_INPUT_ENABLED,
+    audio_activation_prefix_mode: REQUIRE_PREFIX ? 'exact_or_phonetic' : 'not_required',
     audio_reply_enabled: AUDIO_REPLY_ENABLED,
     audio_reply_mode: AUDIO_REPLY_MODE,
     audio_transcribe_provider: AUDIO_TRANSCRIBE_PROVIDER,
