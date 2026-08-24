@@ -104,7 +104,7 @@ test('loads and persists durable memory separately from the session state', asyn
       channel: 'internal',
       userId: '20',
       currentTopic: 'falteiro',
-      expiresAt: new Date(Date.now() + 180 * 24 * 60 * 60_000).toISOString(),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
     });
   };
 

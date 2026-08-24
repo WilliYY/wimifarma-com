@@ -36,7 +36,7 @@ O payload persistente e uma projecao permitida por lista fechada: `channel`, `us
 
 Numeros isolados e ordinais so selecionam dentro de uma lista recente valida. Sao aceitos numero, `primeiro`, `segundo`, `terceiro`, `ultimo`, `o de cima`, `o de baixo`, conteudo unico como `Maria` e referencias como `esse`, `essa`, `ele`, `ela`, `dele` e `dela`. Se `cancela ela` puder apontar para mais de uma entidade, o estado cria `pendingSelection` e pergunta qual delas; somente a escolha inequivoca cria `pendingAction`. Ambiguidade nao autoriza escrita.
 
-Confirmacoes e recusas so valem quando ha uma acao pendente da mesma identidade. Confirmacoes reconhecem tambem `okay`, `faz sim`, `pode fazer`, `vai sim`, `correto`, `e esse` e `esse mesmo`. Recusas reconhecem tambem `nn`, `nao quero` e `volta`. Sem `pendingAction`, respostas curtas nao recuperam nem executam uma acao antiga.
+Confirmacoes e recusas so valem quando ha uma acao pendente da mesma identidade. Confirmacoes reconhecem tambem `okay`, `faz sim`, `pode fazer`, `vai sim`, `correto`, `e esse` e `esse mesmo`. Recusas reconhecem tambem `nn`, `nao quero` e `volta`. Sem confirmacao forte pendente, respostas curtas como `sim` seguem para a memoria conversacional; elas nao recuperam nem executam uma acao antiga.
 
 ## Isolamento, expiracao e concorrencia
 
@@ -44,9 +44,9 @@ Confirmacoes e recusas so valem quando ha uma acao pendente da mesma identidade.
 - WhatsApp: identidade e armazenamento por hash salgado do contato autorizado.
 - Memoria persistente: identidade separada por `channel + userId`; Interno e WhatsApp nao misturam contexto entre si.
 - Um usuario, canal, conversa ou sessao diferente nao pode confirmar o estado de outro.
-- `MIAUBY_CONVERSATION_TTL` controla a conversa, com padrao de 1800 segundos.
+- `MIAUBY_CONVERSATION_TTL` controla a conversa, com padrao de 86400 segundos (24 horas), renovado a cada interacao valida.
 - `MIAUBY_PENDING_ACTION_TTL` controla a acao pendente, com padrao de 300 segundos e sempre menor ou igual ao TTL da conversa.
-- O resumo persistente vence depois de 180 dias sem uso e renova sua validade a cada interacao valida. Isso limita dados antigos sem perder continuidade entre sessoes e reinicios.
+- O resumo persistente vence depois de 24 horas sem uso e renova sua validade a cada interacao valida. Isso preserva o contexto do dia entre sessoes e reinicios sem carregar conversas antigas indefinidamente.
 - `MIAUBY_WHATSAPP_CONTINUATION_WITHOUT_PREFIX` controla continuacoes sem prefixo no WhatsApp; allowlist e vinculo continuam obrigatorios.
 - `encerra conversa`, `sair do miauby`, `miauby sair`, `limpa contexto` e `miauby encerra` apagam o contexto curto e o persistente.
 

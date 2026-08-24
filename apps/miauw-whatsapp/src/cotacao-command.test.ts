@@ -9,6 +9,7 @@ import {
 
 test('encaminha consultas naturais de encomenda com a frase completa', () => {
   for (const message of [
+    'quais encomenda tem?',
     'Miauby quais encomendas tem ai?',
     'Miauby tem encomenda?',
     'MIAUBY mostra as encomendas recentes',

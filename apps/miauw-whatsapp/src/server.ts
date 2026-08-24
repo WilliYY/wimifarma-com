@@ -5,11 +5,14 @@ import {
   formatCotacaoEncomendasDailyMessage,
   formatCotacaoEncomendasMessage,
   mightBeFalteiroCommand,
-  parseCotacaoEncomendasCommand,
   type CotacaoEncomendaItem,
   type CotacaoEncomendasCommand,
   type CotacaoEncomendasSummary,
 } from './cotacao-command.js';
+import {
+  chooseConfirmationPath,
+  choosePreSemanticRoute,
+} from './conversation-routing.js';
 import {
   WHATSAPP_COMMAND_HELP_REGISTRY,
   WHATSAPP_MISSING_PREFIX_HELP_REPLY,
@@ -54,6 +57,7 @@ import {
 } from './cashback-command.js';
 import { formatMiaubyResponse } from './response-format.js';
 import { hasActivationPrefix, parseActivationPrefix, parseAudioActivationTranscript } from './activation-prefix.js';
+import { safeInboundText } from './message-text.js';
 import {
   buildMiaubyAudioTtsPrompt,
   DEFAULT_AUDIO_TTS_STYLE,
@@ -2124,7 +2128,7 @@ function extractMetaIncomingMessage(payload: JsonRecord): IncomingMessage | null
         senderPhone,
         pushName: safeText(profile.name || contact.name || '', 120),
         messageType: messageInfo.type,
-        bodyText: safeText(messageInfo.text, 4000),
+        bodyText: safeInboundText(messageInfo.text, 4000),
         fromMe: false,
         isGroup: false,
         payloadSummary: metaSummary,
@@ -2183,7 +2187,7 @@ function extractEvolutionIncomingMessage(payload: JsonRecord): IncomingMessage |
     senderPhone,
     pushName: safeText(data.pushName || data.senderName || data.notifyName || '', 120),
     messageType: safeText(data.messageType || messageInfo.type, 80) || 'unknown',
-    bodyText: safeText(messageInfo.text, 4000),
+    bodyText: safeInboundText(messageInfo.text, 4000),
     fromMe,
     isGroup,
     payloadSummary: payloadSummary(payload, data, messageInfo.type, 'evolution'),
@@ -6294,14 +6298,11 @@ async function maybeHandleConfirmationReply(row: QueueRow, userContext: Whatsapp
   let decision = parseConfirmationDecision(row.body_text);
   if (!decision) return null;
 
-  const pending = await findPendingConfirmation(row.sender_phone_hash, decision.shortId);
-  if (!pending) {
-    return {
-      text: 'Nao achei acao pendente para confirmar agora. Manda o comando de novo com miauby.',
-      engine: 'local',
-      reason: 'confirmation_not_found',
-    };
-  }
+  const pendingCandidate = await findPendingConfirmation(row.sender_phone_hash, decision.shortId);
+  const confirmationPath = chooseConfirmationPath(decision, pendingCandidate);
+  if (confirmationPath.kind !== 'strong_confirmation') return null;
+  decision = confirmationPath.decision;
+  const pending = confirmationPath.pending;
 
   if (pending.tool === 'selecionar_tarefa_whatsapp') {
     if (decision.action === 'cancel') {
@@ -8292,12 +8293,45 @@ function confirmationFromToolEvents(events: unknown): WhatsappConfirmationDraft 
 
 async function requestWhatsappReply(message: string, traceId: string, senderMask: string, senderHashes: string[], userContext: WhatsappUserContext, row?: QueueRow): Promise<ReplyResult> {
   const allowedCards = await allowedModuleCardsForHashes(senderHashes);
-  if (isMissingPrefixHelpOnly(row)) {
+  const preSemanticRoute = choosePreSemanticRoute(message, isMissingPrefixHelpOnly(row));
+  if (preSemanticRoute.kind === 'missing_prefix') {
     return {
       text: WHATSAPP_MISSING_PREFIX_HELP_REPLY,
       engine: 'local',
       reason: 'missing_prefix_help_only',
     };
+  }
+  if (preSemanticRoute.kind === 'cotacao_encomendas') {
+    const cotacaoEncomendasCommand = preSemanticRoute.command;
+    if (!moduleAllowed(allowedCards, 'cotacao')) {
+      return {
+        text: forbiddenModuleReply('cotacao', allowedCards),
+        engine: 'blocked',
+        reason: 'blocked_module:cotacao_encomendas',
+      };
+    }
+    try {
+      const summary = await fetchCotacaoEncomendasSummary(cotacaoEncomendasCommand);
+      if (row) {
+        await rememberCotacaoEncomendasForConversation(row, userContext, summary);
+      }
+      return {
+        text: formatCotacaoEncomendasMessage(summary),
+        engine: 'local',
+        reason: 'cotacao_encomendas_list',
+      };
+    } catch (error) {
+      await mergeWhatsappEventSummaryByTrace(traceId, {
+        cotacao_encomendas_attempted: true,
+        cotacao_encomendas_outcome: 'error',
+        cotacao_encomendas_error: safeError(error),
+      });
+      return {
+        text: 'Nao consegui consultar as encomendas da Cotacao agora. Tente de novo em instantes.',
+        engine: 'local',
+        reason: `cotacao_encomendas_error:${safeError(error)}`,
+      };
+    }
   }
   const semantic = await resolveSemanticMessage(message, {
     url: AGENT_INTERPRET_URL,
@@ -8405,38 +8439,6 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
         text: errorText || 'Nao consegui adicionar o produto ao Falteiro agora. Tente novamente.',
         engine: 'local',
         reason: `cotacao_falteiro_error:${errorText || 'unknown'}`,
-      };
-    }
-  }
-  const cotacaoEncomendasCommand = parseCotacaoEncomendasCommand(message);
-  if (cotacaoEncomendasCommand) {
-    if (!moduleAllowed(allowedCards, 'cotacao')) {
-      return {
-        text: forbiddenModuleReply('cotacao', allowedCards),
-        engine: 'blocked',
-        reason: 'blocked_module:cotacao_encomendas',
-      };
-    }
-    try {
-      const summary = await fetchCotacaoEncomendasSummary(cotacaoEncomendasCommand);
-      if (row) {
-        await rememberCotacaoEncomendasForConversation(row, userContext, summary);
-      }
-      return {
-        text: formatCotacaoEncomendasMessage(summary),
-        engine: 'local',
-        reason: 'cotacao_encomendas_list',
-      };
-    } catch (error) {
-      await mergeWhatsappEventSummaryByTrace(traceId, {
-        cotacao_encomendas_attempted: true,
-        cotacao_encomendas_outcome: 'error',
-        cotacao_encomendas_error: safeError(error),
-      });
-      return {
-        text: 'Nao consegui consultar as encomendas da Cotacao agora. Tente de novo em instantes.',
-        engine: 'local',
-        reason: `cotacao_encomendas_error:${safeError(error)}`,
       };
     }
   }

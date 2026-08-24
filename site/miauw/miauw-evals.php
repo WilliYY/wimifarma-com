@@ -1510,7 +1510,7 @@ miauw_eval_add('fase24_cashback_impressao_local_frontend', static function (): v
 miauw_eval_add('fase23_memoria_conversacional_contrato_seguro', static function (): void {
     $sessionKey = miauw_structured_conversation_session_id();
     miauw_eval_assert(preg_match('/^[a-f0-9]{64}$/', $sessionKey) === 1, 'Identidade da sessao deve ser hash opaco de 64 caracteres.');
-    miauw_eval_assert(miauw_pending_action_ttl_seconds() < 1800, 'Pendencia forte precisa expirar antes da conversa padrao.');
+    miauw_eval_assert(miauw_pending_action_ttl_seconds() < 86400, 'Pendencia forte precisa expirar antes da conversa padrao.');
 
     miauw_eval_reset_action_state();
     miauw_eval_assert(!miauw_structured_has_legacy_pending_interaction(), 'Sessao limpa nao pode aparentar pendencia.');

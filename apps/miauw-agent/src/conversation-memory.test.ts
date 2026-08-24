@@ -21,6 +21,14 @@ function activeState(): MiaubyConversationState {
   return emptyConversationState(identity, NOW, 30 * 60);
 }
 
+test('memoria conversacional curta e persistente usam 24 horas por padrao', () => {
+  const state = emptyConversationState(identity, NOW);
+  const persistentState = persistentConversationMemoryFromState(state, NOW);
+
+  assert.equal(state.expiresAt, new Date(NOW.getTime() + 24 * 60 * 60 * 1000).toISOString());
+  assert.equal(persistentState.expiresAt, new Date(NOW.getTime() + 24 * 60 * 60 * 1000).toISOString());
+});
+
 test('ativa a conversa e resolve uma entidade recente pelo nome', () => {
   const first = resolveConversationMessage('Miauby quais encomendas tem?', null, { ...identity, now: NOW });
   assert.equal(first.status, 'route');
@@ -183,6 +191,7 @@ test('cria acao pendente por referencia e separa confirmacao de recusa', () => {
   const pending = resolveConversationMessage('cancela ela', state, { ...identity, now: NOW });
   assert.equal(pending.status, 'pending_action');
   assert.equal(pending.state.pendingAction?.entity?.id, 'row-1');
+  assert.equal(pending.state.pendingAction?.expiresAt, new Date(NOW.getTime() + 5 * 60 * 1000).toISOString());
 
   const confirmed = resolveConversationMessage('sim', pending.state, { ...identity, now: NOW });
   assert.equal(confirmed.status, 'confirm');

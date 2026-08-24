@@ -119,9 +119,9 @@ export type ResolveConversationOptions = ConversationIdentity & {
   persistentState?: MiaubyPersistentConversationMemory | null;
 };
 
-const DEFAULT_CONVERSATION_TTL_SECONDS = 30 * 60;
+const DEFAULT_CONVERSATION_TTL_SECONDS = 24 * 60 * 60;
 const DEFAULT_PENDING_ACTION_TTL_SECONDS = 5 * 60;
-const DEFAULT_PERSISTENT_MEMORY_TTL_SECONDS = 180 * 24 * 60 * 60;
+const DEFAULT_PERSISTENT_MEMORY_TTL_SECONDS = 24 * 60 * 60;
 const MAX_RECENT_ENTITIES = 20;
 const RESET_PATTERN = /^(?:miauby\s+)?(?:encerra(?:\s+(?:a\s+)?conversa)?|sair(?:\s+do\s+miauby)?|limpa(?:r)?\s+(?:o\s+)?contexto)$/u;
 const CONFIRM_PATTERN = /^(?:sim|s|ss|pode|pode\s+sim|pode\s+fazer|confirmo|confirma|isso|isso\s+mesmo|e\s+esse|esse\s+mesmo|beleza|blz|ok|okay|correto|faz|faz\s+sim|manda|vai|vai\s+sim)$/u;

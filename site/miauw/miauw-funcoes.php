@@ -4431,7 +4431,7 @@ function miauw_execute_confirmed_action(array $pending, int $userId): string
 
 function miauw_pending_action_ttl_seconds(): int
 {
-    $conversationTtl = max(60, min(7200, (int) miauw_env_string(array('MIAUBY_CONVERSATION_TTL'), '1800')));
+    $conversationTtl = max(60, min(86400, (int) miauw_env_string(array('MIAUBY_CONVERSATION_TTL'), '86400')));
     $pendingTtl = max(30, min(900, (int) miauw_env_string(array('MIAUBY_PENDING_ACTION_TTL'), '300')));
 
     return min($conversationTtl, $pendingTtl);

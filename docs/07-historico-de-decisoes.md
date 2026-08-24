@@ -1903,3 +1903,21 @@ Riscos/cuidados:
 - IDs lembrados devem ser reconsultados no modulo oficial antes de responder ou escrever.
 - `sim`, `nao`, ordinais e escolhas nunca podem atravessar sessao pela memoria persistente.
 - Em 2026-08-23, 131 avisos historicos de automacao/OCR/fila foram revisados no Postgres de producao com `resolved_at` e motivo auditavel, sem excluir os registros; nao havia aviso novo nas 24 horas anteriores.
+
+## 2026-08-24 - Miauby limita todo contexto conversacional a 24 horas
+
+Decisao:
+
+- Unificar a memoria curta e o resumo persistente em 24 horas renovaveis por interacao valida.
+- Manter confirmacoes de acoes fortes com validade separada de 5 minutos.
+- Preservar uma unica projecao estruturada por usuario/canal, sem historico integral de mensagens.
+
+Motivo:
+
+- Facilitar continuidades do trabalho durante o mesmo dia sem manter contexto antigo por meses.
+- Tornar iguais os valores padrao do redutor, servico, Compose, PHP e documentacao.
+
+Riscos/cuidados:
+
+- O prazo renovado nao autoriza escrita: entidade, permissao e estado real continuam revalidados no modulo oficial.
+- Depois de 24 horas sem interacao valida, uma nova mensagem precisa reconstruir o contexto.

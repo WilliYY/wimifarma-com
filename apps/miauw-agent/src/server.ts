@@ -130,7 +130,7 @@ const speechModel = envString(['MIAUW_SPEECH_MODEL', 'OPENAI_SPEECH_MODEL'], 'gp
 const speechVoice = envString(['MIAUW_SPEECH_VOICE', 'OPENAI_SPEECH_VOICE'], 'marin');
 const realtimeModel = envString(['MIAUW_REALTIME_MODEL', 'OPENAI_REALTIME_MODEL'], 'gpt-realtime');
 const realtimeVoice = envString(['MIAUW_REALTIME_VOICE', 'OPENAI_REALTIME_VOICE'], 'marin');
-const conversationTtlSeconds = envInteger(['MIAUBY_CONVERSATION_TTL'], 1800, 60, 7200);
+const conversationTtlSeconds = envInteger(['MIAUBY_CONVERSATION_TTL'], 86400, 60, 86400);
 const pendingActionTtlSeconds = Math.min(
   conversationTtlSeconds,
   envInteger(['MIAUBY_PENDING_ACTION_TTL'], 300, 30, 900),

@@ -104,6 +104,7 @@ Ele valida:
 - Fase 20 do Miauby: status publico anuncia bolha/player de audio e resposta falada, contrato aponta `fase20`, o export de contracts aponta `fase20-voice-reply-audio-bubbles`, `audio_contract` libera playback/TTS somente quando audio estiver configurado, usa `gpt-4o-mini-tts` por padrao, mantem `storage_enabled=false` e bloqueia audio curto ou transcricao grande demais para poucos segundos.
 - Fase 21 do Miauby: status publico anuncia playback `blob:` liberado em CSP, seletor de voz no diagnostico e perfil TTS forte; o contrato aponta `fase21`, o export de contracts aponta `fase21-voice-playback-profile-selector`, `audio_contract` lista as vozes permitidas e mantem `storage_enabled=false`. Os evals exigem cadencia felina perceptivel com clareza absoluta em dados operacionais, e `apps/miauw-whatsapp/src/audio-voice.test.ts` preserva o mesmo guard no TTS do WhatsApp.
 - Audio do Miauby WhatsApp: `apps/miauw-whatsapp/src/activation-prefix.test.ts` cobre ativacao pelo proprio audio sem prefixo, prefixo exato, transcricoes foneticas reais `Miau bi`/`Miau bis`, repeticao do nome e preservacao da exigencia de `miauby` no texto digitado.
+- Memoria e conversa simples do Miauby: `apps/miauw-agent/src/conversation-memory.test.ts` fixa memoria curta e persistente em 86400 segundos sem alterar os 300 segundos de acao pendente, e `apps/miauw-whatsapp/src/conversation-routing.test.ts` garante que `quais encomenda tem?` seja consultado antes da semantica e que `sim` sem confirmacao forte continue na conversa.
 
 Rodar pelo container:
 
