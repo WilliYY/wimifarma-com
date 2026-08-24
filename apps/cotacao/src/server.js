@@ -3766,12 +3766,13 @@ app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRout
     quantidade,
     responsavel,
     telefone,
-    categoriaExtra,
+    categoriaExtra: [categoriaExtra, observacao].filter(Boolean).join(' | '),
   });
   const categoria = rowValues.categoria;
   const client = await pgPool.connect();
   let row = null;
   let event = null;
+  let updatedCells = [];
   let replayed = false;
 
   try {
@@ -3825,32 +3826,72 @@ app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRout
       event = { id: Number(stored.eventId || 0), created_at: stored.createdAt };
       await client.query('COMMIT');
     } else {
-      await client.query('SELECT id FROM cotacao_v2_quotes WHERE id = $1 FOR UPDATE', [quote.id]);
-      const maxPosition = await client.query(
-        'SELECT COALESCE(MAX(position), 0)::int AS position FROM cotacao_v2_rows WHERE quote_id = $1 AND deleted_at IS NULL',
+      const available = await client.query(
+        `SELECT id, position, values, version, updated_at
+           FROM cotacao_v2_rows
+          WHERE quote_id = $1
+            AND deleted_at IS NULL
+            AND btrim(COALESCE(values->>'produto', '')) = ''
+            AND NOT EXISTS (
+              SELECT 1
+                FROM jsonb_each_text(COALESCE(values, '{}'::jsonb)) AS entry(key, value)
+               WHERE btrim(COALESCE(entry.value, '')) <> ''
+            )
+          ORDER BY position ASC, id ASC
+          LIMIT 1
+          FOR UPDATE`,
         [quote.id]
       );
-      const inserted = await client.query(
-        `INSERT INTO cotacao_v2_rows (quote_id, position, values)
-         VALUES ($1, $2, $3::jsonb)
-         RETURNING id, position, values, version, updated_at`,
-        [quote.id, Number(maxPosition.rows[0]?.position || 0) + 1, JSON.stringify(rowValues)]
-      );
-      const insertedRow = inserted.rows[0];
+      if (!available.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          ok: false,
+          code: 'no_empty_row',
+          error: 'A Cotacao nao possui linha totalmente vazia. Libere uma linha e tente novamente.',
+        });
+      }
+
+      row = available.rows[0];
+      for (const [columnKey, value] of Object.entries(rowValues)) {
+        const previousValue = String(row.values?.[columnKey] ?? '');
+        const updated = await client.query(
+          `UPDATE cotacao_v2_rows
+              SET values = jsonb_set(COALESCE(values, '{}'::jsonb), ARRAY[$2], to_jsonb($3::text), true),
+                  version = version + 1,
+                  updated_at = now()
+            WHERE id = $1
+              AND quote_id = $4
+            RETURNING id, position, values, version, updated_at`,
+          [row.id, columnKey, value, quote.id]
+        );
+        row = updated.rows[0];
+        updatedCells.push({
+          rowId: row.id,
+          columnKey,
+          value,
+          previousValue,
+          expectedValue: '',
+          overwroteRemote: false,
+          version: Number(row.version),
+          updatedAt: row.updated_at,
+        });
+      }
       row = {
-        id: insertedRow.id,
-        position: Number(insertedRow.position),
-        values: insertedRow.values || {},
-        version: Number(insertedRow.version),
-        updatedAt: insertedRow.updated_at,
+        id: row.id,
+        position: Number(row.position),
+        values: row.values || {},
+        version: Number(row.version),
+        updatedAt: row.updated_at,
       };
       event = await appendEvent({
         quoteId: quote.id,
-        type: 'rows_added',
+        type: 'cells_batch_updated',
         payload: {
-          rows: [row],
+          cells: updatedCells,
           source: 'miauby_encomenda',
           requestId,
+          rowId: row.id,
+          line: row.position,
           produto,
           quantidade,
           responsavel,
@@ -3878,7 +3919,12 @@ app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRout
 
   const rows = [row];
   if (!replayed) {
-    io.to(`quote:${quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId: INTERNAL_CLIENT_ID });
+    io.to(`quote:${quote.id}`).emit('cells:update', {
+      cells: updatedCells,
+      eventId: Number(event.id),
+      user: userPublic({ ...actor, role: 'user' }),
+      clientId: INTERNAL_CLIENT_ID,
+    });
   }
   await syncEncomendaRemindersForRows(quote.id, [row.id], {
     user: actor,

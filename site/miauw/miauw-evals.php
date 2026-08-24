@@ -1085,6 +1085,14 @@ miauw_eval_add('intent_cotacao_encomenda_contexto_completo', static function ():
     miauw_eval_assert_same('', miauw_skill_normalized((string) ($presentationOnly['quantidade'] ?? '')), 'Apresentacao 30cp virou quantidade da encomenda.');
     miauw_eval_assert_same('dipirona 500mg 30cp', miauw_skill_normalized((string) ($presentationOnly['produto'] ?? '')), 'Apresentacao 30cp saiu do produto.');
 
+    $realOrder = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda alienação 1000 30cp leo valor 57');
+    miauw_eval_assert_same('alienacao 1000 30cp', miauw_skill_normalized((string) ($realOrder['produto'] ?? '')), 'Frase real contaminou o produto da encomenda.');
+    miauw_eval_assert_same('leo', miauw_skill_normalized((string) ($realOrder['responsavel'] ?? '')), 'Frase real nao separou o cliente.');
+    miauw_eval_assert_same('valor 57', miauw_skill_normalized((string) ($realOrder['observacao_livre'] ?? '')), 'Frase real nao separou a observacao de valor.');
+    miauw_eval_assert_same('encomenda | leo | valor 57', miauw_skill_normalized((string) ($realOrder['categoria'] ?? '')), 'Categoria da frase real nao preservou cliente e observacao.');
+    $realOrderSummary = miauw_skill_normalized(miauw_confirmation_summary('criar_encomenda_cotacao', $realOrder));
+    miauw_eval_assert_same(1, substr_count($realOrderSummary, 'leo'), 'Confirmacao repetiu o nome do cliente dentro da observacao.');
+
     $deliveryNote = miauw_skill_cotacao_encomenda_command_from_message('Miauby encomenda amoxicilina 500mg Maria nao entregar antes das 18h falar com a filha');
     miauw_eval_assert_contains('nao entregar antes das 18h', miauw_skill_normalized((string) ($deliveryNote['observacao_livre'] ?? '')), 'Restricao de horario foi descartada.');
     miauw_eval_assert_contains('falar com a filha', miauw_skill_normalized((string) ($deliveryNote['observacao_livre'] ?? '')), 'Pessoa de contato foi descartada.');

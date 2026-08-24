@@ -4436,6 +4436,7 @@ function miauw_skill_encomenda_extract_context(string &$body): array
     }
 
     $observationPatterns = array(
+        '/\b(valor(?:\s+de)?\s+(?:R\$\s*)?\d{1,7}(?:[.,]\d{1,2})?)\b/iu',
         '/\b(entregar\s+para\s+[\p{L}\'\-]+(?:\s+[\p{L}\'\-]+){0,2})\b/iu',
         '/\b(ligar\s+(?:antes|ao\s+chegar|quando\s+chegar))\b/iu',
         '/\b(avisar\s+(?:no|pelo)\s+whatsapp)\b/iu',
@@ -4880,7 +4881,14 @@ function miauw_skill_cotacao_encomenda_command_from_message(string $message): ?a
     $categoryParts = array_merge($categoryParts, $extras);
     $category = miauw_skill_encomenda_category_from_parts($categoryParts);
     $categoryExtra = miauw_substr(implode(' | ', array_slice(explode(' | ', $category), 1)), 0, 600);
-    $noteParts = array_filter(array($phone !== '' ? 'telefone ' . $phone : '', $categoryExtra));
+    $noteParts = array_filter(array(
+        $phone !== '' ? 'telefone ' . $phone : '',
+        (string) ($context['endereco'] ?? ''),
+        $scheduleParts ? implode(' ', $scheduleParts) : '',
+        (string) ($context['referencia'] ?? ''),
+        (string) ($context['observacao_livre'] ?? ''),
+        implode(' - ', $extras),
+    ));
     $note = miauw_skill_clean_encomenda_part(implode(' - ', $noteParts), 700);
 
     return array(

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   buildEncomendaRowValues,
   encomendaContextFromValues,
@@ -116,5 +117,17 @@ assert.equal(categoryWithoutPrefix.categoria, 'Encomenda | Retirar amanha');
 
 assert.match(productQuantityAndNote.original, /Produto: dipirona/);
 assert.match(productQuantityAndNote.original, /Categoria: encomenda João 10/);
+
+const serverSource = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
+const endpointStart = serverSource.indexOf("app.post(`${BASE_PATH}/api/internal/encomendas`");
+const endpointEnd = serverSource.indexOf("app.post(`${BASE_PATH}/api/internal/urgentes`", endpointStart);
+assert.ok(endpointStart >= 0 && endpointEnd > endpointStart, 'Endpoint interno de Encomenda nao localizado.');
+const endpointSource = serverSource.slice(endpointStart, endpointEnd);
+assert.match(endpointSource, /NOT EXISTS\s*\(/, 'Encomenda precisa validar a linha integralmente vazia.');
+assert.match(endpointSource, /ORDER BY position ASC, id ASC/, 'Encomenda precisa escolher a primeira linha vazia.');
+assert.match(endpointSource, /FOR UPDATE/, 'Reserva da linha vazia precisa ser transacional.');
+assert.match(endpointSource, /type: 'cells_batch_updated'/, 'Encomenda precisa registrar atualizacao de celulas.');
+assert.doesNotMatch(endpointSource, /MAX\(position\)/, 'Encomenda nao pode procurar o fim da Cotacao.');
+assert.doesNotMatch(endpointSource, /INSERT INTO cotacao_v2_rows/, 'Encomenda nao pode criar linha nova no fim da Cotacao.');
 
 console.log('encomendas extraction ok');
