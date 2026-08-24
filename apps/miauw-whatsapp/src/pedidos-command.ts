@@ -31,6 +31,16 @@ export type PedidosOperationalCommand = {
   query: string;
 };
 
+export type PedidosArrivalReply = {
+  none: boolean;
+  supplier: string;
+};
+
+export type PedidosArrivalSelectionReply =
+  | { kind: 'prompt' }
+  | { kind: 'cancel' }
+  | { kind: 'choice'; choice: string };
+
 type Token = {
   raw: string;
   clean: string;
@@ -184,6 +194,44 @@ export function parsePedidosOperationalCommand(message: string): PedidosOperatio
   }
 
   return null;
+}
+
+export function parsePedidosArrivalReply(message: string): PedidosArrivalReply | null {
+  const raw = stripActivationWord(String(message || '').slice(0, 180)).replace(/[?!.,;:]+$/g, '').trim();
+  const clean = normalizeIntentText(raw);
+  if (!clean) return null;
+  if (/^(nenhum|nenhuma|nada|nao)( pedido| titulo| fornecedor)? chegou$/.test(clean)) {
+    return { none: true, supplier: '' };
+  }
+  if (clean.includes('confirmar chegada') || clean.includes('confirma chegada')) return null;
+  if (!/(^|\s)(chegou|chegaram|recebido|recebida|recebemos)$/.test(clean)) return null;
+  const supplier = raw
+    .replace(/\b(chegou|chegaram|recebido|recebida|recebemos)\b\s*$/i, '')
+    .replace(/^(?:o|a|os|as|pedido|fornecedor|titulo)\s+/i, '')
+    .trim();
+  return { none: false, supplier };
+}
+
+export function parsePedidosArrivalSelectionReply(message: string): PedidosArrivalSelectionReply | null {
+  const clean = normalizeIntentText(stripActivationWord(String(message || '').slice(0, 180)));
+  if (!clean) return null;
+  if (/^(?:nao|n|deixa|deixa quieto|esquece|errado|cancelar comando|cancela comando)$/.test(clean)) {
+    return { kind: 'cancel' };
+  }
+  if (/^(?:chegou|chegaram|recebido|recebida|recebemos)$/.test(clean)) {
+    return { kind: 'prompt' };
+  }
+  const arrivalAtStart = /^(?:pedido\s+)?(?:chegou|chegaram|recebido|recebida|recebemos)\s+/.test(clean);
+  const arrivalAtEnd = /\s+(?:chegou|chegaram|recebido|recebida|recebemos)$/.test(clean);
+  const simpleChoice = /^\d+$/.test(clean)
+    || /^(?:(?:o|a)\s+)?(?:primeiro|primeira|segundo|segunda|terceiro|terceira|quarto|quarta|quinto|quinta)$/.test(clean);
+  if (!arrivalAtStart && !arrivalAtEnd && !simpleChoice) return null;
+  const choice = clean
+    .replace(/^(?:pedido\s+)?(?:chegou|chegaram|recebido|recebida|recebemos)\s+/, '')
+    .replace(/\s+(?:chegou|chegaram|recebido|recebida|recebemos)$/, '')
+    .replace(/^pedido\s+/, '')
+    .trim();
+  return choice ? { kind: 'choice', choice } : null;
 }
 
 export function parsePedidosCreateCommand(message: string, options: ParserOptions = {}): PedidosCreateCommand | null {

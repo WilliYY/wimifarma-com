@@ -1921,3 +1921,21 @@ Riscos/cuidados:
 
 - O prazo renovado nao autoriza escrita: entidade, permissao e estado real continuam revalidados no modulo oficial.
 - Depois de 24 horas sem interacao valida, uma nova mensagem precisa reconstruir o contexto.
+
+## 2026-08-24 - Chegada de Pedidos por escolha numerada no Miauby Whats
+
+Decisao:
+
+- Depois da consulta manual de pedidos aguardando chegada, guardar por prazo curto somente os dez itens numerados exibidos e na mesma ordem.
+- `chegou` abre a escolha; numero, ordinal, `3 chegou` ou `chegou 3` selecionam o `order_id` correspondente.
+- Consumir a escolha atomicamente antes de chamar o endpoint oficial de chegada, impedindo reutilizacao e concorrencia duplicada.
+
+Motivo:
+
+- Evitar repetir o nome do fornecedor e impedir que um numero seja aplicado a uma lista diferente, antiga ou de outro contato.
+
+Riscos/cuidados:
+
+- A selecao expirada nunca escreve e exige nova listagem.
+- A ordem persistida deve ser identica a ordem mostrada; itens alem dos dez exibidos nao podem ser escolhidos por indice.
+- Confirmacao direta por fornecedor continua disponivel por compatibilidade.
