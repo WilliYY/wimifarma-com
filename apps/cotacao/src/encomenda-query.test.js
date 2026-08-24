@@ -76,6 +76,18 @@ test('extrai escopo, status, campo solicitado e filtros livres', () => {
   assert.deepEqual(wantToSee.terms, []);
 });
 
+test('ignora vicios de fala em consulta geral e preserva toda a lista ativa', () => {
+  for (const message of [
+    'o que tem de encomenda e tal?',
+    'o que tem de encomendas e tals?'
+  ]) {
+    const query = parseEncomendaReadQuery(message);
+    assert.ok(query);
+    assert.deepEqual(query.terms, []);
+    assert.deepEqual(filterEncomendaReadItems([LOSARTANA], query).map((item) => item.rowId), ['row-1']);
+  }
+});
+
 test('preserva detalhes reais e identifica somente campos confiaveis', () => {
   const item = decorateEncomendaReadItem(LOSARTANA);
   assert.equal(item.cliente, 'Maria Silva');

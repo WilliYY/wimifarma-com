@@ -19,7 +19,7 @@ const STOP_WORDS = new Set([
   'ver', 'veja', 'consulta', 'consultar', 'busca', 'buscar', 'diga', 'quem', 'pediu', 'pediram', 'quero', 'uma', 'umas', 'um', 'uns',
   'telefone', 'fone', 'whatsapp', 'endereco', 'status', 'situacao', 'data', 'quando', 'cliente', 'produto',
   'categoria', 'descricao', 'observacao', 'detalhe', 'detalhes', 'atual', 'atuais', 'ativa', 'ativas',
-  'aqui', 'agora', 'ainda', 'esta', 'estao', 'estava', 'estavam', 'foi', 'foram', 'sao', 'sendo', 'la',
+  'aqui', 'agora', 'ainda', 'esta', 'estao', 'estava', 'estavam', 'foi', 'foram', 'sao', 'sendo', 'la', 'tal', 'tals',
   'aberta', 'abertas', 'aberto', 'abertos', 'pendente', 'pendentes', 'enviada', 'enviadas', 'enviado', 'enviados', 'erro', 'cancelada', 'canceladas',
   'cancelado', 'cancelados', 'resolvida', 'resolvidas', 'resolvido', 'resolvidos', 'finalizada', 'finalizadas',
   'concluida', 'concluidas', 'entregue', 'entregues', 'recente', 'recentes', 'nova', 'novas', 'ultima',

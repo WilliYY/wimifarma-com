@@ -16,6 +16,25 @@ test('consulta simples de encomenda passa pelo roteamento deterministico antes d
   }
 });
 
+test('consulta segura de encomenda sem prefixo ainda devolve a lista', () => {
+  for (const message of ['quais encomenda tem?', 'o que tem de encomenda e tals?']) {
+    const route = choosePreSemanticRoute(message, true);
+
+    assert.equal(route.kind, 'cotacao_encomendas', message);
+    if (route.kind === 'cotacao_encomendas') {
+      assert.equal(route.command.action, 'list');
+    }
+  }
+});
+
+test('comando comum ou de escrita sem prefixo continua bloqueado', () => {
+  assert.deepEqual(choosePreSemanticRoute('me ajuda com isso', true), { kind: 'missing_prefix' });
+  assert.deepEqual(
+    choosePreSemanticRoute('encomenda losartana 50mg para Maria', true),
+    { kind: 'missing_prefix' },
+  );
+});
+
 test('mensagem sem rota local segue para o interpretador semantico', () => {
   assert.deepEqual(choosePreSemanticRoute('me ajuda com isso', false), { kind: 'semantic' });
 });

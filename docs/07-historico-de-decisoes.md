@@ -1939,3 +1939,20 @@ Riscos/cuidados:
 - A selecao expirada nunca escreve e exige nova listagem.
 - A ordem persistida deve ser identica a ordem mostrada; itens alem dos dez exibidos nao podem ser escolhidos por indice.
 - Confirmacao direta por fornecedor continua disponivel por compatibilidade.
+
+## 2026-08-24 - Consulta de Encomendas sem prefixo digitado
+
+Decisao:
+
+- Resolver perguntas naturais como `quais encomenda tem?` e `o que tem de encomenda e tals?` antes da ajuda de prefixo e devolver a lista real da Cotacao.
+- Permitir sem `Miauby` somente essa rota deterministica e de leitura, mantendo contato permitido e permissao do card `Cotacao`.
+- Tratar `e tal` e `e tals` como vicios de fala, sem transforma-los em filtro de produto.
+
+Motivo:
+
+- O evento real de producao chegou como `quais encomenda tem?`, mas foi desviado para `missing_prefix_help_only` antes do leitor que ja reconhecia a frase.
+
+Riscos/cuidados:
+
+- Escritas, criacoes e demais comandos digitados continuam exigindo `Miauby`.
+- A excecao nunca deve contornar allowlist, usuario vinculado nem permissao do modulo.

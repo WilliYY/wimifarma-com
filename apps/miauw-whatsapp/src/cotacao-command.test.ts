@@ -15,6 +15,8 @@ test('encaminha consultas naturais de encomenda com a frase completa', () => {
     'MIAUBY mostra as encomendas recentes',
     'Miauby quais pedidos estao encomendados?',
     'Miauby o que tem encomendado?',
+    'o que tem de encomenda e tal?',
+    'o que tem de encomendas e tals?',
     'Miauby quero ver as encomendas',
     'Miauby encomenda da Maria',
     'Miauby encomenda de atenolol farmacia popular',

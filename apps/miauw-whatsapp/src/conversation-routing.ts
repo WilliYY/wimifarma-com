@@ -9,9 +9,9 @@ export type PreSemanticRoute =
   | { kind: 'semantic' };
 
 export function choosePreSemanticRoute(message: string, missingPrefixHelpOnly: boolean): PreSemanticRoute {
-  if (missingPrefixHelpOnly) return { kind: 'missing_prefix' };
   const command = parseCotacaoEncomendasCommand(message);
   if (command) return { kind: 'cotacao_encomendas', command };
+  if (missingPrefixHelpOnly) return { kind: 'missing_prefix' };
   return { kind: 'semantic' };
 }
 

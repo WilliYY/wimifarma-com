@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Miauby Interno e Miauby WhatsApp compartilham memoria curta de sessao e memoria persistente estruturada para continuar uma conversa sem reenviar todo o historico ao modelo. Depois da ativacao inicial, frases como `qual e da Maria?`, `o segundo`, `cancela ela`, `sim`, `e amitriptilina` e `agora 42` podem aproveitar o contexto valido da mesma identidade. O Interno preserva a compatibilidade de comandos explicitos sem a palavra `Miauby`; o WhatsApp continua exigindo o prefixo para iniciar uma conversa, mas aceita saudacoes como `oi Miauby`, `ola Miauby`, `bom dia Miauby`, `boa tarde Miauby` e `boa noite Miauby`.
+Miauby Interno e Miauby WhatsApp compartilham memoria curta de sessao e memoria persistente estruturada para continuar uma conversa sem reenviar todo o historico ao modelo. Depois da ativacao inicial, frases como `qual e da Maria?`, `o segundo`, `cancela ela`, `sim`, `e amitriptilina` e `agora 42` podem aproveitar o contexto valido da mesma identidade. O Interno preserva a compatibilidade de comandos explicitos sem a palavra `Miauby`; no WhatsApp, comandos digitados continuam exigindo o prefixo para iniciar uma conversa, exceto a consulta deterministica e somente de leitura das Encomendas da Cotacao, que ainda revalida contato e permissao. Saudacoes como `oi Miauby`, `ola Miauby`, `bom dia Miauby`, `boa tarde Miauby` e `boa noite Miauby` continuam validas.
 
 Essa memoria auxilia a interpretacao. Ela nao substitui o banco do modulo, nao concede permissoes, nao executa escrita e nao torna `apps/miauby` dono do Miauby Interno.
 
@@ -56,9 +56,9 @@ Estados estruturados vencidos tem o `payload` apagado na primeira manutencao seg
 
 ## Compatibilidade e seguranca
 
-Pendencias legadas de confirmacao, selecao, relatorio e coleta de campos sao resolvidas antes da memoria estruturada. Formatos antigos continuam validos. No WhatsApp, a continuacao sem `miauby` so e aceita para contato permitido com contexto ativo e nao vencido. Se o estado nao puder ser revalidado entre o webhook e o processamento, o canal pede uma nova mensagem com `Miauby` e nao entrega o texto sem prefixo ao parser operacional.
+Pendencias legadas de confirmacao, selecao, relatorio e coleta de campos sao resolvidas antes da memoria estruturada. Formatos antigos continuam validos. No WhatsApp, a continuacao sem `miauby` so e aceita para contato permitido com contexto ativo e nao vencido; a unica excecao sem contexto e a consulta deterministica e somente de leitura das Encomendas da Cotacao, ainda protegida por contato permitido e permissao do card. Se o estado nao puder ser revalidado entre o webhook e o processamento, o canal pede uma nova mensagem com `Miauby` e nao entrega o texto sem prefixo a executores de escrita.
 
-Uma nova sessao do WhatsApp nao e ativada silenciosamente pela memoria persistente: continua exigindo `Miauby`. No Interno, somente uma ativacao ou comando explicito valido restaura o resumo. Memoria vencida, de outro usuario ou de outro canal e ignorada. IDs e rotulos persistidos continuam sendo apenas referencias; o modulo oficial deve revalidar entidade, permissao e estado atual antes de qualquer resposta ou escrita.
+Uma nova sessao do WhatsApp nao e ativada silenciosamente pela memoria persistente: continua exigindo `Miauby` para conversa e comandos, sem usar a consulta isolada de Encomendas como autorizacao para escrita ou restauracao implicita. No Interno, somente uma ativacao ou comando explicito valido restaura o resumo. Memoria vencida, de outro usuario ou de outro canal e ignorada. IDs e rotulos persistidos continuam sendo apenas referencias; o modulo oficial deve revalidar entidade, permissao e estado atual antes de qualquer resposta ou escrita.
 
 Uma referencia como `cancela ela` pode formar uma acao pendente, mas so e executada se existir executor oficial, autorizado e idempotente para aquele tipo. A Cotacao ainda nao possui cancelamento contextual seguro de Encomenda; nesse caso a confirmacao termina de forma fechada, informa a limitacao e nao altera linha alguma.
 
