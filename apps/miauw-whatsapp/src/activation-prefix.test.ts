@@ -33,9 +33,13 @@ test('aceita variacoes foneticas conservadoras de Miauby no inicio do audio', ()
   }
 });
 
-test('audio ainda rejeita fala sem ativacao ou somente um miau isolado', () => {
-  assert.equal(parseAudioActivationTranscript('pedidos de hoje', 'miauby', true).reason, 'missing_prefix');
-  assert.equal(parseAudioActivationTranscript('miau alto', 'miauby', true).reason, 'missing_prefix');
+test('audio valido ja funciona como ativacao sem precisar falar Miauby', () => {
+  for (const transcript of ['pedidos de hoje', 'como é que está', 'sangria 10', 'miau alto']) {
+    const parsed = parseAudioActivationTranscript(transcript, 'miauby', true);
+    assert.equal(parsed.accepted, true, transcript);
+    assert.equal(parsed.text, transcript, transcript);
+    assert.equal(parsed.reason, 'audio_message_activation', transcript);
+  }
   assert.equal(parseAudioActivationTranscript('miau bi', 'miauby', true).reason, 'empty_after_prefix');
 });
 
@@ -48,4 +52,5 @@ test('audio preserva prefixo exato e ambiente sem prefixo obrigatorio', () => {
     parseAudioActivationTranscript('pedidos de hoje', 'miauby', false),
     { accepted: true, text: 'pedidos de hoje', reason: '' },
   );
+  assert.equal(parseActivationPrefix('pedidos de hoje', 'miauby', true).reason, 'missing_prefix');
 });

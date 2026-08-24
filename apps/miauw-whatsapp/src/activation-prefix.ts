@@ -25,7 +25,11 @@ export function parseAudioActivationTranscript(text: string, prefix: string, req
 
   const clean = String(text || '').trim();
   const match = clean.match(audioPhoneticActivationPattern());
-  if (!match) return exact;
+  if (!match) {
+    return clean
+      ? { accepted: true, text: clean, reason: 'audio_message_activation' }
+      : exact;
+  }
 
   let remainder = clean.slice(match[0].length).replace(/^[\s,:-]+/, '').trim();
   while (remainder) {

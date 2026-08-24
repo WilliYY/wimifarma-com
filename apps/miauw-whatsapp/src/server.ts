@@ -4144,7 +4144,9 @@ async function processQueueRow(row: QueueRow): Promise<void> {
         const audioActivationMode = !REQUIRE_PREFIX
           ? 'prefix_not_required'
           : (audioActivation.accepted
-              ? (audioActivation.reason === 'audio_prefix_phonetic' ? 'phonetic_prefix' : 'exact_prefix')
+              ? (audioActivation.reason === 'audio_message_activation'
+                  ? 'audio_message'
+                  : (audioActivation.reason === 'audio_prefix_phonetic' ? 'phonetic_prefix' : 'exact_prefix'))
               : audioActivation.reason);
         effectiveBodyText = audioActivation.accepted ? audioActivation.text : '';
         row.body_text = audioActivation.accepted ? audioActivation.text : transcript;
@@ -11194,7 +11196,7 @@ function publicStatus(): JsonRecord {
     openai_configured: openAiReady,
     openai_model: OPENAI_MODEL,
     audio_input_enabled: AUDIO_INPUT_ENABLED,
-    audio_activation_prefix_mode: REQUIRE_PREFIX ? 'exact_or_phonetic' : 'not_required',
+    audio_activation_prefix_mode: REQUIRE_PREFIX ? 'audio_message_with_optional_prefix' : 'not_required',
     audio_reply_enabled: AUDIO_REPLY_ENABLED,
     audio_reply_mode: AUDIO_REPLY_MODE,
     audio_transcribe_provider: AUDIO_TRANSCRIBE_PROVIDER,
