@@ -59,7 +59,7 @@ import {
 } from './cashback-command.js';
 import { formatMiaubyResponse } from './response-format.js';
 import { hasActivationPrefix, parseActivationPrefix, parseAudioActivationTranscript } from './activation-prefix.js';
-import { safeInboundText } from './message-text.js';
+import { firstMessageText, metaMessageText, safeInboundText } from './message-text.js';
 import {
   buildMiaubyAudioTtsPrompt,
   DEFAULT_AUDIO_TTS_STYLE,
@@ -2025,66 +2025,6 @@ function metaMediaSummary(message: JsonRecord, messageType: string): JsonRecord 
     mimetype: canonicalAudioMime(safeText(audio.mime_type || audio.mimetype, 120) || 'audio/ogg'),
     voice: audio.voice === true,
   };
-}
-
-function firstMessageText(message: JsonRecord): { type: string; text: string } {
-  const conversation = safeText(message.conversation, 4000);
-  if (conversation) return { type: 'conversation', text: conversation };
-
-  const extended = readNestedRecord(message, 'extendedTextMessage');
-  const extendedText = safeText(extended.text, 4000);
-  if (extendedText) return { type: 'extendedTextMessage', text: extendedText };
-
-  const image = readNestedRecord(message, 'imageMessage');
-  const imageCaption = safeText(image.caption, 4000);
-  if (imageCaption) return { type: 'imageMessage', text: imageCaption };
-
-  const document = readNestedRecord(message, 'documentMessage');
-  const documentCaption = safeText(document.caption, 4000);
-  if (documentCaption) return { type: 'documentMessage', text: documentCaption };
-
-  const video = readNestedRecord(message, 'videoMessage');
-  const videoCaption = safeText(video.caption, 4000);
-  if (videoCaption) return { type: 'videoMessage', text: videoCaption };
-
-  const buttons = readNestedRecord(message, 'buttonsResponseMessage');
-  const buttonText = safeText(buttons.selectedDisplayText || buttons.selectedButtonId, 4000);
-  if (buttonText) return { type: 'buttonsResponseMessage', text: buttonText };
-
-  const list = readNestedRecord(message, 'listResponseMessage');
-  const listReply = isRecord(list.singleSelectReply) ? list.singleSelectReply : {};
-  const listText = safeText(list.title || listReply.selectedRowId || '', 4000);
-  if (listText) return { type: 'listResponseMessage', text: listText };
-
-  const keys = Object.keys(message);
-  return { type: keys[0] || 'unknown', text: '' };
-}
-
-function metaMessageText(message: JsonRecord): { type: string; text: string } {
-  const type = safeText(message.type || 'unknown', 80) || 'unknown';
-  const text = readNestedRecord(message, 'text');
-  const textBody = safeText(text.body, 4000);
-  if (textBody) return { type, text: textBody };
-
-  for (const key of ['image', 'video', 'document']) {
-    const media = readNestedRecord(message, key);
-    const caption = safeText(media.caption, 4000);
-    if (caption) return { type, text: caption };
-  }
-
-  const button = readNestedRecord(message, 'button');
-  const buttonText = safeText(button.text || button.payload, 4000);
-  if (buttonText) return { type, text: buttonText };
-
-  const interactive = readNestedRecord(message, 'interactive');
-  const buttonReply = readNestedRecord(interactive, 'button_reply');
-  const buttonReplyText = safeText(buttonReply.title || buttonReply.id, 4000);
-  if (buttonReplyText) return { type, text: buttonReplyText };
-  const listReply = readNestedRecord(interactive, 'list_reply');
-  const listReplyText = safeText(listReply.title || listReply.id, 4000);
-  if (listReplyText) return { type, text: listReplyText };
-
-  return { type, text: '' };
 }
 
 function firstArrayRecord(value: unknown): JsonRecord {

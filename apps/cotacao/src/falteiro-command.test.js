@@ -398,6 +398,34 @@ test('separa varios produtos por virgula ponto e virgula e quebra de linha', () 
   }
 });
 
+test('preserva uma lista de medicamentos com um produto por linha', () => {
+  const parsed = parseFalteiroCommands([
+    'Miauby falta flancox 400',
+    'clenil 250',
+    'prolopa bd 100/25',
+    'flutinol',
+    'mesigyna',
+    'repopil 3 cartela',
+    'benegrip cartela',
+    'flancox 600',
+  ].join('\n'), { categories: CATEGORIES });
+
+  assert.equal(parsed?.detectedCount, 8);
+  assert.deepEqual(
+    parsed?.items.map((item) => [item.product, item.error]),
+    [
+      ['Flancox 400', ''],
+      ['Clenil 250', ''],
+      ['Prolopa bd 100/25', ''],
+      ['Flutinol', ''],
+      ['Mesigyna', ''],
+      ['Repopil 3 cartela', ''],
+      ['Benegrip cartela', ''],
+      ['Flancox 600', ''],
+    ],
+  );
+});
+
 test('herda a intencao global sem exigir comando em cada item', () => {
   const parsed = parseFalteiroCommands(
     'Miauby losartana 50mg urgente, amitriptilina urgente falta',
