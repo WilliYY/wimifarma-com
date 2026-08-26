@@ -4695,7 +4695,7 @@ async function maybeHandleStructuredConversation(
   userContext: WhatsappUserContext,
   senderHashes: string[],
 ): Promise<StructuredConversationOutcome | null> {
-  const cleanMessage = safeText(message, 4000);
+  const cleanMessage = safeInboundText(message, 4000);
   if (!cleanMessage) return null;
   const identity = structuredConversationIdentity(row, userContext);
   const wasExplicitlyActivated = row.payload_summary?.activation_prefix_accepted === true;

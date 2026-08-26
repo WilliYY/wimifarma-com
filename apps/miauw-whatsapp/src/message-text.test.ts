@@ -29,6 +29,15 @@ test('Meta e Evolution usam o normalizador que preserva varias linhas', () => {
   assert.equal(uses.length, 2);
 });
 
+test('memoria estruturada preserva a lista antes de encaminhar ao Falteiro', () => {
+  const serverSource = fs.readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
+
+  assert.match(
+    serverSource,
+    /function maybeHandleStructuredConversation[\s\S]*?const cleanMessage = safeInboundText\(message, 4000\);/u,
+  );
+});
+
 test('extracao Meta e Evolution preserva linhas antes da fila', () => {
   const lines = ['miauby falta flancox 400', 'clenil 250', 'prolopa bd 100/25'].join('\n');
 
