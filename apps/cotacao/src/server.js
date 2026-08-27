@@ -28,6 +28,13 @@ import {
   parseFalteiroCommands,
   sanitizeFalteiroCategories,
 } from './falteiro-command.js';
+import {
+  authorizedCoreUser,
+  readinessResult,
+  sessionCookieSecureMode,
+  sortCellChangesForLocking
+} from './runtime-guards.js';
+import { withTransaction } from './db-transaction.js';
 
 const { Pool } = pg;
 
@@ -201,7 +208,7 @@ const sessionMiddleware = session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false,
+    secure: sessionCookieSecureMode(env.NODE_ENV, env.COTACAO_SESSION_COOKIE_SECURE),
     maxAge: 1000 * 60 * 60 * 10
   }
 });
@@ -263,11 +270,15 @@ app.use(BASE_PATH, express.static(path.join(rootDir, 'public'), {
 io.engine.use(sessionMiddleware);
 io.use((socket, next) => {
   const sessionUser = socket.request.session?.user;
-  if (!sessionUser) {
-    return next(new Error('unauthorized'));
-  }
-  socket.user = sessionUser;
-  return next();
+  if (!sessionUser) return next(new Error('unauthorized'));
+  Promise.resolve(authorizedCoreSessionUser(sessionUser, 'cotacao'))
+    .then((user) => {
+      if (!user) return next(new Error('unauthorized'));
+      socket.user = user;
+      socket.request.session.user = user;
+      return next();
+    })
+    .catch(() => next(new Error('unauthorized')));
 });
 
 function sleep(ms) {
@@ -776,20 +787,25 @@ async function userByHomeSso(req) {
   return user ? userPublic({ ...user, id: Number(user.id) }) : null;
 }
 
-async function canAccessModule(user, moduleKey) {
-  const username = normalizeUsername(user?.username);
-  const role = normalizeUsername(user?.role);
-  if (username === 'adm' || role === 'admin') return true;
+async function authorizedCoreSessionUser(user, moduleKey) {
+  const userId = Number.parseInt(String(user?.id || ''), 10);
+  if (!Number.isSafeInteger(userId) || userId <= 0) return null;
   const result = await corePgPool.query(
-    `SELECT COUNT(*)::text AS permission_count,
-            COALESCE(BOOL_OR(module_key = $2 AND can_access = TRUE), FALSE) AS can_access
-       FROM core_user_module_permissions
-      WHERE user_id = $1`,
-    [user.id, moduleKey]
+    `SELECT user_data.id::text,
+            user_data.username,
+            user_data.role,
+            user_data.active,
+            COUNT(permission.id)::text AS permission_count,
+            COALESCE(BOOL_OR(permission.module_key = $2 AND permission.can_access = TRUE), FALSE) AS can_access
+       FROM core_users user_data
+       LEFT JOIN core_user_module_permissions permission
+         ON permission.user_id = user_data.id
+      WHERE user_data.id = $1
+      GROUP BY user_data.id, user_data.username, user_data.role, user_data.active
+      LIMIT 1`,
+    [userId, moduleKey]
   );
-  const row = result.rows[0];
-  const explicitCount = Number(row?.permission_count || 0);
-  return explicitCount === 0 ? true : row?.can_access === true;
+  return authorizedCoreUser(result.rows[0]);
 }
 
 function regenerateWithUser(req, user) {
@@ -816,7 +832,14 @@ async function ensureSessionUser(req) {
     user = homeUser;
   }
   if (!user) return null;
-  return (await canAccessModule(user, 'cotacao')) ? user : null;
+  const authorizedUser = await authorizedCoreSessionUser(user, 'cotacao');
+  if (!authorizedUser) {
+    delete req.session.user;
+    delete req.session.csrfToken;
+    return null;
+  }
+  req.session.user = authorizedUser;
+  return authorizedUser;
 }
 
 async function coreAuthHealth() {
@@ -1452,112 +1475,93 @@ async function activeRowExists(quoteId, rowId) {
   return Boolean(result.rows[0]);
 }
 
-async function addRows(quoteId, count, valuesList = []) {
+async function addRowsInTransaction(client, quoteId, count, valuesList = []) {
   const total = Math.max(1, Math.min(Number(count || valuesList.length || 1), 200));
-  const client = await pgPool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query('SELECT id FROM cotacao_v2_quotes WHERE id = $1 FOR UPDATE', [quoteId]);
-    const maxPosition = await client.query(
-      'SELECT COALESCE(MAX(position), 0)::int AS position FROM cotacao_v2_rows WHERE quote_id = $1 AND deleted_at IS NULL',
-      [quoteId]
-    );
-    const basePosition = maxPosition.rows[0].position;
-    const placeholders = [];
-    const params = [quoteId];
-    for (let index = 0; index < total; index += 1) {
-      params.push(basePosition + index + 1, JSON.stringify(valuesList[index] || {}));
-      const positionParam = params.length - 1;
-      const valuesParam = params.length;
-      placeholders.push(`($1, $${positionParam}, $${valuesParam}::jsonb)`);
-    }
-    const inserted = await client.query(
-      `INSERT INTO cotacao_v2_rows (quote_id, position, values)
-       VALUES ${placeholders.join(', ')}
-       RETURNING id, position, values, version, updated_at`,
-      params
-    );
-    await client.query('COMMIT');
-    return inserted.rows
-      .sort((a, b) => Number(a.position) - Number(b.position))
-      .map((row) => ({
-        id: row.id,
-        position: row.position,
-        values: row.values || {},
-        version: Number(row.version),
-        updatedAt: row.updated_at
-      }));
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
+  await client.query('SELECT id FROM cotacao_v2_quotes WHERE id = $1 FOR UPDATE', [quoteId]);
+  const maxPosition = await client.query(
+    'SELECT COALESCE(MAX(position), 0)::int AS position FROM cotacao_v2_rows WHERE quote_id = $1 AND deleted_at IS NULL',
+    [quoteId]
+  );
+  const basePosition = maxPosition.rows[0].position;
+  const placeholders = [];
+  const params = [quoteId];
+  for (let index = 0; index < total; index += 1) {
+    params.push(basePosition + index + 1, JSON.stringify(valuesList[index] || {}));
+    const positionParam = params.length - 1;
+    const valuesParam = params.length;
+    placeholders.push(`($1, $${positionParam}, $${valuesParam}::jsonb)`);
   }
+  const inserted = await client.query(
+    `INSERT INTO cotacao_v2_rows (quote_id, position, values)
+     VALUES ${placeholders.join(', ')}
+     RETURNING id, position, values, version, updated_at`,
+    params
+  );
+  return inserted.rows
+    .sort((a, b) => Number(a.position) - Number(b.position))
+    .map((row) => ({
+      id: row.id,
+      position: row.position,
+      values: row.values || {},
+      version: Number(row.version),
+      updatedAt: row.updated_at
+    }));
 }
 
-async function insertRowsAt(quoteId, anchorRowId, placement = 'below', count = 1) {
+async function addRows(quoteId, count, valuesList = []) {
+  return withTransaction(pgPool, (client) => addRowsInTransaction(client, quoteId, count, valuesList));
+}
+
+async function insertRowsAtInTransaction(client, quoteId, anchorRowId, placement = 'below', count = 1) {
   const total = Math.max(1, Math.min(Number(count || 1), 50));
-  const client = await pgPool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query('SELECT id FROM cotacao_v2_quotes WHERE id = $1 FOR UPDATE', [quoteId]);
-    const current = await client.query(
-      `SELECT id
-       FROM cotacao_v2_rows
-       WHERE quote_id = $1
-         AND deleted_at IS NULL
-       ORDER BY position ASC, id ASC
-       FOR UPDATE`,
-      [quoteId]
-    );
-    const ids = current.rows.map((row) => row.id);
-    const anchorIndex = ids.indexOf(anchorRowId);
-    if (anchorIndex === -1) {
-      await client.query('ROLLBACK');
-      return { rows: [], positions: [], anchorMissing: true };
-    }
-    const insertIndex = anchorIndex === -1
-      ? ids.length
-      : anchorIndex + (placement === 'above' ? 0 : 1);
-    const inserted = [];
-    for (let index = 0; index < total; index += 1) {
-      const row = await client.query(
-        `INSERT INTO cotacao_v2_rows (quote_id, position, values)
-         VALUES ($1, $2, '{}'::jsonb)
-         RETURNING id, position, values, version, updated_at`,
-        [quoteId, ids.length + index + 1]
-      );
-      inserted.push({
-        id: row.rows[0].id,
-        position: row.rows[0].position,
-        values: row.rows[0].values || {},
-        version: Number(row.rows[0].version),
-        updatedAt: row.rows[0].updated_at
-      });
-    }
-    const ordered = [
-      ...ids.slice(0, insertIndex),
-      ...inserted.map((row) => row.id),
-      ...ids.slice(insertIndex)
-    ];
-    for (let index = 0; index < ordered.length; index += 1) {
-      await client.query('UPDATE cotacao_v2_rows SET position = $2, updated_at = now() WHERE id = $1', [
-        ordered[index],
-        index + 1
-      ]);
-    }
-    const positions = ordered.map((id, index) => ({ id, position: index + 1 }));
-    inserted.forEach((row) => {
-      row.position = ordered.indexOf(row.id) + 1;
-    });
-    await client.query('COMMIT');
-    return { rows: inserted, positions, anchorMissing: false };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
+  await client.query('SELECT id FROM cotacao_v2_quotes WHERE id = $1 FOR UPDATE', [quoteId]);
+  const current = await client.query(
+    `SELECT id
+     FROM cotacao_v2_rows
+     WHERE quote_id = $1
+       AND deleted_at IS NULL
+     ORDER BY position ASC, id ASC
+     FOR UPDATE`,
+    [quoteId]
+  );
+  const ids = current.rows.map((row) => row.id);
+  const anchorIndex = ids.indexOf(anchorRowId);
+  if (anchorIndex === -1) {
+    return { rows: [], positions: [], anchorMissing: true };
   }
+  const insertIndex = anchorIndex + (placement === 'above' ? 0 : 1);
+  const inserted = [];
+  for (let index = 0; index < total; index += 1) {
+    const row = await client.query(
+      `INSERT INTO cotacao_v2_rows (quote_id, position, values)
+       VALUES ($1, $2, '{}'::jsonb)
+       RETURNING id, position, values, version, updated_at`,
+      [quoteId, ids.length + index + 1]
+    );
+    inserted.push({
+      id: row.rows[0].id,
+      position: row.rows[0].position,
+      values: row.rows[0].values || {},
+      version: Number(row.rows[0].version),
+      updatedAt: row.rows[0].updated_at
+    });
+  }
+  const ordered = [
+    ...ids.slice(0, insertIndex),
+    ...inserted.map((row) => row.id),
+    ...ids.slice(insertIndex)
+  ];
+  for (let index = 0; index < ordered.length; index += 1) {
+    await client.query('UPDATE cotacao_v2_rows SET position = $2, updated_at = now() WHERE id = $1', [
+      ordered[index],
+      index + 1
+    ]);
+  }
+  const positions = ordered.map((id, index) => ({ id, position: index + 1 }));
+  inserted.forEach((row) => {
+    row.position = ordered.indexOf(row.id) + 1;
+  });
+  return { rows: inserted, positions, anchorMissing: false };
 }
 
 function isDistributorColumn(column) {
@@ -2991,15 +2995,30 @@ function renderApp(req) {
 }
 
 app.get(`${BASE_PATH}/health`, asyncRoute(async (_req, res) => {
-  const quote = await getOrCreateDefaultQuote();
-  const auth = await coreAuthHealth();
-  res.json({
-    ok: true,
+  const [quote, auth, redisResult] = await Promise.all([
+    pgPool.query(
+      `SELECT id
+         FROM cotacao_v2_quotes
+        WHERE status = 'active'
+        ORDER BY created_at ASC
+        LIMIT 1`
+    ).then((result) => result.rows[0] || null).catch(() => null),
+    coreAuthHealth(),
+    redis.ping().then(() => true).catch(() => false)
+  ]);
+  const readiness = readinessResult({
+    quoteReady: Boolean(quote?.id),
+    redisReady: redisResult,
+    auth
+  });
+  res.status(readiness.status).json({
+    ok: readiness.ok,
     service: 'cotacao-v2',
-    quote_id: quote.id,
+    quote_id: quote?.id || null,
     mysql_auth: false,
     mysql_auth_fallback: false,
     mysql_reachable: null,
+    redis: { reachable: redisResult },
     auth
   });
 }));
@@ -4210,13 +4229,22 @@ app.post(`${BASE_PATH}/api/rows`, requireApiAuth, verifyCsrf, asyncRoute(async (
   const quote = await getOrCreateDefaultQuote();
   const clientId = String(req.body.clientId || '');
   const valuesList = Array.isArray(req.body.rows) ? req.body.rows : [];
-  const rows = await addRows(quote.id, req.body.count || valuesList.length || 1, valuesList);
-  const event = await appendEvent({
-    quoteId: quote.id,
-    type: 'rows_added',
-    payload: { rows },
-    user: req.session.user,
-    clientId
+  const { rows, event } = await withTransaction(pgPool, async (client) => {
+    const insertedRows = await addRowsInTransaction(
+      client,
+      quote.id,
+      req.body.count || valuesList.length || 1,
+      valuesList
+    );
+    const insertedEvent = await appendEvent({
+      quoteId: quote.id,
+      type: 'rows_added',
+      payload: { rows: insertedRows },
+      user: req.session.user,
+      clientId,
+      db: client
+    });
+    return { rows: insertedRows, event: insertedEvent };
   });
   io.to(`quote:${quote.id}`).emit('rows:added', { rows, eventId: Number(event.id), clientId });
   await syncEncomendaRemindersForRows(quote.id, rows.map((row) => row.id), {
@@ -4235,22 +4263,33 @@ app.post(`${BASE_PATH}/api/rows/insert`, requireApiAuth, verifyCsrf, asyncRoute(
     return res.status(422).json({ ok: false, error: 'Linha de referencia invalida.' });
   }
   const placement = String(req.body.placement || 'below') === 'above' ? 'above' : 'below';
-  const result = await insertRowsAt(
-    quote.id,
-    anchorRowId,
-    placement,
-    req.body.count || 1
-  );
+  const { result, event } = await withTransaction(pgPool, async (client) => {
+    const insertedResult = await insertRowsAtInTransaction(
+      client,
+      quote.id,
+      anchorRowId,
+      placement,
+      req.body.count || 1
+    );
+    if (insertedResult.anchorMissing) return { result: insertedResult, event: null };
+    const insertedEvent = await appendEvent({
+      quoteId: quote.id,
+      type: 'rows_inserted',
+      payload: {
+        rows: insertedResult.rows,
+        positions: insertedResult.positions,
+        anchorRowId,
+        placement
+      },
+      user: req.session.user,
+      clientId,
+      db: client
+    });
+    return { result: insertedResult, event: insertedEvent };
+  });
   if (result.anchorMissing) {
     return res.status(404).json({ ok: false, error: 'Linha de referencia nao encontrada.' });
   }
-  const event = await appendEvent({
-    quoteId: quote.id,
-    type: 'rows_inserted',
-    payload: { rows: result.rows, positions: result.positions, anchorRowId, placement },
-    user: req.session.user,
-    clientId
-  });
   io.to(`quote:${quote.id}`).emit('rows:added', {
     rows: result.rows,
     positions: result.positions,
@@ -4265,28 +4304,33 @@ app.delete(`${BASE_PATH}/api/rows/:id`, requireApiAuth, verifyCsrf, asyncRoute(a
   const quote = await getOrCreateDefaultQuote();
   const rowId = String(req.params.id || '');
   const clientId = String(req.body?.clientId || '');
-  const deleted = await pgPool.query(
-    `UPDATE cotacao_v2_rows
-     SET deleted_at = now(), updated_at = now()
-     WHERE id = $1
-       AND quote_id = $2
-       AND deleted_at IS NULL
-     RETURNING id`,
-    [rowId, quote.id]
-  );
-  if (!deleted.rows[0]) {
+  const { deleted, event } = await withTransaction(pgPool, async (client) => {
+    const deletedResult = await client.query(
+      `UPDATE cotacao_v2_rows
+       SET deleted_at = now(), updated_at = now()
+       WHERE id = $1
+         AND quote_id = $2
+         AND deleted_at IS NULL
+       RETURNING id`,
+      [rowId, quote.id]
+    );
+    if (!deletedResult.rows[0]) return { deleted: false, event: null };
+    const deletedEvent = await appendEvent({
+      quoteId: quote.id,
+      type: 'row_deleted',
+      rowId,
+      payload: { rowId },
+      user: req.session.user,
+      clientId,
+      db: client
+    });
+    return { deleted: true, event: deletedEvent };
+  });
+  if (!deleted) {
     return res.status(404).json({ ok: false, error: 'Linha nao encontrada.' });
   }
-  const event = await appendEvent({
-    quoteId: quote.id,
-    type: 'row_deleted',
-    rowId,
-    payload: { rowId },
-    user: req.session.user,
-    clientId
-  });
   io.to(`quote:${quote.id}`).emit('row:deleted', { rowId, eventId: Number(event.id), clientId });
-  await syncEncomendaReminderForRow(quote.id, rowId, {
+  await syncEncomendaRemindersForRows(quote.id, [rowId], {
     user: req.session.user,
     clientId,
     source: 'row_deleted'
@@ -4765,7 +4809,9 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
 app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
   const quote = await getOrCreateDefaultQuote();
   const clientId = String(req.body.clientId || '');
-  const changes = Array.isArray(req.body.changes) ? req.body.changes.slice(0, 1000) : [];
+  const changes = sortCellChangesForLocking(
+    Array.isArray(req.body.changes) ? req.body.changes.slice(0, 1000) : []
+  );
   if (!changes.length) {
     return res.status(422).json({ ok: false, error: 'Nenhuma celula informada.' });
   }
@@ -5118,6 +5164,26 @@ app.post(`${BASE_PATH}/api/backups/:name/restore`, requireApiAuth, verifyCsrf, r
 }));
 
 io.on('connection', (socket) => {
+  let authorizationCheckRunning = false;
+  const authorizationInterval = setInterval(async () => {
+    if (authorizationCheckRunning || socket.disconnected) return;
+    authorizationCheckRunning = true;
+    try {
+      const user = await authorizedCoreSessionUser(socket.user, 'cotacao');
+      if (!user) {
+        socket.disconnect(true);
+        return;
+      }
+      socket.user = user;
+      socket.request.session.user = user;
+    } catch {
+      socket.disconnect(true);
+    } finally {
+      authorizationCheckRunning = false;
+    }
+  }, 60000);
+  authorizationInterval.unref();
+
   socket.on('join', async ({ quoteId, clientId }) => {
     if (!quoteId || !clientId) {
       return;
@@ -5136,6 +5202,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', async () => {
+    clearInterval(authorizationInterval);
     if (socket.quoteId && socket.clientId) {
       await redis.del(`cotacao:presence:${socket.quoteId}:${socket.clientId}`);
       const presence = await activePresence(socket.quoteId);
@@ -5175,6 +5242,7 @@ async function start() {
   await withRetry('postgres', () => pgPool.query('SELECT 1'));
   await withRetry('core-postgres', () => corePgPool.query('SELECT 1'));
   await ensureSchema();
+  await getOrCreateDefaultQuote();
   server.listen(PORT, () => {
     console.log(`[cotacao] listening on ${PORT}${BASE_PATH}`);
   });

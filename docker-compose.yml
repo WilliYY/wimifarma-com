@@ -894,6 +894,7 @@ services:
       POSTGRES_PASSWORD: ${COTACAO_POSTGRES_PASSWORD:-wimifarma_cotacao_dev_pass}
       REDIS_URL: redis://wimifarma-cotacao-redis:6379
       SESSION_SECRET: ${COTACAO_SESSION_SECRET:-wimifarma_cotacao_dev_secret_change_me}
+      COTACAO_SESSION_COOKIE_SECURE: ${COTACAO_SESSION_COOKIE_SECURE:-}
       MIAUW_GUARDIAN_TOKEN: ${MIAUW_GUARDIAN_TOKEN:-}
       MIAUW_WHATSAPP_INTERNAL_TOKEN: ${MIAUW_WHATSAPP_INTERNAL_TOKEN:-}
       COTACAO_INTERNAL_TOKEN: ${COTACAO_INTERNAL_TOKEN:-}
@@ -912,6 +913,12 @@ services:
       GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE: ${GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE:-}
     volumes:
       - ./cotacao-data/backups:/app/backups
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/cotacao/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
     networks:
       - wimifarma-com-network
 
