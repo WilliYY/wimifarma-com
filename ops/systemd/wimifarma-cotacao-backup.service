@@ -1,0 +1,15 @@
+[Unit]
+Description=Backup validado do Postgres da Cotacao Wimifarma
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=docker
+WorkingDirectory=/home/ubuntu/projetos/wimifarma-com
+Environment=COTACAO_BACKUP_RETENTION_DAYS=30
+ExecStart=/usr/bin/bash /home/ubuntu/projetos/wimifarma-com/scripts/cotacao-backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

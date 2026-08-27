@@ -63,8 +63,10 @@ Rotas de smoke test:
 - `http://127.0.0.1:8080` deve responder quando a Evolution API separada estiver ativa no VPS
 - `/miauw/agent/run` e `/miauw/agent/stream` devem recusar sem token interno
 - `/miauw/agent-tools.php` deve recusar sem token interno e aceitar somente tools de leitura baixa quando chamado pelo servico agente
-- `/cotacao/health` deve responder JSON 200 pela Cotacao V2, mostrar `auth.provider=core`, `auth.mysqlDependency=false`, `mysql_auth=false` e `mysql_auth_fallback=false`
+- `/cotacao/health` deve responder JSON 200 somente quando a cotacao ativa, o Postgres da Cotacao, o Redis e o core estiverem prontos; indisponibilidade real deve responder 503. O JSON deve mostrar `auth.provider=core`, `auth.mysqlDependency=false`, `mysql_auth=false` e `mysql_auth_fallback=false`
 - `/cotacao/api/bootstrap` deve exigir sessao e redirecionar/recusar quando nao autenticado
+- `npm run test:runtime` em `apps/cotacao` deve validar rechecagem de usuario/permissao, cookie seguro, readiness, ordem de locks do batch e rollback atomico de mutacao/evento
+- `bash scripts/test-cotacao-backup.sh` deve validar dump, checksum, verificacao por `pg_restore`, arquivo final atomico e ausencia de temporarios sem acessar o Docker real
 - O filtro por cor da Cotacao deve ser validado em `PRODUTO`, `CATEGORIA` e uma distribuidora contra a cor computada da propria celula; com todas as cores inicialmente marcadas, clicar diretamente em uma cor deve deixar somente ela selecionada. Testar tambem a adicao de uma segunda cor, `Selecionar nada`, limpar, combinar cor com valor, conferir contagens, manter o filtro de uma segunda sessao inalterado e comparar `cotacao_v2_rows`, `cotacao_v2_styles` e `cotacao_v2_rules` antes/depois para garantir leitura local sem mutacao.
 
 Comandos estao em `docs/05-comandos.md`.

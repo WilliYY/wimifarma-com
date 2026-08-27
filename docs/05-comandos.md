@@ -521,6 +521,7 @@ curl.exe -o NUL -sS -w "legacy_disabled=%{http_code}`n" http://127.0.0.1:3002/_l
 cd C:\Users\Thiesen\Desktop\wimifarma-com\apps\cotacao
 npm.cmd run check
 npm.cmd run typecheck
+npm.cmd run test:runtime
 cd C:\Users\Thiesen\Desktop\wimifarma-com
 curl.exe -I -H "Host: wimifarma.com" -H "X-Forwarded-Proto: https" http://127.0.0.1:3002/
 curl.exe -L --max-time 30 http://127.0.0.1:3002/tarefa/badge.php
@@ -532,6 +533,23 @@ curl.exe -sS http://127.0.0.1:3002/cotacao/api/diagnostics
 curl.exe -sS http://127.0.0.1:3002/cotacao/api/google-sheets/status
 curl.exe -sS http://127.0.0.1:3002/cotacao/api/backups
 ```
+
+No VPS, o backup automatico da Cotacao usa dump customizado, validacao por `pg_restore`, SHA-256 e retencao local de 30 dias:
+
+```bash
+cd /home/ubuntu/projetos/wimifarma-com
+bash scripts/cotacao-backup.sh
+bash scripts/test-cotacao-backup.sh
+sudo install -m 0644 ops/systemd/wimifarma-cotacao-backup.service /etc/systemd/system/
+sudo install -m 0644 ops/systemd/wimifarma-cotacao-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now wimifarma-cotacao-backup.timer
+sudo systemctl start wimifarma-cotacao-backup.service
+systemctl status --no-pager wimifarma-cotacao-backup.service wimifarma-cotacao-backup.timer
+systemctl list-timers --all wimifarma-cotacao-backup.timer
+```
+
+Os dumps ficam em `cotacao-data/automatic-backups`. A rotina local nao substitui uma copia externa/off-host.
 
 A Cotacao V2 usa API JSON com sessao e CSRF em meta tag. Para validar edicao por celula sem navegador, primeiro autentique em `/cotacao/login.php`, extraia o CSRF da pagina `/cotacao/` e chame `PATCH /cotacao/api/cells` ou `PATCH /cotacao/api/cells/batch`.
 

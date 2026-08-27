@@ -223,7 +223,10 @@ Core Postgres `wimifarma_core`:
 - O mesmo widget pode iniciar uma ronda visual local com `pikachu-loop.webp`: o personagem sai do balao do Miauby, passeia pela tela, foge do mouse quando ele chega perto e volta ao widget. Esse efeito e apenas frontend, sem banco, API, Socket.IO ou sincronizacao de dados da Cotacao.
 - A Fase 4 do Miauby usa endpoints internos tokenizados da Cotacao V2 para consultar linhas e criar encomendas sem depender da Cotacao PHP antiga.
 - A tela de login da Cotacao usa card mais compacto para nao cobrir demais o viewport.
-- Backups da Cotacao V2 ficam no volume ignorado `cotacao-data/backups`, montado em `/app/backups`.
+- Backups manuais da tela da Cotacao V2 ficam no volume ignorado `cotacao-data/backups`, montado em `/app/backups`. Desde 2026-08-27, o timer `wimifarma-cotacao-backup.timer` tambem gera diariamente um `pg_dump` customizado em `cotacao-data/automatic-backups`, valida o arquivo com `pg_restore --list`, grava SHA-256, publica por rename atomico e aplica retencao local de 30 dias. O lock impede duas execucoes simultaneas; falta ainda copiar para armazenamento externo/off-host.
+- Desde 2026-08-27, cada requisicao autenticada revalida no core se o usuario continua ativo e autorizado; conexoes Socket.IO fazem a mesma rechecagem ao entrar e a cada 60 segundos, desconectando acesso revogado. Em producao, o cookie de sessao usa modo seguro automatico atras do proxy HTTPS.
+- Desde 2026-08-27, `/cotacao/health` e readiness sem efeito colateral: responde 200 apenas com cotacao ativa, Postgres, Redis e core prontos, e 503 em degradacao real. O Compose usa esse contrato no healthcheck do container.
+- Desde 2026-08-27, criar, inserir e excluir linhas pela interface grava a mudanca e o evento na mesma transacao; falha de auditoria reverte a mutacao. Lotes de celulas travam linhas por UUID em ordem deterministica, preservando a ordem original apenas entre mudancas da mesma linha, para reduzir deadlocks concorrentes.
 - `docker-compose.yml` nao deve montar arquivos de `site/cotacao` em `wimifarma-cotacao-app`; qualquer ativo da Cotacao oficial precisa ficar em `apps/cotacao/public`.
 
 ## Roadmap TypeScript seguro
@@ -381,7 +384,7 @@ Em 2026-05-12 foram validados localmente:
 - Usar backup/revisao operacional antes de importar ou restaurar backup em dados reais.
 - Criar testes automatizados permanentes com duas telas no pipeline.
 - Refinar o drag-fill com series automaticas no futuro, caso a equipe precise incrementar numeros/datas em vez de apenas copiar o padrao selecionado.
-- Criar rotina agendada de backup/retencao fora do container, alem do backup manual da tela.
+- Replicar o backup automatico local para armazenamento externo/off-host e executar teste periodico de restauracao em banco isolado.
 - Definir politica de retencao do historico de celula em `cotacao_v2_events` conforme o volume real de uso.
 - Medir o endpoint delta no VPS com dados reais e confirmar que refresh automatico deixa de pressionar `/cotacao/api/bootstrap`.
 - Medir no VPS a latencia percebida apos a Etapa 4, especialmente trocar de celula e digitar em sequencia com dados reais da equipe.
