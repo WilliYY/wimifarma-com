@@ -81,6 +81,7 @@ export interface CellUpdateResult {
   overwroteRemote: boolean;
   version: number;
   updatedAt: IsoDateTime;
+  clearedStyleKeys?: string[];
 }
 
 export type CellUpdateResponse = ApiResult<CellUpdateResult & EventEnvelope>;
@@ -92,6 +93,7 @@ export interface CellsBatchPayload {
 
 export type CellsBatchResponse = ApiResult<{
   cells: CellUpdateResult[];
+  clearedStyleKeys: string[];
   eventId: number | null;
   noop?: boolean;
 }>;

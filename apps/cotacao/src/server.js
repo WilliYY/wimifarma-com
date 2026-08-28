@@ -35,6 +35,7 @@ import {
   sortCellChangesForLocking
 } from './runtime-guards.js';
 import { withTransaction } from './db-transaction.js';
+import { clearProductCellStyles } from './product-cell-style.js';
 
 const { Pool } = pg;
 
@@ -4766,6 +4767,12 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
       [rowId, columnKey, value, quote.id]
     );
     row = updated.rows[0];
+    const clearedStyleKeys = await clearProductCellStyles(client, quote.id, [{
+      rowId,
+      columnKey,
+      previousValue,
+      value
+    }]);
     payload = {
       rowId: row.id,
       columnKey,
@@ -4774,7 +4781,8 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
       expectedValue: hasExpectedValue ? expectedValue : null,
       overwroteRemote: hasExpectedValue && previousValue !== expectedValue,
       version: Number(row.version),
-      updatedAt: row.updated_at
+      updatedAt: row.updated_at,
+      clearedStyleKeys
     };
     event = await appendEvent({
       quoteId: quote.id,
@@ -4823,6 +4831,7 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
 
   const client = await pgPool.connect();
   const updatedCells = [];
+  let clearedStyleKeys = [];
   let event = null;
   try {
     await client.query('BEGIN');
@@ -4857,7 +4866,7 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
          RETURNING id, position, values, version, updated_at`,
         [rowId, columnKey, value, quote.id]
       );
-      updatedCells.push({
+      const updatedCell = {
         rowId: updated.rows[0].id,
         columnKey,
         value,
@@ -4866,13 +4875,15 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
         overwroteRemote: hasExpectedValue && previousValue !== expectedValue,
         version: Number(updated.rows[0].version),
         updatedAt: updated.rows[0].updated_at
-      });
+      };
+      updatedCells.push(updatedCell);
     }
     if (updatedCells.length) {
+      clearedStyleKeys = await clearProductCellStyles(client, quote.id, updatedCells);
       event = await appendEvent({
         quoteId: quote.id,
         type: 'cells_batch_updated',
-        payload: { cells: updatedCells },
+        payload: { cells: updatedCells, clearedStyleKeys },
         user: req.session.user,
         clientId,
         db: client
@@ -4887,11 +4898,12 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
   }
 
   if (!updatedCells.length) {
-    return res.json({ ok: true, cells: [], eventId: null, noop: true });
+    return res.json({ ok: true, cells: [], clearedStyleKeys: [], eventId: null, noop: true });
   }
 
   io.to(`quote:${quote.id}`).emit('cells:update', {
     cells: updatedCells,
+    clearedStyleKeys,
     eventId: Number(event.id),
     user: userPublic(req.session.user),
     clientId
@@ -4901,7 +4913,7 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
     clientId,
     source: 'cells_batch_updated'
   });
-  return res.json({ ok: true, cells: updatedCells, eventId: Number(event.id) });
+  return res.json({ ok: true, cells: updatedCells, clearedStyleKeys, eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/rules`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {

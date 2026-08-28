@@ -1975,14 +1975,19 @@
       if (event.clientId === clientId) continue;
       const payload = event.payload || {};
       if (event.type === 'cell_updated') {
-        if (applyRemoteCellUpdate({ ...payload, eventId: event.id, clientId: event.clientId })) {
+        const cellChanged = applyRemoteCellUpdate({ ...payload, eventId: event.id, clientId: event.clientId });
+        const styleChanged = applyRemoteStylesDeleted(payload.clearedStyleKeys || []);
+        if (cellChanged || styleChanged) {
           needsRender = true;
           changedRowIds.add(payload.rowId);
         }
       } else if (event.type === 'cells_batch_updated') {
-        if (applyRemoteCellsUpdate(payload.cells || [])) {
+        const cellsChanged = applyRemoteCellsUpdate(payload.cells || []);
+        const stylesChanged = applyRemoteStylesDeleted(payload.clearedStyleKeys || []);
+        if (cellsChanged || stylesChanged) {
           needsRender = true;
           (applyRemoteCellsUpdate.rowIds || new Set()).forEach((rowId) => changedRowIds.add(rowId));
+          rowsForStyleChanges([], payload.clearedStyleKeys || []).rowIds.forEach((rowId) => changedRowIds.add(rowId));
         }
       } else if (event.type === 'rows_added' || event.type === 'rows_inserted') {
         if (applyRemoteRowsAdded(payload.rows || [], payload.positions || [])) needsFullRender = true;
@@ -2079,13 +2084,20 @@
     socket.on('cell:update', (payload) => {
       rememberEventId(payload.eventId);
       if (payload.clientId === clientId) return;
-      if (applyRemoteCellUpdate(payload) && !state.editing) refreshRenderedRows(new Set([payload.rowId]));
+      const cellChanged = applyRemoteCellUpdate(payload);
+      const styleChanged = applyRemoteStylesDeleted(payload.clearedStyleKeys || []);
+      if ((cellChanged || styleChanged) && !state.editing) refreshRenderedRows(new Set([payload.rowId]));
     });
     socket.on('cells:update', (payload) => {
       rememberEventId(payload.eventId);
       if (payload.clientId === clientId) return;
-      const needsRender = applyRemoteCellsUpdate(payload.cells || []);
-      if (needsRender && !state.editing) refreshRenderedRows(applyRemoteCellsUpdate.rowIds || new Set());
+      const cellsChanged = applyRemoteCellsUpdate(payload.cells || []);
+      const stylesChanged = applyRemoteStylesDeleted(payload.clearedStyleKeys || []);
+      if ((cellsChanged || stylesChanged) && !state.editing) {
+        const rowIds = new Set(applyRemoteCellsUpdate.rowIds || []);
+        rowsForStyleChanges([], payload.clearedStyleKeys || []).rowIds.forEach((rowId) => rowIds.add(rowId));
+        refreshRenderedRows(rowIds);
+      }
     });
     socket.on('rows:added', (payload) => {
       rememberEventId(payload.eventId);
@@ -2384,9 +2396,13 @@
         currentRow.updatedAt = data.updatedAt;
         state.conflicts.delete(key);
       }
+      const clearedStyles = historyStylesForTargets(styleTargetsFromKeys(data.clearedStyleKeys || []));
+      if (applyRemoteStylesDeleted(data.clearedStyleKeys || []) && currentRow) {
+        refreshRenderedRows(new Set([rowId]));
+      }
       rememberEventId(data.eventId);
       if (options.history !== false) {
-        pushHistory({ type: 'cell', rowId, columnKey, before, after });
+        pushHistory({ type: 'cell', rowId, columnKey, before, after, clearedStyles });
       }
       rememberCellValueAction(after, options);
       return data;
@@ -2480,6 +2496,8 @@
           clientId
         })
       });
+      const clearedStyles = historyStylesForTargets(styleTargetsFromKeys(data.clearedStyleKeys || []));
+      applyRemoteStylesDeleted(data.clearedStyleKeys || []);
       (data.cells || []).forEach((cell) => {
         const row = rowById(cell.rowId);
         if (!row) return;
@@ -2497,7 +2515,8 @@
             columnKey: cell.columnKey,
             before: cell.previousValue,
             after: cell.value
-          }))
+          })),
+          clearedStyles
         });
       }
       if ((data.cells || []).some((cell) => cell?.overwroteRemote === true)) {
@@ -2672,6 +2691,9 @@
         columnKey: change.columnKey,
         value: direction === 'undo' ? change.before : change.after
       })), { history: false, optimistic: true, render: 'rows' });
+      if (direction === 'undo' && action.clearedStyles?.length) {
+        await restoreStylesFromHistory(action.clearedStyles, []);
+      }
     } else if (action.type === 'column-delete') {
       if (direction === 'undo') await restoreDeletedColumn(action.columnKey);
       else await deleteColumn(action.columnKey, { history: false });
@@ -2695,6 +2717,9 @@
         direction === 'undo' ? action.before : action.after,
         { history: false }
       );
+      if (direction === 'undo' && action.clearedStyles?.length) {
+        await restoreStylesFromHistory(action.clearedStyles, []);
+      }
     }
   }
 

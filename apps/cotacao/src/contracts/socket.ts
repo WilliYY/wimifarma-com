@@ -90,6 +90,7 @@ export interface CellUpdateEvent extends CellUpdateResult {
 
 export interface CellsUpdateEvent {
   cells: CellUpdateResult[];
+  clearedStyleKeys: string[];
   eventId: number;
   user: CotacaoUser;
   clientId?: ClientId;
