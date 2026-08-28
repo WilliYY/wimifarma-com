@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "check": "node --check src/server.js && node --check public/app.js",
+    "check": "node --check src/server.js && node --check public/product-similarity.js && node --check public/app.js",
+    "test:frontend": "node --test public/product-similarity.test.js",
     "test:runtime": "node --test src/runtime-guards.test.js src/db-transaction.test.js",
     "test:falteiro": "node --test src/falteiro-command.test.js",
     "test:encomendas": "node scripts/test-encomendas-extraction.mjs && node --test src/encomenda-query.test.js",

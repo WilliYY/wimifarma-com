@@ -48,6 +48,8 @@
   const WINNER_KEY = 'quem_ganhou';
   const CATEGORY_KEY = 'categoria';
   const FILTERABLE_KEYS = ['produto', 'categoria', WINNER_KEY];
+  const findSimilarProductRowIds = window.WimiProductSimilarity?.findSimilarProductRowIds
+    || (() => new Set());
   const COLOR_NORMALIZATION_CONTEXT = document.createElement('canvas').getContext('2d');
   const VISIBLE_COLOR_CACHE = new Map();
   let visibleColorProbeCell = null;
@@ -1462,6 +1464,13 @@
     rowCountBadge.textContent = `${nonEmptyRowCount(rows)} linha(s) com dados`;
   }
 
+  function refreshSimilarProductHighlights() {
+    const markedRowIds = findSimilarProductRowIds(state.rows);
+    table.querySelectorAll('.sheet-cell[data-column-key="produto"]').forEach((cell) => {
+      cell.classList.toggle('has-similar-product', markedRowIds.has(cell.dataset.rowId));
+    });
+  }
+
   function refreshRenderedRow(rowId, context = {}) {
     const row = rowById(rowId);
     const existing = table.querySelector(`tr[data-row-id="${rowId}"]`);
@@ -1470,6 +1479,7 @@
     if (!row) {
       if (existing) existing.remove();
       if (!context.deferFinalUpdates) {
+        refreshSimilarProductHighlights();
         updateRowCountBadge(visibleRows);
         updateSelectionClasses();
       }
@@ -1479,6 +1489,7 @@
     if (!isVisible) {
       if (existing) existing.remove();
       if (!context.deferFinalUpdates) {
+        refreshSimilarProductHighlights();
         updateRowCountBadge(visibleRows);
         updateSelectionClasses();
       }
@@ -1494,6 +1505,7 @@
     if (rendered) bindCellHover(rendered);
     autosizeSheetInputs(rendered || table);
     if (!context.deferFinalUpdates) {
+      refreshSimilarProductHighlights();
       updateRowCountBadge(visibleRows);
       updateSelectionClasses();
     }
@@ -1519,6 +1531,7 @@
       renderTable();
       return;
     }
+    refreshSimilarProductHighlights();
     updateRowCountBadge(visibleRows);
     updateSelectionClasses();
   }
@@ -1528,6 +1541,7 @@
     if (!addedRows.length) return;
     const tbody = table.tBodies?.[0];
     if (!tbody || hasActiveViewFilter()) {
+      refreshSimilarProductHighlights();
       updateRowCountBadge();
       updateSelectionClasses();
       return;
@@ -1544,6 +1558,7 @@
         autosizeSheetInputs(rowElement);
       }
     });
+    refreshSimilarProductHighlights();
     updateRowCountBadge();
     updateSelectionClasses();
   }
@@ -1568,6 +1583,7 @@
       .map((row) => renderRowHtml(row, state.rows.findIndex((item) => item.id === row.id) + 1, styles))
       .join('');
     table.innerHTML = `<colgroup>${colgroup}</colgroup><thead><tr><th class="corner">#</th>${head}</tr></thead><tbody>${body}</tbody>`;
+    refreshSimilarProductHighlights();
     updateRowCountBadge(visibleRows);
     updateSelectionClasses();
     bindCellHover();

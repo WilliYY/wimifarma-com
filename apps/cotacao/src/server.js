@@ -2814,7 +2814,7 @@ function renderLogin(req, error = '') {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Wimifarma Cotacao</title>
   <link rel="icon" href="${BASE_PATH}/favicon.svg">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260828-similar-products">
   <script src="${BASE_PATH}/login-runner.js?v=20260530a" defer></script>
 </head>
 <body class="login-page">
@@ -2853,7 +2853,7 @@ function renderApp(req) {
   <meta name="csrf-token" content="${e(csrf)}">
   <title>Cotacao Wimifarma</title>
   <link rel="icon" href="${BASE_PATH}/favicon.svg">
-  <link rel="stylesheet" href="${BASE_PATH}/styles.css">
+  <link rel="stylesheet" href="${BASE_PATH}/styles.css?v=20260828-similar-products">
   <link rel="stylesheet" href="/miauw/widget.css?v=20260610-miauby-video">
 </head>
 <body class="app-page">
@@ -2988,7 +2988,8 @@ function renderApp(req) {
     window.COTACAO_CONFIG = ${JSON.stringify({ basePath: BASE_PATH, user })};
   </script>
   <script src="${BASE_PATH}/socket.io/socket.io.js"></script>
-  <script src="${BASE_PATH}/app.js?v=20260624-color-choice"></script>
+  <script src="${BASE_PATH}/product-similarity.js?v=20260828-similar-products"></script>
+  <script src="${BASE_PATH}/app.js?v=20260828-similar-products"></script>
   <script src="/miauw/widget.js?v=20260610-miauby-video" defer></script>
 </body>
 </html>`;

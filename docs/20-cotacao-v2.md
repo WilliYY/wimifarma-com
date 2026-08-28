@@ -138,6 +138,8 @@ Core Postgres `wimifarma_core`:
 - Formatacao condicional so vale quando criada explicitamente em `cotacao_v2_rules`; regras criadas pela tela podem ser editadas ou apagadas no proprio modal.
 - Formatacao condicional explicita deve pintar somente o fundo da celula da coluna-alvo que bateu com a regra; o texto da grade permanece preto/padrao para manter legibilidade.
 - Regras condicionais antigas ou restauradas por backup com alvo de linha inteira sao normalizadas para `cell` na inicializacao da Cotacao, evitando pintura retroativa de EAN, produto, quantidade ou outras colunas.
+- Desde 2026-08-28, duas ou mais celulas de `PRODUTO` com nome igual ou quase igual recebem fundo verde-neon claro somente na tela. A comparacao ignora caixa, acentos, pontuacao e dose/apresentacao no fim; tambem aceita um complemento depois do mesmo nome ou um unico erro de digitacao quando os dois nomes normalizados possuem uma unica palavra com pelo menos cinco caracteres. Exemplos que devem marcar juntas: `dipirona 500 mg`, `dipirona 500` e `dipirona`.
+- Essa marcacao de similaridade e recalculada sobre todas as linhas ativas a cada atualizacao local/remota, inclusive quando ha filtro visual. Ela nao grava em `cotacao_v2_styles`, `cotacao_v2_rules` ou `cotacao_v2_rows`, nao altera produto/ganhador e desaparece quando deixa de existir outro nome parecido; durante a marcacao, o verde automatico apenas encobre a cor manual da celula, que reaparece intacta depois.
 - Filtros de produto, categoria, ganhador e cor sao locais por tela e nao devem mover a visao de outro usuario.
 - Filtrar a planilha em uma tela nao causa conflito por si so: o filtro muda apenas a lista visivel daquela aba, enquanto os dados continuam sincronizados por evento/celula.
 - Edicoes simultaneas em celulas diferentes devem conviver normalmente. Na mesma celula, a regra operacional atual e estilo Sheets: o ultimo salvamento vence. A tela compensa isso com presenca visual forte, aviso quando o save sobrescreveu uma alteracao recente e historico de celula para recuperar o valor anterior.
@@ -358,6 +360,7 @@ Em 2026-05-12 foram validados localmente:
 - Em 2026-05-16, a linha ativa ganhou indicador local: o numero da linha onde esta a celula ativa fica verde forte, sem persistencia no banco e sem evento de sincronizacao.
 - Em 2026-05-16, o resize foi refinado novamente: soltar a borda da coluna nao agenda mais autosize da planilha inteira e o servidor nao emite mais `columns:changed` para `column_resized`, usando `column:resized` para impedir recarregamento pesado em clientes antigos.
 - Em 2026-05-16, o carregamento inicial foi suavizado: o frontend deixou de executar auto-ajuste de altura de todos os `textarea` de forma sincrona logo apos o bootstrap, passando a fatiar esse trabalho em frames para a grade aparecer mais rapido.
+- Em 2026-08-28, a marcacao temporaria de produtos iguais/quase iguais foi validada com `npm run check`, `npm run test:frontend` (8 testes), `npm run test:runtime` (8 testes), `npm run test:falteiro` (44 testes), `npm run test:encomendas` (7 testes), `npm run typecheck`, `npm run build:ts` e `git diff --check`. Um ensaio local com 1.000 nomes distintos concluiu a comparacao em aproximadamente 24 ms nesta maquina, sem marcar falso positivo.
 
 ## Riscos ao alterar
 
