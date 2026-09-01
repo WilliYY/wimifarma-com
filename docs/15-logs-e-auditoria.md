@@ -149,3 +149,11 @@ Arquivos:
 - `xp_audit_events` registra lancamento e estorno do premio de indicacao.
 - `referral_redemptions` e pagamentos guardam snapshots e ator para preservar leitura historica mesmo apos edicoes cadastrais.
 - Impressao significa solicitacao local ao navegador, nao confirmacao de papel.
+
+## Autenticacao e backup - 2026-09-01
+
+- A Home grava `home_login_success`, `home_login_blocked`, `home_user_switch_success` e `home_user_switch_blocked` em `core_audit_logs`.
+- Os eventos guardam usuario normalizado e hash SHA-256 do IP; senha e IP em claro nao entram na auditoria.
+- A auditoria e de melhor esforco: indisponibilidade dela nao derruba um login valido, enquanto o limitador preserva fallback por sessao.
+- O backup systemd deve ser acompanhado por `systemctl status wimifarma-database-backup.service` e `journalctl -u wimifarma-database-backup.service`; falha em qualquer banco encerra a execucao sem publicar uma pasta parcial.
+- Ainda e necessario integrar alerta externo para falha do timer, repeticao de bloqueios de login, indisponibilidade e validade TLS.

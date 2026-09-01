@@ -66,7 +66,7 @@ Tabelas:
 ## Regras que precisam ser preservadas
 
 - Os modulos internos dependem de `current_user()` e helpers compartilhados.
-- A home `/` usa sessao `WFHOME` para liberar a tela inicial de cards e, quando existe segredo forte em `WIMIFARMA_HOME_SSO_SECRET` ou `WP_AUTH_KEY`, emite o cookie assinado `WFHOME_SSO` por ate `WIMIFARMA_HOME_SSO_TTL_SECONDS` segundos. Os modulos podem usar esse handoff apenas para criar a propria sessao depois de consultar `core_users` ativo e reaplicar suas restricoes de role/permissao; o cookie da home nao substitui CSRF nem sessao propria. A credencial temporaria padrao solicitada para essa etapa e `adm`/`adm`, com override por `WIMIFARMA_HOME_LOGIN_USER` e `WIMIFARMA_HOME_LOGIN_PASSWORD`.
+- A home `/` usa sessao `WFHOME` para liberar a tela inicial de cards e, quando existe segredo forte em `WIMIFARMA_HOME_SSO_SECRET` ou `WP_AUTH_KEY`, emite o cookie assinado `WFHOME_SSO` por ate `WIMIFARMA_HOME_SSO_TTL_SECONDS` segundos. Os modulos podem usar esse handoff apenas para criar a propria sessao depois de consultar `core_users` ativo e reaplicar suas restricoes de role/permissao; o cookie da home nao substitui CSRF nem sessao propria. A Home autentica exclusivamente `core_users` ativo e nao aceita `adm`/`adm` nem credencial paralela por ambiente.
 - Desde 2026-05-31, paginas protegidas e telas antigas de login de Cashback, Cotacao, Gestao, Pedidos, Tarefa, XP, Codigos, Financeiro, Usuarios e Miauby redirecionam navegadores sem sessao nem `WFHOME_SSO` para `/`. Health checks, badges publicos e APIs internas tokenizadas mantem suas respostas proprias; APIs autenticadas continuam retornando 401/JSON quando apropriado.
 - A navegacao visual dos modulos internos deve oferecer `Home` apontando para `/` e nao deve expor `Sair`; a Home principal exibe `Trocar usuario`, que lista usuarios ativos do core, pede apenas a senha do escolhido e emite uma nova sessao `WFHOME`/`WFHOME_SSO`. Rotas tecnicas de logout dos modulos e `/?sair=1` podem permanecer por compatibilidade, mas nao devem ser usadas como botao de navegacao.
 - O modal `Trocar usuario` deve destacar claramente o usuario atual, mas a indicacao visual nao altera a regra: so troca depois de selecionar outro usuario e validar a senha dele.
@@ -157,3 +157,14 @@ Tabelas:
 - Usuario comum consulta/confirma cupom e ve somente as proprias utilizacoes.
 - `adm`, `admin` e `gerente` administram indicadores/cupons, pagamentos, cancelamentos, ranking e historicos completos.
 - Os +300 XP usam o vinculo servidor-side do usuario realmente logado; indicador externo nao recebe login nem XP.
+
+## Hardening central - 2026-09-01
+
+- A Home autentica exclusivamente contas ativas de `core_users`; nao existe mais senha fixa `adm` nem credencial paralela em `WIMIFARMA_HOME_LOGIN_USER`/`WIMIFARMA_HOME_LOGIN_PASSWORD`.
+- Financeiro, Gestao, Pedidos, Tarefa, Usuarios, XP, Miauby PHP e Tarefa PHP tambem nao aceitam mais o fallback historico `adm`/`adm`.
+- A Home limita falhas por combinacao IP/usuario, usuario e IP usando `core_login_rate_limits`; o fallback em sessao continua protegendo a instancia quando o banco central estiver temporariamente indisponivel.
+- Cabecalhos `X-Real-IP` e `X-Forwarded-For` so participam do limitador quando `REMOTE_ADDR` pertence a rede privada do proxy interno.
+- Logins e trocas de usuario bem-sucedidos ou bloqueados geram eventos em `core_audit_logs` sem guardar senha ou IP em claro.
+- O SSO aceita somente `WIMIFARMA_HOME_SSO_SECRET` ou `WP_AUTH_KEY` com pelo menos 32 caracteres; senha de login nunca pode assinar token.
+- Cookies de sessao dos apps Node afetados usam `secure: 'auto'`, `HttpOnly`, `SameSite=Lax` e `trust proxy`, mantendo funcionamento local HTTP e exigindo Secure quando a origem e HTTPS.
+- MFA de administradores continua pendente: a ativacao deve incluir cadastro TOTP, codigos de recuperacao e teste de acesso de emergencia antes de bloquear login direto. Nao ativar parcialmente, pois isso pode bloquear a equipe ou permitir desvio por outro modulo.

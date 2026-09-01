@@ -739,7 +739,6 @@ async function authenticateCore(username: string, password: string): Promise<Use
   if (!row) return null;
   let ok = false;
   if (row.password_hash) ok = await bcrypt.compare(password, normalizeHash(row.password_hash));
-  if (!ok && normalizeUsername(row.username) === 'adm') ok = timingSafeStringEqual(password, 'adm');
   return ok ? userPublic(row) : null;
 }
 
@@ -2134,7 +2133,7 @@ const sessionMiddleware = session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false,
+    secure: 'auto',
     maxAge: 1000 * 60 * 60 * 10,
   },
 });

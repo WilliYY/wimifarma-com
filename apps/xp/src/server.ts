@@ -4,11 +4,11 @@ import crypto from 'crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import session from 'express-session';
 import fs from 'fs/promises';
-import { imageSize } from 'image-size';
 import multer from 'multer';
 import path from 'path';
 import pg from 'pg';
 import { fileURLToPath } from 'url';
+import { imageDimensionsAreSafe, parseSafeImageMetadata } from './image-metadata.js';
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -131,6 +131,7 @@ const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIM
 const XP_POINTS_PER_THOUSAND_REAIS = 2500;
 const XP_FIRST_LEVEL_REQUIREMENT = 30000;
 const XP_UPLOAD_MAX_BYTES = 3 * 1024 * 1024;
+const XP_UPLOAD_ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const XP_TRACK_BASE_LEVELS = 20;
 const XP_TRACK_DYNAMIC_LEVELS = 20;
 const XP_ADMIN_SYSTEM_KEY = 'adm';
@@ -174,14 +175,28 @@ const sessionMiddleware = session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false,
+    secure: 'auto',
     maxAge: 1000 * 60 * 60 * 10,
   },
 });
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: XP_UPLOAD_MAX_BYTES },
+  limits: {
+    fileSize: XP_UPLOAD_MAX_BYTES,
+    files: 1,
+    fields: 24,
+    parts: 25,
+    fieldNameSize: 100,
+    fieldSize: 4096,
+  },
+  fileFilter: (_req, file, callback) => {
+    if (XP_UPLOAD_ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error('Envie uma imagem JPG, PNG ou WEBP.'));
+  },
 });
 
 function normalizeBasePath(value: string): string {
@@ -220,12 +235,6 @@ function normalizeUsername(value: unknown): string {
 
 function normalizeHash(hash: unknown): string {
   return String(hash || '').replace(/^\$2y\$/, '$2a$');
-}
-
-function timingSafeStringEqual(left: string, right: string): boolean {
-  const leftHash = crypto.createHash('sha256').update(left).digest();
-  const rightHash = crypto.createHash('sha256').update(right).digest();
-  return crypto.timingSafeEqual(leftHash, rightHash);
 }
 
 function numeric(value: unknown): number {
@@ -525,9 +534,6 @@ async function authenticateCore(username: string, password: string): Promise<Use
   let ok = false;
   if (user.password_hash) {
     ok = await bcrypt.compare(password, normalizeHash(user.password_hash));
-  }
-  if (!ok && normalizeUsername(user.username) === 'adm') {
-    ok = timingSafeStringEqual(password, 'adm');
   }
   return ok ? userPublic(user) : null;
 }
@@ -954,20 +960,16 @@ async function uploadPhoto(file: Express.Multer.File | undefined, userId: number
   if (file.size <= 0 || file.size > XP_UPLOAD_MAX_BYTES) {
     throw new Error('A foto precisa ter ate 3 MB.');
   }
-  let dimensions: { width?: number; height?: number; type?: string };
+  let dimensions: ReturnType<typeof parseSafeImageMetadata>;
   try {
-    dimensions = imageSize(file.buffer);
+    dimensions = parseSafeImageMetadata(file.buffer);
   } catch {
     throw new Error('Envie uma imagem JPG, PNG ou WEBP.');
   }
-  const allowedTypes = new Set(['jpg', 'jpeg', 'png', 'webp']);
-  if (!dimensions.type || !allowedTypes.has(dimensions.type)) {
-    throw new Error('Envie uma imagem JPG, PNG ou WEBP.');
-  }
-  const width = Number(dimensions.width || 0);
-  const height = Number(dimensions.height || 0);
-  if (width < 80 || height < 80) {
-    throw new Error('A foto precisa ter pelo menos 80x80 px.');
+  const width = dimensions.width;
+  const height = dimensions.height;
+  if (!imageDimensionsAreSafe(dimensions)) {
+    throw new Error('A foto deve ter entre 80 e 8192 px por lado e no maximo 40 megapixels.');
   }
   if (width > 6000 || height > 6000) {
     throw new Error('A foto e grande demais. Use uma imagem menor.');
@@ -975,7 +977,7 @@ async function uploadPhoto(file: Express.Multer.File | undefined, userId: number
   if (folder !== 'funcionarios' && folder !== 'adm') {
     throw new Error('Pasta de upload invalida.');
   }
-  const extension = dimensions.type === 'jpeg' ? 'jpg' : dimensions.type;
+  const extension = dimensions.type;
   const safePrefix = cleanText(prefix, 40).replace(/[^a-z0-9_-]+/gi, '-') || 'foto';
   const fileName = `${safePrefix}-${Math.max(0, userId)}-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}-${crypto.randomBytes(6).toString('hex')}.${extension}`;
   const targetDir = path.join(uploadRoot, folder);
@@ -1372,9 +1374,33 @@ function photoUpload(req: Request, res: Response, next: NextFunction): void {
       res.redirect(`${BASE_PATH}/?tab=configuracoes`);
       return;
     }
+    if (error instanceof multer.MulterError) {
+      setFlash(req, 'error', 'Envio invalido. Use apenas uma foto JPG, PNG ou WEBP.');
+      res.redirect(`${BASE_PATH}/?tab=configuracoes`);
+      return;
+    }
+    if (error instanceof Error && error.message === 'Envie uma imagem JPG, PNG ou WEBP.') {
+      setFlash(req, 'error', error.message);
+      res.redirect(`${BASE_PATH}/?tab=configuracoes`);
+      return;
+    }
     next(error);
   });
 }
+
+const requireManagerBeforePhotoUpload = asyncRoute(async (req, res, next) => {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  try {
+    ensureManager(user);
+  } catch (error) {
+    setFlash(req, 'error', error instanceof Error ? error.message : 'Acesso negado.');
+    res.redirect(`${BASE_PATH}/?tab=configuracoes`);
+    return;
+  }
+  res.locals.xpUser = user;
+  next();
+});
 
 app.disable('x-powered-by');
 app.set('trust proxy', true);
@@ -1527,9 +1553,8 @@ app.get([`${BASE_PATH}/`, `${BASE_PATH}/index.php`, BASE_PATH], asyncRoute(async
   await renderXpPage(req, res);
 }));
 
-app.post([`${BASE_PATH}/`, `${BASE_PATH}/index.php`, BASE_PATH], photoUpload, asyncRoute(async (req, res) => {
-  const user = await requireUser(req, res);
-  if (!user) return;
+app.post([`${BASE_PATH}/`, `${BASE_PATH}/index.php`, BASE_PATH], requireManagerBeforePhotoUpload, photoUpload, asyncRoute(async (req, res) => {
+  const user = res.locals.xpUser as User;
   const settingsUrl = `${BASE_PATH}/?tab=configuracoes&month=${encodeURIComponent(monthContext(req.query.month).month)}`;
   if (!csrfMatches(req)) {
     setFlash(req, 'error', 'Sessao expirada. Tente novamente.');

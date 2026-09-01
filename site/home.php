@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/home-sso-lib.php';
+require_once __DIR__ . '/home-auth-security.php';
 
 $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
 $hostName = preg_replace('/:\d+$/', '', $host);
@@ -792,24 +793,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['wf_home_action'] 
     $postedCsrf = (string) ($_POST['wf_home_csrf'] ?? '');
     $user = trim((string) ($_POST['username'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
-    $normalizedUser = wf_home_normalize_core_username($user);
-    $expectedUser = wf_home_normalize_core_username((string) (getenv('WIMIFARMA_HOME_LOGIN_USER') ?: 'adm'));
-    $expectedPassword = (string) (getenv('WIMIFARMA_HOME_LOGIN_PASSWORD') ?: 'adm');
     $coreUser = null;
 
     if (!hash_equals((string) $_SESSION['wf_home_csrf'], $postedCsrf)) {
         $homeLoginError = 'Sessao expirada. Atualize e tente de novo.';
+    } elseif (($waitSeconds = wf_home_login_wait_seconds($user)) > 0) {
+        $waitMinutes = max(1, (int) ceil($waitSeconds / 60));
+        $homeLoginError = 'Muitas tentativas. Aguarde ' . $waitMinutes . ' minuto(s) e tente de novo.';
     } else {
         $coreUser = wf_home_core_user_authenticate($user, $password);
     }
 
     if ($homeLoginError === '' && $coreUser) {
+        wf_home_clear_login_rate_limit($user);
+        wf_home_audit_auth_event('home_login_success', $user, $coreUser);
         wf_home_complete_login(wf_home_session_user_from_core($coreUser, $user));
         wf_home_redirect('/');
-    } elseif ($homeLoginError === '' && $expectedUser !== '' && $expectedUser !== 'farmacia' && hash_equals($expectedUser, $normalizedUser) && hash_equals($expectedPassword, $password)) {
-        wf_home_complete_login($expectedUser);
-        wf_home_redirect('/');
     } elseif ($homeLoginError === '') {
+        $waitSeconds = wf_home_register_login_failure($user);
+        if ($waitSeconds > 0) {
+            wf_home_audit_auth_event('home_login_blocked', $user, null, array('wait_seconds' => $waitSeconds));
+        }
         $homeLoginError = 'Login ou senha invalidos.';
     }
 }
@@ -827,13 +831,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['wf_home_action'] 
         $homeSwitchError = 'Sessao expirada. Atualize e tente de novo.';
     } elseif ($switchUser === '' || !preg_match('/^[a-z0-9._@-]{1,80}$/', $switchUser)) {
         $homeSwitchError = 'Escolha um usuario valido.';
+    } elseif (($waitSeconds = wf_home_login_wait_seconds($switchUser)) > 0) {
+        $waitMinutes = max(1, (int) ceil($waitSeconds / 60));
+        $homeSwitchError = 'Muitas tentativas. Aguarde ' . $waitMinutes . ' minuto(s) e tente de novo.';
     } else {
         $coreUser = wf_home_core_user_authenticate($switchUser, $switchPassword);
         if ($coreUser) {
+            wf_home_clear_login_rate_limit($switchUser);
+            wf_home_audit_auth_event('home_user_switch_success', $switchUser, $coreUser);
             wf_home_complete_login(wf_home_session_user_from_core($coreUser, $switchUser), true);
             wf_home_redirect('/');
         }
 
+        $waitSeconds = wf_home_register_login_failure($switchUser);
+        if ($waitSeconds > 0) {
+            wf_home_audit_auth_event('home_user_switch_blocked', $switchUser, null, array('wait_seconds' => $waitSeconds));
+        }
         $homeSwitchError = 'Senha invalida para este usuario.';
     }
 }

@@ -292,3 +292,13 @@ Higiene de pastas no VPS:
 - Falha do XP nao desfaz utilizacao/comissao confirmada; o health aponta divergencias para conferencia.
 - Na inicializacao, o app aguarda banco local e core por ate 30 tentativas de um segundo; falha persistente encerra o processo para o Docker reiniciar e sinalizar o problema.
 - Subir banco/app antes de reconstruir o web para o proxy resolver o hostname.
+
+## Backup completo - 2026-09-01
+
+- `scripts/database-backup.sh` gera uma execucao atomica para os 15 bancos Postgres e para todas as bases do MySQL, sem publicar portas nem expor senhas no log.
+- O destino padrao e `/home/ubuntu/projetos/_backups-wimifarma/automatic/run-<UTC>`, fora do repositorio, com diretorios `0700`, arquivos `0600`, lock de concorrencia e retencao local de 30 dias.
+- Cada dump Postgres usa formato custom e e validado com `pg_restore --list`; o MySQL usa `--single-transaction`, gzip e validacao de estrutura. `SHA256SUMS` e conferido antes da publicacao atomica da pasta.
+- `WIMIFARMA_BACKUP_REMOTE` habilita copia externa por `rclone copy --checksum --immutable`. Sem essa variavel, o resultado e somente local e nao protege contra perda total do VPS.
+- `ops/systemd/wimifarma-database-backup.timer` agenda a rotina diariamente as 02:15 em `America/Sao_Paulo`, com persistencia e atraso aleatorio.
+- Antes de desativar `wimifarma-cotacao-backup.timer`, executar e validar manualmente o novo servico no VPS. O timer antigo permanece como seguranca ate essa verificacao real.
+- A instalacao no VPS, firewall de gerenciamento e replica externa continuam pendentes enquanto o acesso SSH autorizado desta maquina estiver indisponivel.

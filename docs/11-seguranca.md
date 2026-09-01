@@ -11,7 +11,7 @@ Registra cuidados de seguranca ja existentes e riscos encontrados durante a migr
 - `site/cashback/functions.php` envia headers de seguranca em modulos internos.
 - CSRF e escape HTML existem nos helpers internos.
 - Cookies de sessao usam `HttpOnly` e `SameSite=Lax`.
-- A home `/` usa sessao propria `WFHOME` com cookie `HttpOnly`/`SameSite=Lax`, CSRF no formulario de login e botao `Sair`; a credencial temporaria padrao `adm`/`adm` deve ser trocada por variaveis de ambiente (`WIMIFARMA_HOME_LOGIN_USER`/`WIMIFARMA_HOME_LOGIN_PASSWORD`) quando sair da fase de ajuste visual. Desde 2026-05-31, navegadores sem sessao de modulo nem `WFHOME_SSO` valido que tentam abrir paginas protegidas ou logins antigos dos modulos sao redirecionados para essa home, mantendo health checks, badges publicos e endpoints internos tokenizados fora desse redirecionamento.
+- A home `/` usa sessao propria `WFHOME` com cookie `HttpOnly`/`SameSite=Lax`, CSRF no formulario de login, botao `Sair` e autenticacao exclusiva em `core_users`; `adm`/`adm` e as credenciais paralelas por ambiente nao autenticam. Desde 2026-05-31, navegadores sem sessao de modulo nem `WFHOME_SSO` valido que tentam abrir paginas protegidas ou logins antigos dos modulos sao redirecionados para essa home, mantendo health checks, badges publicos e endpoints internos tokenizados fora desse redirecionamento.
 - O Miauby interno exige uma conta ativa autenticada, mas `module_key='miauw'` e sempre liberado depois do login, inclusive quando existe uma linha historica `can_access=false`. Essa excecao nao vale para `module_key='miauw_whatsapp'`: painel, fila, automacoes e configuracoes do canal continuam sob permissao individual.
 - O contador da home usa cookies anonimos `WFHOME_VISITOR` e `WFHOME_VISIT` com `HttpOnly`/`SameSite=Lax`, nao grava IP, user-agent, telefone, login nem payload bruto, e salva somente totais agregados de visitantes unicos e visitas registradas por janela de 30 minutos em `site/wp-content/uploads/wimifarma-runtime/home-counter.json`; o diretorio recebe `.htaccess` gerado para bloquear listagem/acesso direto.
 - A Cotacao V2 usa cookie proprio `WFCOTACAOV2`, sessao em Redis e CSRF por token de sessao.
@@ -218,3 +218,13 @@ Os quatro primeiros devem responder 403. O status detalhado sem token deve respo
 - Codigo usa chave normalizada unica; HTML externo e escapado e a previa JS escreve com `textContent`.
 - Usuario comum tem ownership por `confirmed_by_user_id`; rotas administrativas revalidam role no servidor.
 - Triggers bloqueiam DELETE e alteracoes no ledger/pagamentos; cancelamento e estorno logico preservam auditoria.
+
+## Hardening aplicado no codigo - 2026-09-01
+
+- Removidas credenciais fixas `adm`/`adm` da Home e dos oito fluxos ativos que ainda mantinham o bypass historico; a fonte de identidade permanece `core_users`.
+- Adicionado rate limiting persistente e em sessao para login/troca da Home, com limites separados por IP/usuario, usuario e IP e bloqueio temporario de 10 minutos.
+- O segredo SSO exige 32 caracteres e nao reutiliza senha de login.
+- Cookies de sessao Node passam a marcar `Secure` automaticamente em HTTPS atras do proxy confiavel.
+- O upload de fotos do XP autentica e autoriza o gestor antes de processar multipart, aceita um unico JPG/PNG/WEBP de ate 3 MB, limita cada lado a 8192 px e o total a 40 megapixels, e le dimensoes por parser limitado. `image-size` foi removido e `multer` foi fixado em `2.2.0`.
+- O backup completo valida formato e checksum antes de tornar uma execucao visivel; opcionalmente envia copia imutavel para destino externo.
+- Continuam externos ao codigo: DDoS/WAF na borda, fechamento das portas de gerenciamento do VPS, alertas centralizados, teste de restauracao e MFA administrativo com recuperacao. Aplicar somente com acesso operacional e plano de rollback.

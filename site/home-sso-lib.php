@@ -30,9 +30,9 @@ function wf_home_sso_secret(): string
         'wimifarma_home_sso_dev_secret_change_me',
     );
 
-    foreach (array('WIMIFARMA_HOME_SSO_SECRET', 'WP_AUTH_KEY', 'WIMIFARMA_HOME_LOGIN_PASSWORD') as $key) {
+    foreach (array('WIMIFARMA_HOME_SSO_SECRET', 'WP_AUTH_KEY') as $key) {
         $value = trim((string) (getenv($key) ?: ''));
-        if (strlen($value) >= 16 && !in_array($value, $weakValues, true)) {
+        if (strlen($value) >= 32 && !in_array($value, $weakValues, true)) {
             return $value;
         }
     }

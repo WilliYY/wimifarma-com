@@ -148,6 +148,7 @@ const corePgPool = new Pool({
 });
 
 const app = express();
+app.set('trust proxy', true);
 const PgSession = connectPgSimple(session);
 const sessionMiddleware = session({
   name: 'WFLOGINSENHA',
@@ -162,7 +163,7 @@ const sessionMiddleware = session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false,
+    secure: 'auto',
     maxAge: 1000 * 60 * 60 * 10,
   },
 });

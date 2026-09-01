@@ -809,3 +809,48 @@ docker compose up -d --build wimifarma-comissao-db wimifarma-comissao-app wimifa
 docker compose logs --tail=100 wimifarma-comissao-app wimifarma-comissao-db
 curl -fsS http://127.0.0.1:3002/comissao/health
 ```
+
+## Hardening de autenticacao e upload
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/test-auth-hardening.ps1
+cd apps/xp
+npm ci --ignore-scripts
+npm run check
+npm test
+npm audit --omit=dev
+```
+
+O lint PHP deve usar o mesmo PHP 8.3 do projeto:
+
+```bash
+docker compose run --rm --no-deps -v "$PWD/site:/lint:ro" wimifarma-com-web php -l /lint/home.php
+docker compose run --rm --no-deps -v "$PWD/site:/lint:ro" wimifarma-com-web php -l /lint/home-auth-security.php
+docker compose run --rm --no-deps -v "$PWD/site:/lint:ro" wimifarma-com-web php -l /lint/home-sso-lib.php
+```
+
+## Backup completo dos bancos
+
+Teste local sem bancos reais:
+
+```bash
+bash scripts/test-database-backup.sh
+```
+
+Instalacao segura no VPS, mantendo o timer antigo da Cotacao ate o primeiro sucesso:
+
+```bash
+sudo install -m 0644 ops/systemd/wimifarma-database-backup.service /etc/systemd/system/wimifarma-database-backup.service
+sudo install -m 0644 ops/systemd/wimifarma-database-backup.timer /etc/systemd/system/wimifarma-database-backup.timer
+sudo systemctl daemon-reload
+sudo systemctl start wimifarma-database-backup.service
+sudo systemctl status --no-pager wimifarma-database-backup.service
+sudo systemctl enable --now wimifarma-database-backup.timer
+sudo systemctl list-timers --all | grep wimifarma-database-backup
+```
+
+So depois de conferir o backup real e um restore isolado:
+
+```bash
+sudo systemctl disable --now wimifarma-cotacao-backup.timer
+```

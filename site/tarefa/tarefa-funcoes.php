@@ -75,8 +75,7 @@ function tarefa_password_matches(array $user, string $password): bool
         return true;
     }
 
-    $username = strtolower(trim((string) ($user['username'] ?? '')));
-    return $username === 'adm' && hash_equals('adm', $password);
+    return false;
 }
 
 function tarefa_require_user(): array

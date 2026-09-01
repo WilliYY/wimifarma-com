@@ -181,3 +181,12 @@ O runner nao chama OpenAI e nao executa escritas reais nos modulos.
 - `apps/comissao/src/views.test.ts` cobre isolamento comum/gestor, painel de uso, +300 XP, administracao, cupom termico sem comissao e escape de HTML externo.
 - Antes de publicar: `npm ci`, `npm run check`, `npm test`, `npm audit --omit=dev`, Compose e build dos containers.
 - No VPS: validar health, schema/triggers, uso idempotente, uma comissao e um XP, pagamento parcial, cancelamento/reversao, ownership e impressao sem comissao.
+
+## Hardening - 2026-09-01
+
+- `powershell -ExecutionPolicy Bypass -File scripts/test-auth-hardening.ps1` impede regressao das senhas fixas, segredo SSO fraco, cookies sem Secure e login sem limitador.
+- `npm test` em `apps/xp` cobre metadados PNG, JPEG e WEBP e rejeita formatos fora da allowlist e JPEG truncado.
+- `npm run check` nos apps Node alterados valida a troca de cookie e a remocao do fallback de autenticacao.
+- `bash scripts/test-database-backup.sh` simula dois Postgres e um MySQL, valida dumps, manifest e checksum, prova que falha de `pg_dump` nao publica pasta parcial e recusa destino dentro do projeto.
+- Antes de publicar: executar `scripts/check-secrets.ps1`, `git diff --check`, `npm audit --omit=dev` no XP e lint PHP dentro do container web.
+- No VPS: criar um backup completo real, conferir checksums/listagens, fazer teste de restauracao em bancos isolados e somente depois aposentar o timer exclusivo da Cotacao.
