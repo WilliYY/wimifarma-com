@@ -700,6 +700,8 @@ Desde 2026-09-01, a Home e os fluxos ativos de Financeiro, Gestao, Pedidos, Tare
 
 Desde 2026-09-01, `scripts/database-backup.sh` cobre os 15 Postgres e o MySQL, valida cada dump e checksum antes da publicacao atomica, mantem retencao fora do projeto e permite replica imutavel via `WIMIFARMA_BACKUP_REMOTE`. Instalar `ops/systemd/wimifarma-database-backup.service`/`.timer` somente com acesso ao VPS; nao desativar o timer antigo da Cotacao antes de backup real e restauracao isolada validada. MFA, WAF/DDoS, fechamento das portas de gerenciamento e alertas externos continuam pendentes e nao devem ser ativados sem acesso de recuperacao e rollback.
 
+- Desde 2026-09-05, somente a escolha de responsavel do PIX CNPJ usa prazo dedicado de 30 minutos (`MIAUW_WHATSAPP_RESPONSIBLE_SELECTION_TTL_MINUTES`). Sem resposta, o worker grava uma unica vez como `Sistema`, sem `actor_user_id`, com observacao e idempotencia auditaveis, e avisa pelo WhatsApp. Resposta recebida antes do prazo ainda vale mesmo se processada logo depois. Sangria, pedidos e tarefas continuam expirando sem escrita automatica.
+
 Ao finalizar, responder em portugues com:
 
 - arquivos alterados;

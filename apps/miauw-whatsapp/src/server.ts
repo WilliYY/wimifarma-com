@@ -65,6 +65,12 @@ import {
   DEFAULT_AUDIO_TTS_STYLE,
   DEFAULT_AUDIO_TTS_VOICE,
 } from './audio-voice.js';
+import {
+  DEFAULT_RESPONSIBLE_SELECTION_TTL_MINUTES,
+  expiredResponsibleSelectionFallback,
+  responsibleSelectionInstruction,
+  type ResponsibleSelectionAction,
+} from './responsible-selection-policy.js';
 
 const { Pool } = pg;
 
@@ -219,6 +225,16 @@ type PendingConfirmationRow = {
   risk: string;
   command_payload: JsonRecord;
   attempts: number;
+  status?: string;
+  error_summary?: string;
+};
+
+type ExpiredResponsibleSelectionRow = PendingConfirmationRow & {
+  sender_phone_hash: string;
+  sender_phone_mask: string;
+  instance_name: string;
+  recipient_phone_ciphertext: string;
+  trace_id: string;
 };
 
 type PendingConversationStateRow = {
@@ -278,8 +294,6 @@ type CoreUserIdentity = {
   displayName: string;
   role: string;
 };
-
-type ResponsibleSelectionAction = 'sangria' | 'pix_cnpj' | 'pedido_create' | 'pedido_cancel' | 'tarefa_status';
 
 type SharedMiauwContext = {
   source: string;
@@ -751,6 +765,12 @@ const EVOLUTION_INTERACTIVE_CONFIRMATIONS_REQUESTED = boolEnv('MIAUW_WHATSAPP_EV
 const EVOLUTION_INTERACTIVE_CONFIRMATIONS = false;
 const CONFIRMED_ACTIONS_ENABLED = boolEnv('MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED', false);
 const CONFIRMATION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_CONFIRMATION_TTL_MINUTES', 15, 1, 120);
+const RESPONSIBLE_SELECTION_TTL_MINUTES = numberEnv(
+  'MIAUW_WHATSAPP_RESPONSIBLE_SELECTION_TTL_MINUTES',
+  DEFAULT_RESPONSIBLE_SELECTION_TTL_MINUTES,
+  2,
+  240,
+);
 const REPORT_DIALOG_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_REPORT_DIALOG_TTL_MINUTES', 15, 2, 120);
 const REPLY_ENGINE = replyEngineEnv();
 const GEMINI_API_KEY = textEnv('GEMINI_API_KEY') || textEnv('GOOGLE_AI_API_KEY') || textEnv('GOOGLE_API_KEY') || textEnv('MIAUW_WHATSAPP_GEMINI_API_KEY');
@@ -3477,6 +3497,7 @@ async function nextQueueRow(): Promise<QueueRow | null> {
 
 async function processQueue(limit = WORKER_BATCH_SIZE): Promise<{ processed: number; outbox_processed: number; outbox_expired: number }> {
   if (!ENABLED) return { processed: 0, outbox_processed: 0, outbox_expired: 0 };
+  await processExpiredPixResponsibleSelections(Math.min(limit, 10));
   await expireOldConfirmations();
   await recoverStaleProcessingEvents();
   await requeueStaleSendingOutbox();
@@ -4595,8 +4616,198 @@ async function expireOldConfirmations(): Promise<void> {
             error_summary = CASE WHEN error_summary = '' THEN 'confirmation_expired' ELSE error_summary END,
             updated_at = NOW()
       WHERE status = 'pending'
-        AND expires_at <= NOW()`,
+        AND expires_at <= NOW()
+        AND NOT (
+          tool = 'selecionar_responsavel_whatsapp'
+          AND command_payload->>'action' = 'pix_cnpj'
+        )`,
   );
+}
+
+async function normalizePendingPixResponsibleSelectionDeadlines(): Promise<void> {
+  await pgPool.query(
+    `UPDATE miauw_whatsapp_confirmations
+        SET expires_at = created_at + ($1::int * INTERVAL '1 minute')
+      WHERE status = 'pending'
+        AND tool = 'selecionar_responsavel_whatsapp'
+        AND command_payload->>'action' = 'pix_cnpj'
+        AND expires_at <> created_at + ($1::int * INTERVAL '1 minute')`,
+    [RESPONSIBLE_SELECTION_TTL_MINUTES],
+  );
+}
+
+async function claimExpiredPixResponsibleSelection(): Promise<ExpiredResponsibleSelectionRow | null> {
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query<ExpiredResponsibleSelectionRow>(
+      `SELECT c.id, c.event_id, c.short_id, c.tool, c.summary, c.risk, c.command_payload,
+              c.attempts, c.error_summary, c.sender_phone_hash, c.sender_phone_mask,
+              c.instance_name, c.trace_id,
+              COALESCE(NULLIF(e.remote_jid_ciphertext, ''), e.sender_phone_ciphertext) AS recipient_phone_ciphertext
+         FROM miauw_whatsapp_confirmations c
+         JOIN miauw_whatsapp_events e ON e.id = c.event_id
+        WHERE c.tool = 'selecionar_responsavel_whatsapp'
+          AND c.command_payload->>'action' = 'pix_cnpj'
+          AND c.attempts < $1
+          AND (
+            (c.status = 'pending' AND c.expires_at <= NOW())
+            OR (c.status = 'confirmed' AND c.updated_at <= NOW() - INTERVAL '2 minutes')
+          )
+          AND NOT EXISTS (
+            SELECT 1
+              FROM miauw_whatsapp_events response_event
+             WHERE response_event.sender_phone_hash = c.sender_phone_hash
+               AND response_event.direction = 'inbound'
+               AND response_event.id <> c.event_id
+               AND response_event.created_at <= c.expires_at
+               AND response_event.status IN ('queued', 'processing')
+          )
+        ORDER BY c.expires_at, c.created_at
+        FOR UPDATE OF c SKIP LOCKED
+        LIMIT 1`,
+      [Math.min(MAX_ATTEMPTS, 3)],
+    );
+    const row = result.rows[0] || null;
+    if (!row) {
+      await client.query('COMMIT');
+      return null;
+    }
+    await client.query(
+      `UPDATE miauw_whatsapp_confirmations
+          SET status = 'confirmed',
+              confirmed_at = COALESCE(confirmed_at, NOW()),
+              attempts = attempts + 1,
+              error_summary = 'responsible_selection_system_fallback_processing',
+              updated_at = NOW()
+        WHERE id = $1`,
+      [row.id],
+    );
+    await client.query('COMMIT');
+    return row;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function enqueuePixSystemFallbackReply(
+  row: ExpiredResponsibleSelectionRow,
+  command: PixCnpjCommand,
+): Promise<void> {
+  const message = formatMiaubyResponse(
+    `Ninguem respondeu em ${RESPONSIBLE_SELECTION_TTL_MINUTES} minutos. Registrei o PIX CNPJ ${command.amount_label} como Sistema.`,
+  );
+  await pgPool.query(
+    `INSERT INTO miauw_whatsapp_outbox (
+      id, event_id, provider, instance_name, recipient_phone_hash, recipient_phone_mask,
+      recipient_phone_ciphertext, body_text, reply_engine, route_reason, reply_latency_ms,
+      status, max_attempts, trace_id
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'local',
+              'responsible_selection_system_fallback', 0, 'pending', $9, $10)
+    ON CONFLICT (id) DO NOTHING`,
+    [
+      row.id,
+      row.event_id,
+      WHATSAPP_PROVIDER,
+      row.instance_name || defaultInstanceName(),
+      row.sender_phone_hash,
+      row.sender_phone_mask,
+      row.recipient_phone_ciphertext,
+      safeOutboundText(message, 1800),
+      MAX_ATTEMPTS,
+      row.trace_id,
+    ],
+  );
+}
+
+async function processExpiredPixResponsibleSelections(limit: number): Promise<number> {
+  let processed = 0;
+  for (let index = 0; index < Math.max(0, limit); index += 1) {
+    const row = await claimExpiredPixResponsibleSelection();
+    if (!row) break;
+    processed += 1;
+    const payload = isRecord(row.command_payload) ? row.command_payload : {};
+    const action = safeText(payload.action, 40);
+    const fallback = expiredResponsibleSelectionFallback(action);
+    const commandPayload = isRecord(payload.command) ? payload.command : {};
+    const command = pixCnpjCommandFromPayload(commandPayload);
+
+    try {
+      if (fallback !== 'Sistema' || !command) throw new Error('pix_cnpj_system_fallback_payload_invalid');
+      const systemResponsible: ResolvedPixCnpjResponsible = {
+        responsibleName: fallback,
+        replyName: fallback,
+        actorUserId: null,
+        publicObservation: safeOutboundText(command.public_observation ?? command.observation, 180),
+        auditObservation: safeOutboundText(
+          `Responsavel automatico Sistema: nenhum usuario respondeu em ${RESPONSIBLE_SELECTION_TTL_MINUTES} minutos.`,
+          700,
+        ),
+      };
+      const result = await createPixCnpjFromWhatsapp(
+        command,
+        row.trace_id,
+        row.sender_phone_mask,
+        {
+          id: null,
+          username: 'sistema',
+          display_name: 'Sistema',
+          role: 'system',
+          channel: 'whatsapp',
+          contact_hash: row.sender_phone_hash,
+          contact_mask: row.sender_phone_mask,
+          linked: false,
+        },
+        `whatsapp-responsavel:${row.id}`,
+        systemResponsible,
+      );
+      if (!['pix_cnpj_created', 'pix_cnpj_duplicate'].includes(result.reason)) {
+        throw new Error(`pix_cnpj_system_fallback_not_created:${result.reason}`);
+      }
+      await enqueuePixSystemFallbackReply(row, command);
+      await pgPool.query(
+        `UPDATE miauw_whatsapp_confirmations
+            SET status = 'executed',
+                executed_at = NOW(),
+                error_summary = 'responsible_selection_system_fallback',
+                updated_at = NOW()
+          WHERE id = $1
+            AND status = 'confirmed'`,
+        [row.id],
+      );
+      await mergeWhatsappEventSummaryByTrace(row.trace_id, {
+        responsible_selection_fallback: 'system',
+        responsible_selection_action: 'pix_cnpj',
+        responsible_selection_timeout_minutes: RESPONSIBLE_SELECTION_TTL_MINUTES,
+      });
+    } catch (error) {
+      const attempts = Number(row.attempts || 0) + 1;
+      const dead = attempts >= Math.min(MAX_ATTEMPTS, 3);
+      await pgPool.query(
+        `UPDATE miauw_whatsapp_confirmations
+            SET status = $2,
+                error_summary = $3,
+                updated_at = NOW()
+          WHERE id = $1
+            AND status = 'confirmed'`,
+        [
+          row.id,
+          dead ? 'failed' : 'confirmed',
+          `${dead ? 'responsible_selection_system_fallback_failed' : 'responsible_selection_system_fallback_retry'}:${safeError(error)}`,
+        ],
+      );
+      await recordErrorLog('responsible_selection_system_fallback', dead ? 'error' : 'warn', error, {
+        eventId: row.event_id || undefined,
+        traceId: row.trace_id,
+        phoneMask: row.sender_phone_mask,
+        details: { attempts, next_status: dead ? 'failed' : 'confirmed' },
+      });
+    }
+  }
+  return processed;
 }
 
 async function hasPendingSelectionReplyContext(phone: string): Promise<boolean> {
@@ -4623,6 +4834,12 @@ async function hasPendingSelectionReplyContext(phone: string): Promise<boolean> 
             OR (
               tool <> 'completar_encomenda_whatsapp'
               AND status = 'expired'
+              AND updated_at >= NOW() - INTERVAL '10 minutes'
+            )
+            OR (
+              tool = 'selecionar_responsavel_whatsapp'
+              AND status IN ('confirmed', 'executed', 'failed')
+              AND error_summary LIKE 'responsible_selection_system_fallback%'
               AND updated_at >= NOW() - INTERVAL '10 minutes'
             )
           )
@@ -5049,17 +5266,27 @@ async function findPendingPedidoSelection(senderHash: string): Promise<PendingCo
   return result.rows[0] || null;
 }
 
-async function findPendingResponsibleSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
+async function findPendingResponsibleSelection(senderHash: string, responseEventId = ''): Promise<PendingConfirmationRow | null> {
   await expireOldConfirmations();
   const result = await pgPool.query<PendingConfirmationRow>(
-    `SELECT id, event_id, short_id, tool, summary, risk, command_payload, attempts
+    `SELECT id, event_id, short_id, tool, summary, risk, command_payload, attempts, error_summary
        FROM miauw_whatsapp_confirmations
       WHERE sender_phone_hash = $1
         AND status = 'pending'
         AND tool = 'selecionar_responsavel_whatsapp'
+        AND (
+          expires_at > NOW()
+          OR EXISTS (
+            SELECT 1
+              FROM miauw_whatsapp_events response_event
+             WHERE response_event.id = $2
+               AND response_event.sender_phone_hash = miauw_whatsapp_confirmations.sender_phone_hash
+               AND response_event.created_at <= miauw_whatsapp_confirmations.expires_at
+          )
+        )
       ORDER BY created_at DESC
       LIMIT 1`,
-    [senderHash],
+    [senderHash, responseEventId || null],
   );
   return result.rows[0] || null;
 }
@@ -5111,11 +5338,17 @@ async function findRecentExpiredPedidoSelection(senderHash: string): Promise<Pen
 
 async function findRecentExpiredResponsibleSelection(senderHash: string): Promise<PendingConfirmationRow | null> {
   const result = await pgPool.query<PendingConfirmationRow>(
-    `SELECT id, short_id, tool, summary, risk, command_payload, attempts
+    `SELECT id, short_id, tool, summary, risk, command_payload, attempts, status, error_summary
        FROM miauw_whatsapp_confirmations
       WHERE sender_phone_hash = $1
-        AND status = 'expired'
         AND tool = 'selecionar_responsavel_whatsapp'
+        AND (
+          status = 'expired'
+          OR (
+            status IN ('confirmed', 'executed', 'failed')
+            AND error_summary LIKE 'responsible_selection_system_fallback%'
+          )
+        )
         AND updated_at >= NOW() - INTERVAL '10 minutes'
       ORDER BY updated_at DESC
       LIMIT 1`,
@@ -5270,7 +5503,7 @@ async function createPendingResponsibleSelection(row: QueueRow, command: JsonRec
       row.instance_name || defaultInstanceName(),
       safeOutboundText('Selecionar responsavel humano para comando vindo do WhatsApp oficial.', 500),
       JSON.stringify(command),
-      CONFIRMATION_TTL_MINUTES,
+      RESPONSIBLE_SELECTION_TTL_MINUTES,
       row.trace_id,
     ],
   );
@@ -5476,7 +5709,12 @@ async function requestResponsibleSelectionForPharmacy(
     users: users.map(responsiblePayloadFromUser),
   });
   return {
-    text: responsibleSelectionMessage(action, users, intro, instruction),
+    text: responsibleSelectionMessage(
+      action,
+      users,
+      intro,
+      responsibleSelectionInstruction(action, RESPONSIBLE_SELECTION_TTL_MINUTES, instruction),
+    ),
     engine: 'local',
     reason: `responsible_selection_required:${action}`,
   };
@@ -5695,13 +5933,37 @@ function parsePedidoChoiceIndex(message: string, options: JsonRecord[]): number 
 
 async function maybeHandleResponsibleSelectionReply(row: QueueRow, userContext: WhatsappUserContext): Promise<ReplyResult | null> {
   if (!whatsappConfirmationsReady()) return null;
-  const pending = await findPendingResponsibleSelection(row.sender_phone_hash);
+  const pending = await findPendingResponsibleSelection(row.sender_phone_hash, row.id);
   if (!pending) {
     const clean = normalizeIntentText(row.body_text);
     const looksLikeLateChoice = /^\d+$/.test(clean)
       || /^(a\s+)?(primeira|segunda|terceira|quarta|quinta)\b/.test(clean)
       || /^[a-z]{2,}(?:\s+[a-z]{2,})?$/u.test(clean);
-    if (looksLikeLateChoice && await findRecentExpiredResponsibleSelection(row.sender_phone_hash)) {
+    const recent = looksLikeLateChoice
+      ? await findRecentExpiredResponsibleSelection(row.sender_phone_hash)
+      : null;
+    if (recent?.status === 'executed' && recent.error_summary === 'responsible_selection_system_fallback') {
+      return {
+        text: 'O prazo acabou e este PIX CNPJ ja foi registrado como Sistema. Nao dupliquei.',
+        engine: 'local',
+        reason: 'responsible_selection_system_fallback_already_executed',
+      };
+    }
+    if (recent?.status === 'confirmed') {
+      return {
+        text: 'O prazo acabou e estou finalizando este PIX CNPJ como Sistema. Nao vou duplicar.',
+        engine: 'local',
+        reason: 'responsible_selection_system_fallback_processing',
+      };
+    }
+    if (recent?.status === 'failed') {
+      return {
+        text: 'O prazo acabou, mas nao consegui registrar como Sistema. Mande o comando novamente com miauby.',
+        engine: 'local',
+        reason: 'responsible_selection_system_fallback_failed',
+      };
+    }
+    if (recent) {
       return {
         text: 'Essa escolha expirou. Manda o comando de novo com miauby para eu nao registrar com responsavel errado.',
         engine: 'local',
@@ -11365,6 +11627,8 @@ function publicStatus(): JsonRecord {
     whatsapp_evolution_interactive_confirmations: EVOLUTION_INTERACTIVE_CONFIRMATIONS,
     whatsapp_evolution_interactive_confirmations_requested: EVOLUTION_INTERACTIVE_CONFIRMATIONS_REQUESTED,
     whatsapp_confirmation_ttl_minutes: CONFIRMATION_TTL_MINUTES,
+    whatsapp_responsible_selection_ttl_minutes: RESPONSIBLE_SELECTION_TTL_MINUTES,
+    whatsapp_pix_responsible_system_fallback: true,
     whatsapp_actions_configured: ACTIONS_URL !== '' && INTERNAL_TOKEN !== '',
     internal_read_tools_enabled: true,
     shared_core_context_enabled: AGENT_CONTEXT_URL !== '' && INTERNAL_TOKEN !== '',
@@ -15511,7 +15775,7 @@ async function confirmPedidosArrivalFromWhatsapp(supplier: string, traceId: stri
 type ResolvedPixCnpjResponsible = {
   responsibleName: string;
   replyName: string;
-  actorUserId: number;
+  actorUserId: number | null;
   publicObservation: string;
   auditObservation: string;
 };
@@ -15622,6 +15886,7 @@ async function createPixCnpjFromWhatsapp(
   senderMask: string,
   userContext: WhatsappUserContext,
   idempotencyKey = `whatsapp:pix-cnpj:${traceId}`,
+  resolvedOverride?: ResolvedPixCnpjResponsible,
 ): Promise<ReplyResult> {
   if (!INTERNAL_TOKEN) {
     await mergeWhatsappEventSummaryByTrace(traceId, {
@@ -15637,7 +15902,7 @@ async function createPixCnpjFromWhatsapp(
 
   let resolved: ResolvedPixCnpjResponsible;
   try {
-    resolved = await resolvePixCnpjResponsible(command, userContext);
+    resolved = resolvedOverride || await resolvePixCnpjResponsible(command, userContext);
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
     const missingResponsible = message === 'pix_cnpj_missing_responsible'
@@ -19191,6 +19456,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 async function main(): Promise<void> {
   await ensureSchema();
+  await normalizePendingPixResponsibleSelectionDeadlines();
   await ensureCoreVacationSchema().catch((error) => {
     console.warn(redact(`core_vacation_schema_unavailable ${safeError(error)}`));
   });

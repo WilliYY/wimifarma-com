@@ -4,6 +4,10 @@
 
 Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A implementacao inicial cria um backend dedicado em Node.js/TypeScript, com Postgres 17 proprio, webhook para Evolution API ou Meta Cloud API, fila duravel, deduplicacao, allowlist, painel operacional e outbox. O repositorio nasce desligado por padrao; em producao, o canal pode ser ligado por `.env` quando token, cifragem e allowlist estiverem revisados.
 
+## Prazo do responsavel no PIX CNPJ
+
+Desde 2026-09-05, a escolha de responsavel do PIX CNPJ fica aberta por 30 minutos, configuravel em `MIAUW_WHATSAPP_RESPONSIBLE_SELECTION_TTL_MINUTES`. Se ninguem responder, o worker registra o PIX uma unica vez com `responsavel='Sistema'`, `actor_user_id` nulo, observacao auditavel e idempotencia derivada da pendencia, e avisa o contato. Resposta recebida antes do vencimento continua valida mesmo se a fila a processar logo depois; resposta posterior informa que o registro ja foi feito como Sistema e nao duplica. Esse fallback por silencio e exclusivo do PIX CNPJ: sangria, pedidos e tarefas continuam expirando sem escrita.
+
 ## Interpretacao global compartilhada
 
 Desde 2026-08-16, o Interno e o WhatsApp consultam o endpoint tokenizado e sem escrita `POST /miauw/agent/interpret` antes de iniciar novos comandos. O registro central em `apps/miauw-agent/src/semantic-command.ts` procura intencoes e sinonimos na mensagem completa, sem depender da posicao ou da caixa, extrai valores, datas, horarios, quantidades, dosagens, categorias e referencias de usuario, e devolve uma mensagem canonica para os parsers operacionais existentes.
@@ -198,6 +202,7 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_EVOLUTION_INTERACTIVE_CONFIRMATIONS=false`
 - `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ENABLED=false`
 - `MIAUW_WHATSAPP_CONFIRMATION_TTL_MINUTES=15`
+- `MIAUW_WHATSAPP_RESPONSIBLE_SELECTION_TTL_MINUTES=30`
 - `MIAUW_WHATSAPP_CONFIRMED_ACTIONS_ALLOWLIST=registrar_sangria,criar_lancamento_financeiro,criar_conta_gestao,criar_encomenda_cotacao`
 - `MIAUW_WHATSAPP_ACTOR_USER_ID=1`
 - `MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS=90`

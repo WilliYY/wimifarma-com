@@ -1956,3 +1956,21 @@ Riscos/cuidados:
 
 - Escritas, criacoes e demais comandos digitados continuam exigindo `Miauby`.
 - A excecao nunca deve contornar allowlist, usuario vinculado nem permissao do modulo.
+
+## 2026-09-05 - Prazo e fallback Sistema no responsavel do PIX CNPJ
+
+Decisao:
+
+- Manter a escolha de responsavel do PIX CNPJ aberta por 30 minutos, em configuracao separada das confirmacoes gerais.
+- Se ninguem responder, o worker registra o PIX CNPJ uma unica vez como `Sistema`, sem associar a acao a um usuario humano, e envia aviso ao contato.
+- Aceitar uma resposta que chegou antes do vencimento mesmo quando a fila a processar poucos instantes depois.
+
+Motivo:
+
+- O prazo anterior de 15 minutos descartou uma escolha enviada 17 minutos depois e deixou o lancamento sem conclusao operacional.
+
+Riscos/cuidados:
+
+- O fallback por silencio vale somente para PIX CNPJ; sangria, pedidos e tarefas continuam sem escrita automatica.
+- A gravacao automatica deve preservar `responsavel='Sistema'`, `actor_user_id` nulo, observacao explicita e chave idempotente derivada da pendencia.
+- Retry do worker ou resposta humana tardia nunca pode duplicar o lancamento.
