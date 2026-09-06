@@ -4,9 +4,9 @@
 
 Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A implementacao inicial cria um backend dedicado em Node.js/TypeScript, com Postgres 17 proprio, webhook para Evolution API ou Meta Cloud API, fila duravel, deduplicacao, allowlist, painel operacional e outbox. O repositorio nasce desligado por padrao; em producao, o canal pode ser ligado por `.env` quando token, cifragem e allowlist estiverem revisados.
 
-## Prazo do responsavel no PIX CNPJ
+## Prazo do responsavel no PIX CNPJ e na sangria
 
-Desde 2026-09-05, a escolha de responsavel do PIX CNPJ fica aberta por 30 minutos, configuravel em `MIAUW_WHATSAPP_RESPONSIBLE_SELECTION_TTL_MINUTES`. Se ninguem responder, o worker registra o PIX uma unica vez com `responsavel='Sistema'`, `actor_user_id` nulo, observacao auditavel e idempotencia derivada da pendencia, e avisa o contato. Resposta recebida antes do vencimento continua valida mesmo se a fila a processar logo depois; resposta posterior informa que o registro ja foi feito como Sistema e nao duplica. Esse fallback por silencio e exclusivo do PIX CNPJ: sangria, pedidos e tarefas continuam expirando sem escrita.
+Desde 2026-09-06, a escolha de responsavel do PIX CNPJ e da sangria fica aberta por 30 minutos, configuravel em `MIAUW_WHATSAPP_RESPONSIBLE_SELECTION_TTL_MINUTES`. Numero, nome valido ou `cancelar` continuam resolvendo a escolha normalmente. Se ninguem responder no prazo, ou se chegar outra mensagem/foto antes da escolha, o worker registra a operacao anterior uma unica vez com `responsavel='Wimifarma'`, `actor_user_id` nulo, observacao auditavel e idempotencia `whatsapp-responsavel:<confirmation_id>`, avisa o contato e continua processando a nova mensagem. Assim, numa sequencia de duas fotos de PIX, a primeira fecha como Wimifarma e a segunda abre sua propria pergunta de responsavel. Resposta recebida antes do vencimento continua valida mesmo se a fila a processar logo depois; resposta posterior informa que o registro ja foi feito e nao duplica. Pedidos e tarefas continuam expirando sem escrita automatica.
 
 ## Interpretacao global compartilhada
 

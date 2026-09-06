@@ -1974,3 +1974,22 @@ Riscos/cuidados:
 - O fallback por silencio vale somente para PIX CNPJ; sangria, pedidos e tarefas continuam sem escrita automatica.
 - A gravacao automatica deve preservar `responsavel='Sistema'`, `actor_user_id` nulo, observacao explicita e chave idempotente derivada da pendencia.
 - Retry do worker ou resposta humana tardia nunca pode duplicar o lancamento.
+
+## 2026-09-06 - Fallback Wimifarma para PIX CNPJ e sangria
+
+Decisao:
+
+- Substituir o nome automatico `Sistema` por `Wimifarma` e aplicar a regra tanto ao PIX CNPJ quanto a sangria.
+- Registrar a operacao anterior como Wimifarma quando a escolha completar 30 minutos sem resposta ou quando outra mensagem/foto chegar antes da escolha.
+- Processar a nova mensagem normalmente depois de fechar a anterior; duas fotos de PIX consecutivas fecham a primeira e abrem uma nova escolha para a segunda.
+- Preservar numero, nome valido e `cancelar` como respostas da escolha humana.
+
+Motivo:
+
+- Evitar que PIX e sangrias fiquem sem registro quando a equipe esquece a pergunta e impedir que uma pendencia antiga capture a proxima operacao.
+
+Riscos/cuidados:
+
+- O fallback automatico continua restrito a PIX CNPJ e sangria; pedidos e tarefas nao recebem escrita automatica.
+- `actor_user_id` permanece nulo, a observacao identifica o motivo automatico e a chave `whatsapp-responsavel:<confirmation_id>` impede duplicacao por retry, timeout ou corrida entre mensagens.
+- Resposta que entrou na fila antes do vencimento tem prioridade sobre o worker, mesmo quando for processada depois.

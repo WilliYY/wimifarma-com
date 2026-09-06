@@ -7,8 +7,19 @@ export type ResponsibleSelectionAction =
   | 'pedido_cancel'
   | 'tarefa_status';
 
-export function expiredResponsibleSelectionFallback(action: ResponsibleSelectionAction | string): 'Sistema' | null {
-  return action === 'pix_cnpj' ? 'Sistema' : null;
+export function expiredResponsibleSelectionFallback(action: ResponsibleSelectionAction | string): 'Wimifarma' | null {
+  return action === 'pix_cnpj' || action === 'sangria' ? 'Wimifarma' : null;
+}
+
+export function shouldFinalizeResponsibleSelectionBeforeMessage(
+  action: ResponsibleSelectionAction | string,
+  forceNewMessage: boolean,
+  isCancellation: boolean,
+  hasResponsibleChoice: boolean,
+): boolean {
+  if (!expiredResponsibleSelectionFallback(action)) return false;
+  if (forceNewMessage) return true;
+  return !isCancellation && !hasResponsibleChoice;
 }
 
 export function responsibleSelectionInstruction(
@@ -17,5 +28,5 @@ export function responsibleSelectionInstruction(
   base = 'Responda com o numero ou nome. Para cancelar, digite cancelar.',
 ): string {
   if (!expiredResponsibleSelectionFallback(action)) return base;
-  return `${base} Se ninguem responder em ${ttlMinutes} minutos, vou registrar como Sistema.`;
+  return `${base} Se ninguem responder em ${ttlMinutes} minutos ou se chegar outra mensagem antes da escolha, vou registrar como Wimifarma.`;
 }
