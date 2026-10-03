@@ -30,3 +30,9 @@ Depois de invocar o transporte, erro, ID vazio ou timeout de 90 segundos ficam `
 ## Validacao
 
 `npm.cmd run build` e `node --test dist/commerce-bridge.test.js` em `apps/miauw-whatsapp` validam compilacao, token separado, status sanitizado, concorrencia, payload divergente, pausa, ID vazio, erro e timeout. Os testes usam transporte e armazenamento em memoria; nao enviam WhatsApp nem precisam de banco real. A reserva Postgres requer verificacao operacional adicional em ambiente isolado antes da ativacao.
+
+## Publicação em 03/10/2026
+
+Commit `5a1ef9d` compilado e publicado somente no serviço WhatsApp, preservando Evolution, bancos e demais aplicações. Build e 70 testes passaram. Ensaio em PostgreSQL descartável confirmou uma única reserva para 25 chamadas concorrentes, duplicata aceita sem reenvio, retomada única de bloqueio, fingerprint divergente e quarentena de reserva expirada.
+
+Rede compartilhada contém somente app BR e canal WhatsApp. Segredo exclusivo e destino aprovado foram configurados em ambientes privados com backup. Status da ponte retornou 200, conectado e sem bloqueio; teste solicitado pelo ADMIN do BR foi aceito pelo provedor e observado recebido no WhatsApp do proprietário terminado em 1531, às 09:02 (Brasília). Nenhum contato ou comando financeiro existente foi alterado.
