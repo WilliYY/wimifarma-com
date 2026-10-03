@@ -974,6 +974,9 @@ services:
       CORE_POSTGRES_USER: wimifarma_core
       CORE_POSTGRES_PASSWORD: ${CORE_POSTGRES_PASSWORD:-wimifarma_core_dev_pass}
       MIAUW_WHATSAPP_ENABLED: ${MIAUW_WHATSAPP_ENABLED:-false}
+      MIAUBY_COMMERCE_ENABLED: ${MIAUBY_COMMERCE_ENABLED:-false}
+      MIAUBY_COMMERCE_TOKEN: ${MIAUBY_COMMERCE_TOKEN:-}
+      MIAUBY_COMMERCE_RECIPIENT: ${MIAUBY_COMMERCE_RECIPIENT:-}
       MIAUW_WHATSAPP_WEBHOOK_TOKEN: ${MIAUW_WHATSAPP_WEBHOOK_TOKEN:-}
       MIAUW_WHATSAPP_INTERNAL_TOKEN: ${MIAUW_WHATSAPP_INTERNAL_TOKEN:-}
       MIAUW_WHATSAPP_ENCRYPTION_KEY: ${MIAUW_WHATSAPP_ENCRYPTION_KEY:-}
@@ -1081,7 +1084,11 @@ services:
       META_WHATSAPP_GRAPH_API_VERSION: ${META_WHATSAPP_GRAPH_API_VERSION:-v23.0}
     networks:
       - wimifarma-com-network
+      - wimifarma-miauby-bridge-network
 
 networks:
+  wimifarma-miauby-bridge-network:
+    external: true
+    name: wimifarma-miauby-bridge-network
   wimifarma-com-network:
     name: wimifarma-com-network

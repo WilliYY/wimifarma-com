@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import pg from 'pg';
+import { COMMERCE_SCHEMA, createCommerceBridge, postgresCommerceStore } from './commerce-bridge.js';
 import {
   formatCotacaoEncomendasDailyMessage,
   formatCotacaoEncomendasMessage,
@@ -2180,6 +2181,7 @@ function isMissingPrefixHelpOnly(row?: QueueRow): boolean {
 }
 
 async function ensureSchema(): Promise<void> {
+  await pgPool.query(COMMERCE_SCHEMA);
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS miauw_whatsapp_contacts (
       id UUID PRIMARY KEY,
@@ -18994,6 +18996,25 @@ app.use(express.json({
   },
 }));
 app.use(express.urlencoded({ extended: false, limit: '16kb' }));
+app.use(`${BASE_PATH}/commerce`, createCommerceBridge({
+  token: textEnv('MIAUBY_COMMERCE_TOKEN'),
+  recipient: textEnv('MIAUBY_COMMERCE_RECIPIENT'),
+  store: postgresCommerceStore(pgPool),
+  preflight: async () => {
+    if (!ENABLED || !boolEnv('MIAUBY_COMMERCE_ENABLED', false)) return 'channel_disabled';
+    if (providerPauseRemainingMs() > 0) return 'provider_paused';
+    const configured = WHATSAPP_PROVIDER === 'meta'
+      ? Boolean(META_ACCESS_TOKEN && META_PHONE_NUMBER_ID)
+      : Boolean(EVOLUTION_API_BASE_URL && EVOLUTION_API_KEY && EVOLUTION_INSTANCE);
+    return configured ? null : 'transport_not_configured';
+  },
+  send: (recipient, text) => sendProviderText(recipient, text, defaultInstanceName()),
+  connection: async () => {
+    if (WHATSAPP_PROVIDER !== 'evolution') return null;
+    const result = await evolutionConnectionStatusCheck();
+    return typeof result.connection.connected === 'boolean' ? result.connection.connected : null;
+  },
+}));
 app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
   if (error instanceof SyntaxError) {
     res.status(400).json({ ok: false, error: 'invalid_json' });

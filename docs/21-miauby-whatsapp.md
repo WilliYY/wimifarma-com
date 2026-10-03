@@ -1,5 +1,7 @@
 # 21 - Miauby WhatsApp
 
+Ponte restrita de alertas do Wimifarma BR: contrato, rede e idempotencia em [37 - Miauby commerce bridge](37-miauby-commerce-bridge.md).
+
 ## O que esta parte documenta
 
 Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A implementacao inicial cria um backend dedicado em Node.js/TypeScript, com Postgres 17 proprio, webhook para Evolution API ou Meta Cloud API, fila duravel, deduplicacao, allowlist, painel operacional e outbox. O repositorio nasce desligado por padrao; em producao, o canal pode ser ligado por `.env` quando token, cifragem e allowlist estiverem revisados.
