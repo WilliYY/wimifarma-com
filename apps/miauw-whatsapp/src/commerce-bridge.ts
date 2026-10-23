@@ -3,6 +3,7 @@ import express from 'express';
 import type { Pool } from 'pg';
 
 export type CommerceEvent = { eventId: string; type: 'cart' | 'order' | 'payment' | 'test'; text: string };
+export type CustomerStatusEvent = { eventId: string; type: 'order_status'; recipient: string; text: string };
 export type Delivery = { event_id: string; fingerprint: string; state: 'sending' | 'accepted' | 'blocked' | 'uncertain'; provider_message_id: string | null };
 export interface CommerceStore {
   reserve(eventId: string, fingerprint: string): Promise<{ delivery: Delivery; claimed: boolean }>;
@@ -50,6 +51,17 @@ export function parseCommerceEvent(value: unknown): CommerceEvent | null {
   return { eventId: event.eventId, type: event.type as CommerceEvent['type'], text: event.text };
 }
 
+export function parseCustomerStatusEvent(value: unknown): CustomerStatusEvent | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const event = value as Record<string, unknown>;
+  if (Object.keys(event).some((key) => !['eventId', 'type', 'recipient', 'text'].includes(key))) return null;
+  if (event.type !== 'order_status' || typeof event.recipient !== 'string' || /[^0-9]/.test(event.recipient)) return null;
+  // Accept only canonical Brazilian phone digits. Never normalize JIDs, URLs or groups.
+  if (!/^55(?:1[1-9]|2[12478]|3[1-578]|4[1-9]|5[1345]|6[1-9]|7[134579]|8[1-9]|9[1-9])(?:[2-5]\d{7}|9\d{8})$/.test(event.recipient)) return null;
+  const common = parseCommerceEvent({ eventId: event.eventId, type: 'order', text: event.text });
+  return common ? { eventId: common.eventId, type: 'order_status', recipient: event.recipient, text: common.text } : null;
+}
+
 export function commerceTokenAuthorized(expected: string, authorization: string): boolean {
   if (!expected || !authorization.startsWith('Bearer ')) return false;
   const digest = (value: string) => crypto.createHash('sha256').update(value).digest();
@@ -85,42 +97,52 @@ export function createCommerceBridge(options: {
       const blocked = configured ? await options.preflight() : 'recipient_not_configured';
       let connected: boolean | null = null;
       try { connected = await options.connection(); } catch { /* Connection remains unknown. */ }
-      res.json({ ok: true, configured, enabled: !blocked, blocked, connected,
+      res.json({ ok: true, configured, enabled: !blocked, blocked, connected, customerStatus: true,
         recipientHint: configured ? `****${options.recipient.slice(-4)}` : '' });
     } catch (error) { next(error); }
   });
-  router.post('/alerts', async (req, res, next) => {
-    const event = parseCommerceEvent(req.body);
-    if (!event) { res.status(400).json({ ok: false, error: 'invalid_commerce_event' }); return; }
-    try {
-      const fingerprint = crypto.createHash('sha256').update(JSON.stringify(event)).digest('hex');
-      const reservation = await options.store.reserve(event.eventId, fingerprint);
-      if (reservation.delivery.fingerprint !== fingerprint) {
-        res.status(409).json({ ok: false, error: 'event_payload_conflict' }); return;
-      }
-      if (!reservation.claimed) { res.json(response(reservation.delivery, true)); return; }
-      let blocked: string | null;
-      try { blocked = configured ? await options.preflight() : 'recipient_not_configured'; }
-      catch { blocked = 'preflight_unavailable'; }
-      if (blocked) {
-        await options.store.finish(event.eventId, 'blocked');
-        res.json({ ...response({ ...reservation.delivery, state: 'blocked' }, false), reason: blocked }); return;
-      }
-      let messageId = '';
-      let timer: ReturnType<typeof setTimeout> | undefined;
+  function deliveryHandler(customer: boolean): express.RequestHandler {
+    return async (req, res, next) => {
+      const event = customer ? parseCustomerStatusEvent(req.body) : parseCommerceEvent(req.body);
+      if (!event) { res.status(400).json({ ok: false, error: 'invalid_commerce_event' }); return; }
       try {
-        messageId = await Promise.race([
-          options.send(options.recipient, event.text),
-          new Promise<string>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('commerce_send_timeout')), options.timeoutMs ?? 90000); }),
-        ]);
-        if (typeof messageId !== 'string' || messageId.length > 180) messageId = '';
-        messageId = messageId.trim();
-      } catch { /* After transport invocation the outcome is uncertain, including gate errors. */ }
-      finally { if (timer) clearTimeout(timer); }
-      const state = messageId ? 'accepted' : 'uncertain';
-      await options.store.finish(event.eventId, state, messageId);
-      res.json(response({ ...reservation.delivery, state, provider_message_id: messageId || null }, false));
-    } catch (error) { next(error); }
-  });
+        const recipient = 'recipient' in event ? event.recipient : options.recipient;
+        // Preserve historical alert fingerprints; customer events have their own versioned channel.
+        const payload = customer ? { version: 1, channel: 'customer-status', ...event } : event;
+        const fingerprint = crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+        const reservation = await options.store.reserve(event.eventId, fingerprint);
+        if (reservation.delivery.fingerprint !== fingerprint) {
+          res.status(409).json({ ok: false, error: 'event_payload_conflict' }); return;
+        }
+        if (!reservation.claimed) { res.json(response(reservation.delivery, true)); return; }
+        let blocked: string | null;
+        try {
+          blocked = (customer || configured) ? await options.preflight() : 'recipient_not_configured';
+          if (customer && !blocked && (await options.connection()) !== true) blocked = 'provider_not_connected';
+        }
+        catch { blocked = 'preflight_unavailable'; }
+        if (blocked) {
+          await options.store.finish(event.eventId, 'blocked');
+          res.json({ ...response({ ...reservation.delivery, state: 'blocked' }, false), reason: blocked }); return;
+        }
+        let messageId = '';
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          messageId = await Promise.race([
+            options.send(recipient, event.text),
+            new Promise<string>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('commerce_send_timeout')), options.timeoutMs ?? 90000); }),
+          ]);
+          if (typeof messageId !== 'string' || messageId.length > 180) messageId = '';
+          messageId = messageId.trim();
+        } catch { /* After transport invocation the outcome is uncertain, including gate errors. */ }
+        finally { if (timer) clearTimeout(timer); }
+        const state = messageId ? 'accepted' : 'uncertain';
+        await options.store.finish(event.eventId, state, messageId);
+        res.json(response({ ...reservation.delivery, state, provider_message_id: messageId || null }, false));
+      } catch (error) { next(error); }
+    };
+  }
+  router.post('/alerts', deliveryHandler(false));
+  router.post('/customer-status', deliveryHandler(true));
   return router;
 }

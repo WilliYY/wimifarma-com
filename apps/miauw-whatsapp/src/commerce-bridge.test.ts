@@ -26,7 +26,7 @@ function memoryStore(): CommerceStore {
 
 async function fixture(t: TestContext, options: {
   send?: (recipient: string, text: string) => Promise<string>; preflight?: () => Promise<string | null>; timeoutMs?: number;
-  token?: string; recipient?: string;
+  token?: string; recipient?: string; connection?: () => Promise<boolean | null>;
 } = {}) {
   const app = express();
   app.use(express.json());
@@ -41,6 +41,10 @@ async function fixture(t: TestContext, options: {
   return {
     async post(body = event) {
       const result = await fetch(`${base}/alerts`, { method: 'POST', headers: { authorization: 'Bearer exclusive-commerce-secret', 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      return { status: result.status, body: await result.json() };
+    },
+    async customer(body: unknown) {
+      const result = await fetch(`${base}/customer-status`, { method: 'POST', headers: { authorization: 'Bearer exclusive-commerce-secret', 'content-type': 'application/json' }, body: JSON.stringify(body) });
       return { status: result.status, body: await result.json() };
     },
     base,
@@ -119,11 +123,98 @@ test('status exige token proprio e nao revela destinatario nem segredo', async (
   const result = await fetch(`${api.base}/status`, { headers: { authorization: 'Bearer exclusive-commerce-secret' } });
   const body = await result.json();
   assert.equal(body.connected, true);
+  assert.equal(body.customerStatus, true);
   assert.equal(body.configured, true);
   assert.equal(body.recipientHint, '****9999');
   assert.equal(JSON.stringify(body).includes('5544999999999'), false);
   assert.equal(JSON.stringify(body).includes('exclusive-commerce-secret'), false);
 });
+
+const customerEvent = { eventId: 'br:customer:opaque-id', type: 'order_status', recipient: '5544988887777', text: 'Seu pedido esta em separacao.' };
+
+test('cliente exige payload estrito e telefone BR canonico sem fallback para loja', async (t) => {
+  let calls = 0;
+  const api = await fixture(t, { send: async () => { calls++; return 'id'; } });
+  for (const recipient of [undefined, '', '+5544988887777', '55 44 988887777', '5544988887777\n', '5544988887777@s.whatsapp.net', '5544988887777@g.us', 'https://5544988887777', '5500988887777', '554498888777', '5444988887777', '5544088887777', '554468887777']) {
+    assert.equal((await api.customer({ ...customerEvent, recipient })).status, 400, String(recipient));
+  }
+  for (const payload of [{ ...customerEvent, extra: true }, { ...customerEvent, type: 'order' }, { ...customerEvent, text: '' }, { ...customerEvent, text: 'x'.repeat(3001) }, { ...customerEvent, eventId: '@invalid' }, { ...customerEvent, text: '\u0000' }]) {
+    assert.equal((await api.customer(payload)).status, 400);
+  }
+  assert.equal((await api.post(customerEvent)).status, 400);
+  assert.equal(calls, 0);
+});
+
+test('cliente envia ao destinatario exato e deduplica com isolamento de canal e destino', async (t) => {
+  const recipients: string[] = [];
+  const api = await fixture(t, { recipient: '', send: async (recipient) => { recipients.push(recipient); return 'id'; } });
+  assert.equal((await api.customer(customerEvent)).body.accepted, true);
+  assert.equal((await api.customer(customerEvent)).body.duplicate, true);
+  assert.equal((await api.customer({ ...customerEvent, recipient: '5544999997777' })).status, 409);
+  assert.equal((await api.post({ ...event, eventId: customerEvent.eventId })).status, 409);
+  assert.deepEqual(recipients, [customerEvent.recipient]);
+  assert.equal((await api.customer({ ...customerEvent, eventId: 'br:customer:landline', recipient: '554432221111' })).body.accepted, true);
+});
+
+test('cliente concorre sem reenviar e nao reutiliza identificador de alerta', async (t) => {
+  let calls = 0;
+  let release!: (value: string) => void;
+  const pending = new Promise<string>((resolve) => { release = resolve; });
+  const api = await fixture(t, { send: async () => { calls++; return pending; } });
+  const first = api.customer(customerEvent);
+  while (!calls) await new Promise((resolve) => setTimeout(resolve, 1));
+  const duplicate = await api.customer(customerEvent);
+  assert.equal(duplicate.body.uncertain, true);
+  assert.equal(duplicate.body.retryable, false);
+  release('id');
+  assert.equal((await first).body.accepted, true);
+  assert.equal((await api.post()).body.accepted, true);
+  assert.equal((await api.customer({ ...customerEvent, eventId: event.eventId })).status, 409);
+  assert.equal(calls, 2);
+});
+
+test('cliente exige o token exclusivo antes de validar ou enviar', async (t) => {
+  const api = await fixture(t);
+  for (const authorization of ['', 'Bearer legacy']) {
+    assert.equal((await fetch(`${api.base}/customer-status`, { method: 'POST', headers: { authorization, 'content-type': 'application/json' }, body: JSON.stringify(customerEvent) })).status, 401);
+  }
+  const disabled = await fixture(t, { token: '' });
+  assert.equal((await disabled.customer(customerEvent)).status, 503);
+});
+
+test('cliente bloqueia canal pausado e conexao ausente antes do transporte e permite retomar', async (t) => {
+  for (const reason of ['provider_paused', 'channel_disabled', 'disconnected', 'unknown', 'error']) {
+    let blocked = true;
+    let calls = 0;
+    const api = await fixture(t, {
+      preflight: async () => blocked && ['provider_paused', 'channel_disabled'].includes(reason) ? reason : null,
+      connection: async () => { if (blocked && reason === 'error') throw new Error('connection failed'); return blocked && reason === 'disconnected' ? false : blocked && reason === 'unknown' ? null : true; },
+      send: async () => { calls++; return 'id'; },
+    });
+    const first = await api.customer(customerEvent);
+    assert.equal(first.body.status, 'blocked', reason);
+    assert.equal(first.body.retryable, true);
+    assert.equal(calls, 0);
+    blocked = false;
+    assert.equal((await api.customer(customerEvent)).body.accepted, true);
+    assert.equal(calls, 1);
+  }
+});
+
+for (const scenario of ['empty', 'error', 'timeout']) {
+  test(`cliente resultado ${scenario} fica incerto sem repetir`, async (t) => {
+    let calls = 0;
+    const api = await fixture(t, { timeoutMs: 10, send: async () => {
+      calls++;
+      if (scenario === 'error') throw new Error('failed');
+      if (scenario === 'timeout') return new Promise<string>(() => {});
+      return '';
+    } });
+    assert.equal((await api.customer(customerEvent)).body.status, 'uncertain');
+    assert.equal((await api.customer(customerEvent)).body.retryable, false);
+    assert.equal(calls, 1);
+  });
+}
 
 test('canal desligado e destinatario ausente bloqueiam sem invocar transporte', async (t) => {
   for (const options of [{ preflight: async () => 'channel_disabled' }, { recipient: '' }]) {
