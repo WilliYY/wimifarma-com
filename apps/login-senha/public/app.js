@@ -7,6 +7,8 @@
   var draggedRow = null;
   var dragStartOrder = '';
   var lastDragAt = 0;
+  var savingOrder = false;
+  var hiddenEntries = Object.create(null);
 
   function closestButton(target) {
     return target && target.closest ? target.closest('[data-vault-action]') : null;
@@ -39,11 +41,9 @@
     var editor = editorForRow(row);
     row.classList.remove('is-selected');
     row.setAttribute('aria-expanded', 'false');
+    var editButton = row.querySelector('[data-vault-action="edit"]');
+    if (editButton) editButton.setAttribute('aria-expanded', 'false');
     if (editor) {
-      hidePassword(
-        editor.querySelector('.vault-secret-output'),
-        editor.querySelector('[data-vault-action="reveal"]')
-      );
       editor.hidden = true;
     }
   }
@@ -59,6 +59,8 @@
     });
     row.classList.toggle('is-selected', willOpen);
     row.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    var editButton = row.querySelector('[data-vault-action="edit"]');
+    if (editButton) editButton.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
     editor.hidden = !willOpen;
     if (willOpen) {
       var firstInput = editor.querySelector('input[name="name"]');
@@ -112,7 +114,11 @@
     document.body.appendChild(textarea);
     textarea.select();
     try {
-      document.execCommand('copy');
+      if (!document.execCommand('copy')) {
+        throw new Error('Nao foi possivel copiar. Selecione o texto e use Ctrl+C.');
+      }
+    } catch (error) {
+      return Promise.reject(error);
     } finally {
       document.body.removeChild(textarea);
     }
@@ -130,11 +136,48 @@
     }
   }
 
-  function hidePassword(output, button) {
-    if (!output) return;
-    output.type = 'password';
-    output.value = mask;
-    setRevealButtonLabel(button, false);
+  function setEntryPassword(entry, password, visible) {
+    var id = entry.getAttribute('data-entry-id') || '';
+    var row = document.querySelector('.vault-entry-row[data-entry-id="' + id + '"]');
+    var editor = editorForRow(row);
+    [row, editor].forEach(function (container) {
+      if (!container) return;
+      var output = outputFromEntry(container);
+      if (output) {
+        output.type = visible ? 'text' : 'password';
+        output.value = visible ? password : mask;
+        output.removeAttribute('aria-invalid');
+        output.removeAttribute('title');
+      }
+      setRevealButtonLabel(container.querySelector('[data-vault-action="row-reveal"], [data-vault-action="reveal"]'), visible);
+    });
+  }
+
+  function showInitialPasswords() {
+    var rows = Array.prototype.slice.call(document.querySelectorAll('.vault-entry-row'));
+    function revealNext() {
+      var row = rows.shift();
+      if (!row) return;
+      var id = row.getAttribute('data-entry-id');
+      var button = row.querySelector('[data-vault-action="row-reveal"]');
+      setBusy(button, true);
+      postEntryAction(id, 'reveal').then(function (data) {
+        if (!hiddenEntries[id]) setEntryPassword(row, data.password || '', true);
+      }).catch(function (error) {
+        if (hiddenEntries[id]) return;
+        [row, editorForRow(row)].forEach(function (container) {
+          var output = outputFromEntry(container);
+          if (!output || output.value) return;
+          output.placeholder = 'Senha indisponivel';
+          output.setAttribute('aria-invalid', 'true');
+          output.setAttribute('title', error.message || 'Nao foi possivel carregar a senha.');
+        });
+      }).finally(function () {
+        setBusy(button, false);
+        revealNext();
+      });
+    }
+    for (var index = 0; index < Math.min(4, rows.length); index += 1) revealNext();
   }
 
   function currentOrder() {
@@ -185,10 +228,13 @@
     var order = currentOrder();
     if (!dragStartOrder || order.join(',') === dragStartOrder) return;
     var wrap = document.querySelector('.vault-entry-table-wrap');
+    savingOrder = true;
     if (wrap) wrap.classList.add('is-saving-order');
     postOrder(order).then(function () {
+      savingOrder = false;
       if (wrap) wrap.classList.remove('is-saving-order');
     }).catch(function (error) {
+      savingOrder = false;
       if (wrap) wrap.classList.remove('is-saving-order');
       window.alert(error && error.message ? error.message : 'Falha ao salvar ordem.');
       window.location.reload();
@@ -217,24 +263,24 @@
       return;
     }
     var button = closestButton(event.target);
-    if (!button) {
-      var row = closestEntryRow(event.target);
-      if (row) {
-        event.preventDefault();
-        toggleEntryEditor(row);
-      }
-      return;
-    }
+    if (!button) return;
     var action = button.getAttribute('data-vault-action') || '';
     var id = button.getAttribute('data-entry-id') || '';
     var entry = entryFromButton(button);
     var output = outputFromEntry(entry);
     if (!id || !action) return;
-
-    if ((action === 'reveal' || action === 'row-reveal') && output && output.type === 'text') {
-      hidePassword(output, button);
+    event.preventDefault();
+    if (action === 'edit') {
+      toggleEntryEditor(closestEntryRow(button));
       return;
     }
+
+    if ((action === 'reveal' || action === 'row-reveal') && output && output.type === 'text' && output.value !== '') {
+      hiddenEntries[id] = true;
+      setEntryPassword(entry, '', false);
+      return;
+    }
+    if (action === 'reveal' || action === 'row-reveal') delete hiddenEntries[id];
 
     event.preventDefault();
     setBusy(button, true, '...');
@@ -256,13 +302,8 @@
           window.setTimeout(function () { setBusy(button, false); }, 1200);
         });
       }
-      if (output) {
-        output.type = 'text';
-        output.value = data.password || '';
-        setRevealButtonLabel(button, true);
-        window.setTimeout(function () { hidePassword(output, button); }, 15000);
-      }
-      button.disabled = false;
+      setBusy(button, false);
+      if (!hiddenEntries[id]) setEntryPassword(entry, data.password || '', true);
       return null;
     }).catch(function (error) {
       window.alert(error && error.message ? error.message : 'Falha na acao.');
@@ -271,8 +312,14 @@
   });
 
   document.addEventListener('dragstart', function (event) {
-    var row = closestEntryRow(event.target);
-    if (!row || !row.draggable) return;
+    var handle = closestDragHandle(event.target);
+    if (!handle) return;
+    if (savingOrder) {
+      event.preventDefault();
+      return;
+    }
+    var row = closestEntryRow(handle);
+    if (!row) return;
     draggedRow = row;
     dragStartOrder = currentOrder().join(',');
     document.querySelectorAll('.vault-entry-row.is-selected').forEach(closeEntryEditor);
@@ -304,12 +351,21 @@
   document.addEventListener('dragend', finishDrag);
 
   document.addEventListener('keydown', function (event) {
-    if (closestDragHandle(event.target)) return;
-    var row = closestEntryRow(event.target);
-    if (!row) return;
-    if (event.key !== 'Enter' && event.key !== ' ') return;
+    var handle = closestDragHandle(event.target);
+    if (!handle || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
     event.preventDefault();
-    toggleEntryEditor(row);
+    if (savingOrder || draggedRow) return;
+    var row = closestEntryRow(handle);
+    var rows = Array.prototype.slice.call(document.querySelectorAll('.vault-entry-row'));
+    var index = rows.indexOf(row);
+    var target = rows[index + (event.key === 'ArrowUp' ? -1 : 1)];
+    if (!target) return;
+    dragStartOrder = currentOrder().join(',');
+    moveRowPair(row, target, event.key === 'ArrowDown');
+    updateRowNumbers();
+    saveOrderIfChanged();
+    dragStartOrder = '';
+    handle.focus();
   });
 
   document.addEventListener('submit', function (event) {
@@ -320,4 +376,6 @@
       event.preventDefault();
     }
   });
+
+  showInitialPasswords();
 }());

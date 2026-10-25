@@ -867,9 +867,9 @@ function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
   const id = toNumber(entry.id);
   const updatedText = entry.updated_at ? `Atualizado em ${e(brDateTime(entry.updated_at))}` : `Criado em ${e(brDateTime(entry.created_at))}`;
   return `
-    <tr class="vault-entry-row" data-entry-id="${id}" draggable="true" tabindex="0" aria-expanded="false" aria-controls="vault-entry-editor-${id}">
+    <tr class="vault-entry-row" data-entry-id="${id}" aria-expanded="false">
       <td class="vault-col-index">
-        <button type="button" class="vault-drag-handle" data-vault-drag-handle aria-label="Arrastar ${e(entry.name)}" title="Arrastar">
+        <button type="button" class="vault-drag-handle" data-vault-drag-handle draggable="true" aria-label="Mover ${e(entry.name)}" title="Arraste ou use as setas para cima e para baixo">
           <span class="vault-drag-icon" aria-hidden="true"></span>
           <span class="vault-row-number">${index + 1}</span>
         </button>
@@ -881,14 +881,14 @@ function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
       <td class="vault-cell-login"><span class="vault-mono">${e(entry.login_username)}</span></td>
       <td class="vault-cell-password">
         <div class="vault-password-inline">
-          <input class="vault-row-password-output" type="password" readonly tabindex="-1" value="********" aria-label="Senha de ${e(entry.name)}">
+          <input class="vault-row-password-output" type="text" readonly value="" placeholder="Carregando..." autocomplete="off" spellcheck="false" aria-label="Senha de ${e(entry.name)}">
           <button type="button" class="vault-icon-btn vault-secret-toggle" data-vault-action="row-reveal" data-entry-id="${id}" aria-label="Mostrar senha" title="Mostrar senha">
             ${renderEyeIcon()}
           </button>
         </div>
       </td>
       <td><span class="vault-pill">Ativo</span></td>
-      <td><span class="vault-edit-pill">Editar</span></td>
+      <td><button type="button" class="vault-edit-pill" data-vault-action="edit" data-entry-id="${id}" aria-expanded="false" aria-controls="vault-entry-editor-${id}">Editar</button></td>
     </tr>
     <tr class="vault-entry-edit-row" id="vault-entry-editor-${id}" data-entry-id="${id}" hidden>
       <td colspan="6">
@@ -916,11 +916,11 @@ function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
               </label>
               <label>
                 <span>Nova senha</span>
-                <input name="password" type="password" maxlength="512" placeholder="Deixe em branco para manter" autocomplete="new-password">
+                <input name="password" type="text" maxlength="512" placeholder="Deixe em branco para manter" autocomplete="new-password" spellcheck="false">
               </label>
             </div>
             <div class="vault-secret-row">
-              <input class="vault-secret-output" type="password" readonly value="********" aria-label="Senha">
+              <input class="vault-secret-output" type="text" readonly value="" placeholder="Carregando..." autocomplete="off" spellcheck="false" aria-label="Senha">
               <button type="button" class="vault-btn vault-btn-soft" data-vault-action="reveal" data-entry-id="${id}">Mostrar</button>
               <button type="button" class="vault-btn vault-btn-soft" data-vault-action="copy-login" data-entry-id="${id}">Copiar login</button>
               <button type="button" class="vault-btn vault-btn-soft" data-vault-action="copy-password" data-entry-id="${id}">Copiar senha</button>
@@ -1071,8 +1071,8 @@ function renderPage(req: Request, user: User, entries: EntryRow[], archivedEntri
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="${e(csrf)}">
   <title>${e(view.title)} - Wimifarma</title>
-  <link rel="stylesheet" href="${basePath}/styles.css?v=20260608a">
-  <script src="${basePath}/app.js?v=20260605d" defer></script>
+  <link rel="stylesheet" href="${basePath}/styles.css?v=20261025a">
+  <script src="${basePath}/app.js?v=20261025a" defer></script>
 </head>
 <body data-base-path="${e(basePath)}" data-vault-scope="${e(view.scope)}">
   <header class="vault-topbar">
@@ -1117,7 +1117,7 @@ function renderPage(req: Request, user: User, entries: EntryRow[], archivedEntri
           </label>
           <label>
             <span>Senha</span>
-            <input name="password" type="password" maxlength="512" autocomplete="new-password" required>
+            <input name="password" type="text" maxlength="512" autocomplete="new-password" spellcheck="false" required>
           </label>
         </div>
         <button class="vault-btn vault-btn-primary" type="submit">Salvar acesso</button>

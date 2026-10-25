@@ -386,7 +386,7 @@ input:focus {
 }
 
 .vault-entry-row {
-  cursor: pointer;
+  cursor: auto;
   background: transparent;
   transition: background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
@@ -459,6 +459,16 @@ input:focus {
   font: inherit;
   font-weight: 900;
   cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.vault-cell-main,
+.vault-cell-login,
+.vault-row-password-output,
+.vault-secret-output {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .vault-drag-handle:active {

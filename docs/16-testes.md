@@ -38,6 +38,7 @@ Rotas de smoke test:
 - `/usuarios/login.php` deve responder 200 e aceitar somente usuario `adm` ou role `admin`
 - `/usuarios/health` deve responder JSON 200 quando o servico Usuarios, o core Postgres e o schema central estiverem ativos
 - `/login-senha/health` deve responder JSON 200 com banco e core ativos. Em uma transacao com rollback, a consulta usada por `Salvar acesso` deve aceitar `scope='geral'`, calcular o proximo `sort_order` e inserir uma credencial cifrada sem `inconsistent types deduced for parameter $1`; nenhum valor de senha pode aparecer em logs ou saidas do teste.
+- Para Login / Senha, executar `npm.cmd test --prefix apps/login-senha`, `npm.cmd run check --prefix apps/login-senha` e `npm.cmd run build --prefix apps/login-senha`. A suite de frontend cobre revelacao automatica por POST com CSRF, ausencia de ocultacao temporizada, selecao de texto sem abrir editor, teclado em campos, botao Editar, arrasto apenas pela alca e falhas de revelacao/copia. No navegador, validar tambem ordem por arrasto e setas, ocultacao sincronizada, copia e viewport de 390 px, sempre com credenciais ficticias. Em producao, validar health, assets publicados e bloqueio sem sessao/CSRF sem alterar dados do cofre.
 - `/tarefa/login.php`
 - `/tarefa/health` deve responder JSON 200 quando o servico de Tarefa e seu Postgres estiverem ativos
 - `/tarefa/badge.php` deve responder JSON sem segredo com a quantidade de tarefas abertas
