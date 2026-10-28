@@ -1,5 +1,7 @@
 # 16 - Testes
 
+Desde 2026-10-28, validar a retirada do Calendario com `node --test scripts/test-calendar-retirement.mjs`; `/calendario` e subrotas devem responder HTTP 410. Preservar datas/horarios de tarefas, o seletor de datas do Financeiro e os dados historicos do modulo retirado.
+
 ## O que esta parte do sistema faz
 
 Registra como o projeto e validado hoje e como deve evoluir para testes automatizados.

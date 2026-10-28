@@ -52,7 +52,7 @@ O registro inicial cobre as familias operacionais existentes:
 - criar, listar chegada e cancelar pedidos;
 - criar conta da Gestao;
 - relatorios e resumos por modulo;
-- calendario e demais consultas registradas nos contratos de tools.
+- demais consultas ativas dos contratos de tools; Calendario foi retirado e recebe recusa controlada.
 - emissao direta e idempotente de Cashback rapido.
 
 Novos comandos devem adicionar uma especificacao ao registro central e testes de linguagem natural; nao devem adicionar combinacoes para cada ordem possivel.

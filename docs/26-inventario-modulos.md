@@ -813,78 +813,11 @@ Legado/rollback:
 
 Validar no VPS `/codigos/health`, login, leitura do Miauby via token, busca e reordenacao. Depois repetir o mesmo corte cuidadoso em XP.
 
-## Calendario
+## Calendario retirado
 
-### Rota atual
+Desde 2026-10-28, o modulo Calendario foi retirado da Home, Usuarios e Miauby; /calendario e subrotas respondem HTTP 410 e seus servicos sairam do Compose. Preservar calendario-data/postgres e backups. Codigo e artes podem ser recuperados pelo historico Git. Nao reativar automaticamente. Consulte docs/38-retirada-calendario.md.
 
-- Rota publica oficial: `/calendario/`.
-- Proxy Apache: `docker/php/Dockerfile` envia `/calendario/` para `wimifarma-calendario-app:4105/calendario/`.
-- App oficial: `apps/calendario`, Node.js 22 + TypeScript + Express.
-- Fonte oficial: Postgres dedicado `wimifarma_calendario`.
-- Imagens mensais: `apps/calendario/public/months/month-01.png` ate `month-12.png`, geradas de `Calendario.pdf`.
-- Decisao 2027: usar outro PDF/modelo visual vindo do Canva quando o usuario fornecer, mantendo as mesmas features de 2026; a troca deve focar em imagens mensais, design e recalibragem das areas editaveis/alinhamentos, sem trocar backend, autosave, revisoes, paleta, botao direito, tooltip, arraste, permissoes ou resumo Miauby.
-
-### Telas e endpoints
-
-- `/calendario/` e `/calendario/index.php`: tela do calendario com cabecalho introdutorio compacto, navegacao por seta/arraste, edicao por dia, painel lateral e barra superior com controles de mes/ano agrupados em uma pilula compacta.
-- `/calendario/health`: health do app.
-- `/calendario/api/state`: estado do ano, cores e anotacoes.
-- `/calendario/api/day`: autosave de anotacao/cor por dia.
-- `/calendario/api/colors`: cria/edita cores nomeadas.
-- `/calendario/api/colors/:id/archive`: arquiva uma cor e limpa vinculos.
-- `/calendario/api/create-next-year`: cria o proximo ano limpo, copiando a paleta.
-- `/calendario/api/internal/summary`: resumo interno tokenizado para Miauby/status.
-
-### Permissoes e sessao
-
-- Sessao propria `WFCALENDARIO`.
-- Login oficial por `core_users` e `WFHOME_SSO`.
-- Permissao por `core_user_module_permissions.module_key='calendario'`; linha explicita `can_access=false` bloqueia, ausencia de linha preserva acesso legado para modulo comum.
-- Escritas usam CSRF.
-
-### Tabelas Postgres oficiais
-
-- `calendario_calendars`;
-- `calendario_colors`;
-- `calendario_day_notes`;
-- `calendario_day_note_revisions`;
-- `calendario_audit_events`;
-- `calendario_sessions`.
-
-### Fluxos de escrita
-
-- Clicar/digitar em um quadrado cria ou atualiza `calendario_day_notes`.
-- Escolher cor no painel lateral salva `color_id` do dia.
-- Clicar com o botao direito em um quadrado abre uma paleta flutuante para pintar ou limpar `color_id`, reutilizando o mesmo autosave de `/calendario/api/day`.
-- Textos longos sem espaco devem quebrar linha no painel lateral e no resumo, sem rolagem horizontal.
-- Desde 2026-06-08, o painel lateral usa altura ajustada ao conteudo e swatches circulares compactos para reduzir area vazia sem mexer em autosave, paleta, menu de botao direito ou banco.
-- Ao deixar o mouse parado sobre um quadrado com anotacao, um tooltip visual mostra o texto completo; o `title` nativo fica como fallback.
-- A escrita e a cor sao renderizadas como camada interna aos quadrados impressos da imagem, com pintura translucida em lavagem suave tipo marcador, sem redesenhar ano/numeros e sem alterar autosave, CSRF ou endpoints.
-- A selecao visual do dia deve acompanhar clique/foco direto na caixa, e os botoes de mes usam entidades HTML para evitar caracteres quebrados.
-- O arraste horizontal desloca imagem e camada editavel juntas; ao cruzar o limiar, a troca de mes usa animacao lateral de saida/entrada e respeita `prefers-reduced-motion`.
-- O autosave de dia usa timer independente por dia no frontend, roda em transacao com lock por dia, registra revisao antes/depois em `calendario_day_note_revisions` e recusa sobrescrita quando o `updated_at` enviado pela tela esta antigo.
-- Ao trocar de ano ou criar o proximo calendario, a tela tenta salvar pendencias antes de carregar outro calendario.
-- Criar/editar cor grava significado em `calendario_colors`.
-- Arquivar cor limpa o vinculo dos dias afetados somente depois de registrar revisoes desses dias.
-- `Criar proximo calendario` cria novo ano com paleta copiada e sem notas/marcacoes.
-
-### Integracoes
-
-- Home publica aponta `Calendario` para `/calendario/`, logo depois de `Codigos`.
-- Usuarios libera/bloqueia o modulo pelo card `Calendario`.
-- Miauby status consulta `/calendario/api/internal/summary` sem retornar texto completo das notas.
-- Widget Miauby aponta para o card quando o texto mencionar calendario/plantao.
-
-### Riscos
-
-- As anotacoes nao fazem parte da imagem do PDF; perda do volume `calendario-data/` remove o conteudo editavel.
-- Revisoes reduzem perda por erro humano/aba antiga, mas nao substituem backup do volume Postgres.
-- Meses de seis semanas podem dividir o ultimo quadrado visual em duas datas; a UI separa os overlays para nao misturar notas.
-- O endpoint interno do Miauby deve continuar sanitizado para nao vazar notas completas.
-
-### Proxima acao segura
-
-Validar no VPS `/calendario/health`, acesso via Home/SSO, autosave de nota/cor, criacao de proximo ano, permissao por usuario e resumo interno Miauby.
+Preservar as tabelas historicas de anos, cores, notas, revisoes, auditoria e sessoes; nenhuma migracao destrutiva foi criada.
 
 ## Usuarios
 

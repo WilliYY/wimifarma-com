@@ -108,21 +108,6 @@ const toolContracts: ToolContract[] = [
     audit: [],
   },
   {
-    name: 'resumo_calendario',
-    title: 'Resumo Calendario',
-    module: 'calendario',
-    level: 'leitura',
-    risk: 'baixo',
-    permission: 'autenticado',
-    openaiTool: true,
-    localAction: false,
-    description: 'Consulta resumo seguro do Calendario: anos, cores, dias marcados, meses com marcacao e atualizacoes recentes, sem retornar texto completo das anotacoes.',
-    parameters: optionalMonthYearSchema,
-    required: [],
-    effects: ['nao_expor_texto_completo_das_notas'],
-    audit: [],
-  },
-  {
     name: 'buscar_cliente',
     title: 'Buscar cliente',
     module: 'cashback',
@@ -490,7 +475,7 @@ const toolContracts: ToolContract[] = [
   },
 ];
 
-const nodeReadBridgeTools = new Set(['resumo_financeiro', 'resumo_cashback', 'resumo_codigos', 'resumo_gestao', 'resumo_calendario', 'buscar_codigo_comissao', 'buscar_cotacao']);
+const nodeReadBridgeTools = new Set(['resumo_financeiro', 'resumo_cashback', 'resumo_codigos', 'resumo_gestao', 'buscar_codigo_comissao', 'buscar_cotacao']);
 const toolsRequiringConfirmation = new Set([
   'registrar_sangria',
   'criar_lancamento_financeiro',
@@ -581,7 +566,7 @@ export function buildCanonicalToolContracts(filters: ToolContractFilters = {}) {
   const checksum = crypto.createHash('sha256').update(stableJson(tools)).digest('hex');
 
   return {
-    version: 'miauby-node-tool-contracts-2026-06-07-calendario',
+    version: 'miauby-node-tool-contracts-2026-10-28',
     agent_version: '2.0-fase21',
     phase: 'node-readonly-context-persona-tools',
     source: 'apps/miauby_node_contract_registry',

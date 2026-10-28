@@ -6,6 +6,7 @@
 /tarefa-data/
 /xp-data/
 /codigos-data/
+# Calendario aposentado: preservar dados historicos fora do Git.
 /calendario-data/
 /financeiro-data/
 /notas-data/

@@ -112,14 +112,8 @@ RUN { \
     } > /etc/apache2/conf-available/wimifarma-codigos-proxy.conf \
     && a2enconf wimifarma-codigos-proxy
 
-RUN { \
-        echo 'ProxyPreserveHost On'; \
-        echo 'ProxyPass "/calendario/" "http://wimifarma-calendario-app:4105/calendario/"'; \
-        echo 'ProxyPassReverse "/calendario/" "http://wimifarma-calendario-app:4105/calendario/"'; \
-        echo 'ProxyPass "/calendario" "http://wimifarma-calendario-app:4105/calendario"'; \
-        echo 'ProxyPassReverse "/calendario" "http://wimifarma-calendario-app:4105/calendario"'; \
-    } > /etc/apache2/conf-available/wimifarma-calendario-proxy.conf \
-    && a2enconf wimifarma-calendario-proxy
+RUN echo 'RedirectMatch 410 "^/calendario(?:/|$)"' > /etc/apache2/conf-available/wimifarma-calendario-retired.conf \
+    && a2enconf wimifarma-calendario-retired
 
 RUN { \
         echo 'ProxyPreserveHost On'; \

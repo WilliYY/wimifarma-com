@@ -6,7 +6,7 @@ project_dir="${WIMIFARMA_PROJECT_DIR:-$(cd "$script_dir/.." && pwd)}"
 backup_dir="${WIMIFARMA_BACKUP_DIR:-/home/ubuntu/projetos/_backups-wimifarma/automatic}"
 retention_days="${WIMIFARMA_BACKUP_RETENTION_DAYS:-30}"
 timestamp="${WIMIFARMA_BACKUP_TIMESTAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
-postgres_csv="${WIMIFARMA_POSTGRES_CONTAINERS:-wimifarma-core-db,wimifarma-cotacao-db,wimifarma-gestao-db,wimifarma-tarefa-db,wimifarma-xp-db,wimifarma-codigos-db,wimifarma-calendario-db,wimifarma-financeiro-db,wimifarma-cashback-db,wimifarma-login-senha-db,wimifarma-notas-db,wimifarma-entrega-db,wimifarma-comissao-db,wimifarma-miauw-whatsapp-db,wimifarma-miauby-db}"
+postgres_csv="${WIMIFARMA_POSTGRES_CONTAINERS:-wimifarma-core-db,wimifarma-cotacao-db,wimifarma-gestao-db,wimifarma-tarefa-db,wimifarma-xp-db,wimifarma-codigos-db,wimifarma-financeiro-db,wimifarma-cashback-db,wimifarma-login-senha-db,wimifarma-notas-db,wimifarma-entrega-db,wimifarma-comissao-db,wimifarma-miauw-whatsapp-db,wimifarma-miauby-db}"
 mysql_container="${WIMIFARMA_MYSQL_CONTAINER:-wimifarma-com-db}"
 offsite_remote="${WIMIFARMA_BACKUP_REMOTE:-}"
 

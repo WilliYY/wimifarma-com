@@ -281,24 +281,6 @@ function miauw_skill_registry(): array
             'auditoria' => array(),
             'efeitos' => array(),
         ),
-        'resumo_calendario' => array(
-            'nome' => 'resumo_calendario',
-            'titulo' => 'Resumo Calendario',
-            'modulo' => 'calendario',
-            'nivel' => 'leitura',
-            'risco' => 'baixo',
-            'permissao' => 'autenticado',
-            'executor' => 'miauw_skill_calendario_summary',
-            'openai_tool' => true,
-            'local_action' => false,
-            'fase' => 4,
-            'card' => 'Calendario',
-            'aliases' => array('calendario', 'agenda', 'plantao', 'escala'),
-            'entrada' => array('mes', 'ano'),
-            'saida' => 'Resumo seguro de anos, cores, dias marcados e atualizacoes, sem texto completo das anotacoes.',
-            'auditoria' => array(),
-            'efeitos' => array('nao_expor_texto_completo_das_notas'),
-        ),
         'buscar_cliente' => array(
             'nome' => 'buscar_cliente',
             'titulo' => 'Buscar cliente',
@@ -1215,110 +1197,6 @@ function miauw_skill_codigos_summary(array $period): array
     }
 
     return array('CODIGOS: consulta interna moderna indisponivel agora. Nao vou cair no legado.');
-}
-
-function miauw_skill_calendario_summary(array $period): array
-{
-    if (!miauw_skill_calendario_internal_configured()) {
-        return array('CALENDARIO: ponte interna moderna sem token. Confira /calendario/ enquanto isso.');
-    }
-
-    $year = (int) ($period['year'] ?? $period['ano'] ?? date('Y'));
-    $month = (int) ($period['month'] ?? $period['mes'] ?? 0);
-    if ($year < 2020 || $year > 2035) {
-        $year = (int) date('Y');
-    }
-
-    try {
-        $response = miauw_skill_calendario_internal_request('GET', '/api/internal/summary', array(), array('year' => $year));
-    } catch (Throwable $error) {
-        error_log('Miauby Calendario summary failed: ' . $error->getMessage());
-        return array('CALENDARIO: nao consegui consultar o Postgres do modulo agora. Confira /calendario/.');
-    }
-
-    if (!is_array($response) || empty($response['ok'])) {
-        return array('CALENDARIO: resumo interno indisponivel agora. Confira /calendario/.');
-    }
-
-    $calendar = is_array($response['calendar'] ?? null) ? $response['calendar'] : array();
-    $totals = is_array($response['totals'] ?? null) ? $response['totals'] : array();
-    $colors = is_array($response['active_colors'] ?? null) ? $response['active_colors'] : array();
-    $byMonth = is_array($response['marked_days_by_month'] ?? null) ? $response['marked_days_by_month'] : array();
-    $recent = is_array($response['recent_updates'] ?? null) ? $response['recent_updates'] : array();
-    $displayYear = (int) ($calendar['year'] ?? $year);
-
-    $lines = array(
-        'CALENDARIO ' . $displayYear,
-        'Anos disponiveis: ' . (int) ($totals['years'] ?? 0),
-        'Dias marcados: ' . (int) ($totals['marked_days'] ?? 0)
-            . ' | com texto: ' . (int) ($totals['days_with_text'] ?? 0)
-            . ' | com cor: ' . (int) ($totals['days_with_color'] ?? 0),
-        'Cores ativas: ' . (int) ($totals['active_colors'] ?? 0),
-        'Fonte: Calendario Node/Postgres; texto completo das anotacoes nao sai no resumo interno.',
-    );
-
-    if ($colors) {
-        $parts = array();
-        foreach (array_slice($colors, 0, 8) as $color) {
-            if (!is_array($color)) {
-                continue;
-            }
-            $label = trim((string) ($color['label'] ?? ''));
-            if ($label !== '') {
-                $parts[] = $label;
-            }
-        }
-        if ($parts) {
-            $lines[] = 'Paleta ativa: ' . implode(', ', $parts) . '.';
-        }
-    }
-
-    if ($byMonth) {
-        $parts = array();
-        foreach ($byMonth as $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-            $entryMonth = (int) ($entry['month'] ?? 0);
-            if ($month > 0 && $entryMonth !== $month) {
-                continue;
-            }
-            $parts[] = (string) ($entry['month_name'] ?? $entryMonth)
-                . ': ' . (int) ($entry['marked_days'] ?? 0)
-                . ' marcados';
-        }
-        if ($parts) {
-            $lines[] = 'Meses com marcacao: ' . implode('; ', $parts) . '.';
-        } elseif ($month > 0) {
-            $lines[] = 'Mes consultado: sem dia marcado no resumo seguro.';
-        }
-    }
-
-    if ($recent) {
-        $lines[] = 'Atualizacoes recentes sem texto completo:';
-        foreach (array_slice($recent, 0, 5) as $item) {
-            if (!is_array($item)) {
-                continue;
-            }
-            $date = str_pad((string) ((int) ($item['day'] ?? 0)), 2, '0', STR_PAD_LEFT)
-                . '/' . str_pad((string) ((int) ($item['month'] ?? 0)), 2, '0', STR_PAD_LEFT);
-            $details = array();
-            $details[] = !empty($item['has_text']) ? 'tem texto' : 'sem texto';
-            $colorLabel = trim((string) ($item['color_label'] ?? ''));
-            if ($colorLabel !== '') {
-                $details[] = 'cor ' . $colorLabel;
-            }
-            $updatedAt = trim((string) ($item['updated_at'] ?? ''));
-            if ($updatedAt !== '') {
-                $details[] = 'atualizado ' . (function_exists('br_date') ? br_date($updatedAt, true) : $updatedAt);
-            }
-            $lines[] = '- ' . $date . ': ' . implode(', ', $details) . '.';
-        }
-    }
-
-    $lines[] = 'Regra: para ler, editar, pintar ou confirmar o conteudo exato, abra /calendario/. O Miauby nao deve inventar anotacao.';
-
-    return $lines;
 }
 
 function miauw_skill_notas_summary(array $period): array
@@ -3552,51 +3430,6 @@ function miauw_skill_codigos_internal_request(string $method, string $path, arra
     return $data;
 }
 
-function miauw_skill_calendario_internal_token(): string
-{
-    if (defined('CALENDARIO_INTERNAL_TOKEN') && trim((string) CALENDARIO_INTERNAL_TOKEN) !== '') {
-        return trim((string) CALENDARIO_INTERNAL_TOKEN);
-    }
-
-    if (defined('MIAUW_GUARDIAN_TOKEN') && trim((string) MIAUW_GUARDIAN_TOKEN) !== '') {
-        return trim((string) MIAUW_GUARDIAN_TOKEN);
-    }
-
-    if (defined('MIAUW_AGENT_INTERNAL_TOKEN') && trim((string) MIAUW_AGENT_INTERNAL_TOKEN) !== '') {
-        return trim((string) MIAUW_AGENT_INTERNAL_TOKEN);
-    }
-
-    return miauw_skill_env_value(array('CALENDARIO_INTERNAL_TOKEN', 'MIAUW_GUARDIAN_TOKEN', 'MIAUW_AGENT_INTERNAL_TOKEN'));
-}
-
-function miauw_skill_calendario_internal_base_url(): string
-{
-    $url = defined('CALENDARIO_INTERNAL_BASE_URL') ? trim((string) CALENDARIO_INTERNAL_BASE_URL) : '';
-    if ($url === '') {
-        $url = miauw_skill_env_value(array('CALENDARIO_INTERNAL_BASE_URL'));
-    }
-
-    return rtrim($url !== '' ? $url : 'http://wimifarma-calendario-app:4105/calendario', '/');
-}
-
-function miauw_skill_calendario_internal_configured(): bool
-{
-    return miauw_skill_calendario_internal_token() !== '';
-}
-
-function miauw_skill_calendario_internal_request(string $method, string $path, array $payload = array(), array $query = array()): ?array
-{
-    return miauw_skill_internal_json_request(
-        miauw_skill_calendario_internal_token(),
-        miauw_skill_calendario_internal_base_url(),
-        $method,
-        $path,
-        $payload,
-        $query,
-        5
-    );
-}
-
 function miauw_skill_notas_internal_token(): string
 {
     if (defined('NOTAS_INTERNAL_TOKEN') && trim((string) NOTAS_INTERNAL_TOKEN) !== '') {
@@ -5481,10 +5314,6 @@ function miauw_skill_detect_modules(string $message): array
         $modules[] = 'cotacao';
     }
 
-    if (miauw_skill_has_any($message, array('calendario', 'agenda da farmacia', 'plantao', 'plantoes', 'escala', 'dia marcado', 'dias marcados'))) {
-        $modules[] = 'calendario';
-    }
-
     if (miauw_skill_has_any($message, array('notas', 'nota', 'bloco de notas', 'lembrete', 'lembretes', 'anotacao', 'anotacoes', 'anotacoes internas'))) {
         $modules[] = 'notas';
     }
@@ -6566,6 +6395,11 @@ function miauw_skill_context_layers_for_message(string $message): string
 
 function miauw_skill_context_for_message(string $message): string
 {
+    if (miauw_skill_has_any($message, array('calendario', 'calendário', 'agenda da farmacia', 'plantao', 'plantão', 'plantoes', 'plantões', 'escala de plantao'))
+        && !miauw_skill_has_any($message, array('tarefa', 'tarefas', 'encomenda', 'encomendar', 'cotacao', 'cotação', 'falteiro', 'cashback', 'financeiro', 'pedido', 'gestao', 'gestão', 'sangria', 'pix', 'codigo', 'código', 'codigos', 'códigos'))) {
+        return 'O modulo Calendario foi retirado e nao esta mais disponivel. Nao executar outra acao para este pedido.';
+    }
+
     $period = miauw_skill_period_from_message($message);
     $modules = miauw_skill_detect_modules($message);
     $wantsReport = miauw_skill_wants_report($message);
@@ -6603,7 +6437,7 @@ function miauw_skill_context_for_message(string $message): string
     if (!$modules && $wantsReport) {
         $modules = ($period['granularity'] ?? 'month') === 'day'
             ? array('financeiro', 'cashback', 'tarefa')
-            : array('financeiro', 'cashback', 'codigos', 'cotacao', 'calendario', 'notas', 'tarefa');
+            : array('financeiro', 'cashback', 'codigos', 'cotacao', 'notas', 'tarefa');
     }
 
     if ($lookupLines && !$modules && !$wantsReport) {
@@ -6632,8 +6466,6 @@ function miauw_skill_context_for_message(string $message): string
             $lines = array_merge($lines, miauw_skill_codigos_summary($period));
         } elseif ($module === 'cotacao') {
             $lines = array_merge($lines, miauw_skill_cotacao_summary($period));
-        } elseif ($module === 'calendario') {
-            $lines = array_merge($lines, miauw_skill_calendario_summary($period));
         } elseif ($module === 'notas') {
             $lines = array_merge($lines, miauw_skill_notas_summary($period));
         } elseif ($module === 'tarefa') {

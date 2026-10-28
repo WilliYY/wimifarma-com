@@ -1,4 +1,4 @@
-export type ReportModule = 'financeiro' | 'cashback' | 'tarefas' | 'cotacao' | 'codigos' | 'calendario' | 'geral';
+export type ReportModule = 'financeiro' | 'cashback' | 'tarefas' | 'cotacao' | 'codigos' | 'geral';
 
 export type ReportDialogState = {
   module: ReportModule | '';
@@ -98,7 +98,6 @@ function moduleFromMessage(message: string): ReportModule | '' {
     ['tarefas', /\b(tarefa|tarefas|pendencia|pendencias)\b/u],
     ['cotacao', /\b(cotacao|orcamento|fornecedor|fornecedores)\b/u],
     ['codigos', /\b(codigo|codigos|comissao|comissoes)\b/u],
-    ['calendario', /\b(calendario|agenda|plantao|plantoes|escala)\b/u],
     ['geral', /\b(geral|completo|completa|todos|tudo)\b/u],
   ];
   for (const [module, pattern] of rules) {
@@ -138,6 +137,15 @@ export function advanceReportDialog(message: string, pending: ReportDialogState 
     return { kind: 'cancelled', reply: 'Pedido de relatorio cancelado.' };
   }
 
+  const activeModules = ['financeiro', 'cashback', 'tarefas', 'cotacao', 'codigos', 'geral', ''];
+  const hasActiveModule = Boolean(moduleFromMessage(clean) || (pending?.module && activeModules.includes(pending.module)));
+  const requestsRetiredModule = /\bcalendario\b/u.test(clean)
+    || (!hasActiveModule && /\b(?:agenda da farmacia|plantao|plantoes|escala de plantao)\b/u.test(clean));
+  if (((REPORT_TERMS.test(clean) || pending) && requestsRetiredModule)
+    || (pending && !activeModules.includes(pending.module))) {
+    return { kind: 'cancelled', reply: 'O modulo Calendario foi retirado e nao esta mais disponivel.' };
+  }
+
   const isNewReportRequest = REPORT_TERMS.test(clean);
   if (!pending && !isNewReportRequest) return { kind: 'none' };
   if (!pending && hasExplicitMonthlyPeriod(message)) return { kind: 'none' };
@@ -146,7 +154,7 @@ export function advanceReportDialog(message: string, pending: ReportDialogState 
   const parsedDate = dateFromMessage(message, now, Boolean(pending && !pending.date));
   if (
     !pending
-    && ['cotacao', 'codigos', 'calendario'].includes(detectedModule)
+    && ['cotacao', 'codigos'].includes(detectedModule)
     && !parsedDate.date
     && !parsedDate.invalid
   ) return { kind: 'none' };
@@ -157,7 +165,7 @@ export function advanceReportDialog(message: string, pending: ReportDialogState 
   };
   if (parsedDate.date) next.date = parsedDate.date;
 
-  if (next.date && ['cotacao', 'codigos', 'calendario'].includes(next.module)) {
+  if (next.date && ['cotacao', 'codigos'].includes(next.module)) {
     const unsupportedModule = next.module;
     return {
       kind: 'pending',

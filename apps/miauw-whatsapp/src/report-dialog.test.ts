@@ -4,6 +4,17 @@ import { advanceReportDialog, requiredModuleKeysForReport, type ReportDialogStat
 
 const NOW = new Date('2026-08-16T12:00:00-03:00');
 
+test('preserva relatorio financeiro que menciona plantao', () => {
+  const result = advanceReportDialog('Miauby relatorio financeiro do plantao de hoje', null, NOW);
+  assert.equal(result.kind, 'complete');
+  if (result.kind === 'complete') assert.equal(result.state.module, 'financeiro');
+});
+
+test('preserva relatorio pendente de outro modulo com contexto de plantao', () => {
+  const result = advanceReportDialog('plantao de hoje', { module: 'financeiro', date: '' }, NOW);
+  assert.equal(result.kind, 'complete');
+});
+
 test('asks for both missing report slots', () => {
   const result = advanceReportDialog('relatorio', null, NOW);
   assert.equal(result.kind, 'pending');
@@ -106,4 +117,17 @@ test('does not label current-only modules as daily reports', () => {
 test('requires every temporal card for a general daily report', () => {
   assert.deepEqual(requiredModuleKeysForReport('geral'), ['financeiro', 'cashback', 'tarefas']);
   assert.deepEqual(requiredModuleKeysForReport('financeiro'), ['financeiro']);
+});
+
+test('rejects retired calendar requests and persisted report state', () => {
+  for (const message of ['relatorio calendario hoje', 'resumo do calendario de agosto', 'relatorio plantao']) {
+    const result = advanceReportDialog(message, null, NOW);
+    assert.equal(result.kind, 'cancelled');
+  }
+  const stale = { module: 'calendario', date: '' } as unknown as ReportDialogState;
+  assert.equal(advanceReportDialog('hoje', stale, NOW).kind, 'cancelled');
+});
+
+test('leaves scheduled tasks outside the report dialog', () => {
+  assert.equal(advanceReportDialog('criar tarefa conferir plantao amanha 15h', null, NOW).kind, 'none');
 });

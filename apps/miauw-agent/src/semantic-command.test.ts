@@ -5,6 +5,19 @@ import { interpretSemanticCommand } from './semantic-command.js';
 
 const resolved = (message: string) => interpretSemanticCommand(message, { channel: 'internal' });
 
+test('preserva calendario como titulo, produto ou observacao de outro dominio', () => {
+  for (const [message, intent] of [
+    ['Miauby criar tarefa imprimir calendario amanha 15h', 'criar_tarefa'],
+    ['Miauby sangria 10 observacao compra calendario', 'registrar_sangria'],
+    ['Miauby pix cnpj 20 Will obs calendario', 'registrar_pix_cnpj'],
+    ['Miauby encomenda calendario de parede para Maria', 'criar_encomenda_cotacao'],
+  ]) {
+    const result = resolved(message);
+    assert.equal(result.status, 'resolved', message);
+    assert.equal(result.intent, intent, message);
+  }
+});
+
 const permutationsOfThree = ([first, second, third]: [string, string, string]): string[] => [
   `${first} ${second} ${third}`,
   `${first} ${third} ${second}`,
@@ -24,7 +37,6 @@ test('mantem as principais familias sem ordem fixa entre intencao, dados e ativa
     [['Rogerio geral 500', 'conta na gestao', 'Miauby'], 'criar_conta_gestao'],
     [['losartana 50mg', 'cotacao urgente', 'Miauby'], 'criar_cotacao_urgente'],
     [['dia 15/08/2026', 'relatorio financeiro', 'Miauby'], 'relatorio_financeiro'],
-    [['agosto', 'calendario', 'Miauby'], 'consultar_calendario'],
     [['hoje', 'fechar caixa', 'Miauby'], 'fechar_caixa'],
   ];
 
@@ -160,7 +172,7 @@ test('canoniza pedidos e tarefas com acao depois dos dados', () => {
   assert.match(concluir.canonical_message, /conferir pedidos/i);
 });
 
-test('canoniza Gestao, Cotacao, relatorio e calendario', () => {
+test('canoniza Gestao, Cotacao, relatorio', () => {
   const gestao = resolved('Miauby Rogerio geral 500 conta na gestao');
   assert.equal(gestao.intent, 'criar_conta_gestao');
   assert.match(gestao.canonical_message, /^gestao\b/i);
@@ -180,9 +192,6 @@ test('canoniza Gestao, Cotacao, relatorio e calendario', () => {
   assert.match(relatorio.canonical_message, /^relatorio financeiro\b/i);
   assert.match(relatorio.canonical_message, /15\/08\/2026/);
 
-  const calendario = resolved('Plantao de agosto, Miauby consulte o calendario');
-  assert.equal(calendario.intent, 'consultar_calendario');
-  assert.match(calendario.canonical_message, /^calendario\b/i);
 });
 
 test('reconhece Encomenda em ordem livre e em frases naturais', () => {
@@ -478,7 +487,6 @@ test('cobre todas as familias operacionais registradas', () => {
     ['Miauby dipirona fazer cotacao rapida', 'criar_cotacao_rapida'],
     ['Miauby dipirona buscar na cotacao', 'consultar_cotacao'],
     ['Miauby dia 15/08/2026 relatorio financeiro', 'relatorio_financeiro'],
-    ['Miauby agosto consultar calendario de plantao', 'consultar_calendario'],
     ['Miauby cashback 35', 'criar_cashback_rapido'],
   ];
 
@@ -514,4 +522,21 @@ test('urgente isolado ajuda a identificar Falteiro somente com ativacao e sem co
   assert.notEqual(resolved('losartana 50mg urgente').intent, 'registrar_falteiro');
   assert.notEqual(resolved('Miauby tarefa urgente conferir caixa').intent, 'registrar_falteiro');
   assert.notEqual(resolved('Miauby cotacao urgente losartana').intent, 'registrar_falteiro');
+});
+
+test('bloqueia Calendario aposentado sem resolver outra acao', () => {
+  for (const message of ['Miauby calendario', 'relatorio calendario agosto', 'Miauby agendar plantao amanha 15h', 'Plantao de agosto, Miauby consulte o calendario']) {
+    const result = resolved(message);
+    assert.equal(result.status, 'blocked', message);
+    assert.equal(result.canonical_message, '', message);
+    assert.equal(result.intent, '', message);
+    assert.match(result.clarification, /retirado/);
+  }
+});
+
+test('preserva tarefa de plantao com data e horario', () => {
+  const result = resolved('Miauby criar tarefa conferir plantao amanha 15h');
+  assert.equal(result.status, 'resolved');
+  assert.equal(result.intent, 'criar_tarefa');
+  assert.match(result.canonical_message, /15/);
 });

@@ -266,15 +266,10 @@ const INTENTS: IntentSpec[] = [
     blockers: ['urgente', 'planilha', 'encomenda', 'rapida', 'rapido', ...FALTEIRO_BLOCKING_CUES], requiredPayload: 'item',
   },
   ...reportSpecs(),
-  {
-    intent: 'consultar_calendario', module: 'calendario', risk: 'baixo', prefix: 'calendario', priority: 30,
-    groups: [['calendario', 'agenda', 'plantao', 'plantoes', 'escala', 'dia marcado']],
-    optional: ['consultar', 'mostrar', 'status', 'ver'],
-  },
 ];
 
 function reportSpecs(): IntentSpec[] {
-  return ['financeiro', 'cashback', 'tarefas', 'geral', 'cotacao', 'codigos', 'calendario'].map((module) => ({
+  return ['financeiro', 'cashback', 'tarefas', 'geral', 'cotacao', 'codigos'].map((module) => ({
     intent: `relatorio_${module}`,
     module: module === 'tarefas' ? 'tarefa' : module,
     risk: 'baixo',
@@ -292,6 +287,10 @@ export function interpretSemanticCommand(message: string, _options: SemanticOpti
 
   const tokens = tokenize(original);
   const normalized = normalizeText(original);
+  const hasOtherDomain = /\b(?:tarefa|tarefas|encomenda|encomendar|cotacao|falteiro|cashback|financeiro|pedido|pedidos|gestao|sangria|pix|codigo|codigos)\b/.test(normalized);
+  if (!hasOtherDomain && /\b(?:calendario|agenda da farmacia|plantao|plantoes|escala de plantao)\b/.test(normalized)) {
+    return { ...empty, status: 'blocked', clarification: 'O modulo Calendario foi retirado e nao esta mais disponivel.' };
+  }
   const activated = tokens.some((token) => ACTIVATION_WORDS.has(token.normalized));
   const question = /\?\s*$/.test(original) || /^(qual|quais|quando|onde|porque|por que|quem)\b/.test(normalized);
   const candidates = INTENTS

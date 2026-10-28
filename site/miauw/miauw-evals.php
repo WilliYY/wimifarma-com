@@ -1533,6 +1533,24 @@ miauw_eval_add('fase23_memoria_conversacional_contrato_seguro', static function 
     miauw_eval_assert_same('Miauby: Tudo certo.', miauw_format_visible_reply('Miauby: Miauby: Tudo certo.'), 'Prefixo Miauby foi duplicado.');
 });
 
+miauw_eval_add('calendario_aposentado_sem_ferramenta_ou_consulta', static function (): void {
+    $tools = miauw_openai_tools_by_name();
+    miauw_eval_assert(!isset($tools['resumo_calendario']), 'Calendario retirado nao pode ser oferecido como ferramenta.');
+    $registry = miauw_skill_registry();
+    miauw_eval_assert(!isset($registry['resumo_calendario']), 'Calendario retirado nao pode permanecer no registro.');
+    foreach (miauw_agent_text_command_catalog() as $contract) {
+        miauw_eval_assert(($contract['module'] ?? '') !== 'calendario', 'Contrato aposentado ainda esta ativo.');
+    }
+    foreach (array('calendario', 'relatorio calendario agosto', 'plantao no calendario') as $message) {
+        miauw_eval_assert(!in_array('calendario', miauw_skill_detect_modules($message), true), 'Calendario nao pode ser selecionado.');
+        miauw_eval_assert_contains('retirado', miauw_skill_context_for_message($message), 'Pedido aposentado precisa recusa controlada antes de consultar dados.');
+        miauw_eval_assert_same(null, miauw_skill_cotacao_encomenda_command_from_message($message), 'Calendario nao pode virar Encomenda.');
+    }
+    $skillsSource = file_get_contents(__DIR__ . '/miauw-skills.php');
+    miauw_eval_assert(strpos((string) $skillsSource, "'cotacao', 'calendario'") === false, 'Relatorio geral ainda seleciona Calendario.');
+    miauw_eval_assert(!function_exists('miauw_skill_calendario_internal_request'), 'Ponte HTTP aposentada ainda existe.');
+});
+
 $passed = 0;
 $failed = 0;
 

@@ -2295,14 +2295,6 @@ $modules = array(
         'accent' => 'teal',
     ),
     array(
-        'name' => 'Calendário',
-        'label' => 'Escala',
-        'description' => 'Meses, cores, plantoes e anotacoes.',
-        'module_key' => 'calendario',
-        'href' => '/calendario/',
-        'accent' => 'blue',
-    ),
-    array(
         'name' => 'XP',
         'label' => 'Ranking',
         'description' => 'Niveis, vendas, fotos e XP mensal.',

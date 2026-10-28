@@ -2,7 +2,7 @@
 
 ## O que esta parte do sistema faz
 
-O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, do Cashback, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos, do Calendario, do Financeiro, do Bloco de notas/lembretes, de Usuarios e do cofre Login / Senha. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cashback, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Calendario, Financeiro, Bloco de notas/lembretes, Usuarios, Login / Senha, Miauby sombra e Miauby WhatsApp usam Postgres para os modulos que precisam de evolucao mais forte.
+O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, do Cashback, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos, do Calendario historico, do Financeiro, do Bloco de notas/lembretes, de Usuarios e do cofre Login / Senha. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cashback, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro, Bloco de notas/lembretes, Usuarios, Login / Senha, Miauby sombra e Miauby WhatsApp usam Postgres para os modulos que precisam de evolucao mais forte.
 
 ## Servicos e arquivos envolvidos
 
@@ -31,7 +31,7 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - Container Codigos: `wimifarma-codigos-db`
 - Imagem Codigos: `postgres:17-alpine`
 - Volume Codigos: `codigos-data/postgres/`
-- Container Calendario: `wimifarma-calendario-db`
+- Container historico Calendario, retirado do Compose: `wimifarma-calendario-db`
 - Imagem Calendario: `postgres:17-alpine`
 - Volume Calendario: `calendario-data/postgres/`
 - Container Financeiro: `wimifarma-financeiro-db`
@@ -65,7 +65,7 @@ O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao
 - `wimifarma_tarefa`: Tarefa em Postgres.
 - `wimifarma_xp`: XP em Postgres.
 - `wimifarma_codigos`: Codigos em Postgres.
-- `wimifarma_calendario`: Calendario em Postgres.
+- `wimifarma_calendario`: Calendario historico em Postgres; modulo retirado.
 - `wimifarma_financeiro`: Financeiro oficial em Postgres.
 - `wimifarma_notas`: Bloco de notas/lembretes oficial em Postgres, com notas, ordem, exclusao logica, auditoria e sessoes.
 - `wimifarma_login_senha`: cofre Login / Senha oficial em Postgres, com senhas cifradas, auditoria local e separacao por `scope` entre cofre comum e aba restrita `Contas`.

@@ -5031,7 +5031,7 @@ function reportDialogStateFromPayload(payload: unknown): ReportDialogState | nul
   if (!isRecord(payload)) return null;
   const module = safeText(payload.module, 20);
   const date = safeText(payload.date, 10);
-  const validModules = new Set(['financeiro', 'cashback', 'tarefas', 'cotacao', 'codigos', 'calendario', 'geral', '']);
+  const validModules = new Set(['financeiro', 'cashback', 'tarefas', 'cotacao', 'codigos', 'geral', '']);
   if (!validModules.has(module) || (date && !/^\d{4}-\d{2}-\d{2}$/.test(date))) return null;
   return { module: module as ReportDialogState['module'], date };
 }
