@@ -221,6 +221,7 @@ Higiene de pastas no VPS:
 
 ## Riscos ao alterar
 
+- Antes de atualizar o checkout no VPS, executar `umask 022`; isolar `umask 077` em subshell exclusivo dos backups. Em 2026-10-28, a mascara privada herdada pelo Git deixou 34 fontes alteradas com permissoes restritas, incluindo `site/home.php` em `0600`. O Apache nao conseguia ler a Home e devolvia erro fatal mesmo com HTTP 200. A recuperacao restaurou somente os arquivos versionados daquele deploy para `0644` ou `0755`, conforme o modo Git, preservando segredos, backups e bancos. Validar GET publico com formulario de login e leitura como `www-data`, alem dos healths; comandos em `docs/05-comandos.md`.
 - Fazer `git clone` por cima da pasta atual pode apagar volume/dados locais.
 - Mover ou apagar uma pasta que ainda esteja montada por container ativo pode tirar o site do ar. Conferir mounts com `docker inspect` antes de arquivar.
 - Arquivar uma pasta sem preservar `.env`, `mysql/`, `cotacao-data/` ou `config.local.php` pode perder configuracao ou dados locais unicos.

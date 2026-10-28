@@ -42,6 +42,7 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
    - pendencias abertas;
    - riscos ou cuidados encontrados.
 9. Quando houver alteracao de arquivos, fazer commit e push por padrao e, quando houver deploy aplicavel, enviar para o VPS tambem. So deixar sem commit/deploy se o usuario pedir explicitamente para nao publicar ou se houver bloqueio tecnico que precise ser relatado.
+10. No VPS, executar `umask 022` antes de atualizar o checkout Git. Usar `umask 077` para backups/segredos somente em subshell isolado. Depois do deploy, validar leitura do PHP pelo usuario `www-data` e o conteudo real da Home por GET; HTTP 200 e `php -l` como root nao comprovam que a pagina abriu. Nunca corrigir permissoes recursivamente sobre `.env`, configuracoes locais, backups ou dados.
 
 ## Contexto atual
 

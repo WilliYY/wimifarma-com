@@ -577,13 +577,24 @@ git push origin main
 
 O Codex pode executar estes comandos diretamente no VPS por SSH/plink com a chave local autorizada. Ao finalizar, basta relatar o que foi executado e validado; nao e necessario enviar um comando PuTTY equivalente ao usuario.
 
+Antes de qualquer atualizacao Git no VPS, executar `umask 022` na mesma sessao. Uma mascara `077` usada para backup pode recriar fontes como `0600`, impedindo a leitura pelo Apache no volume `./site`. Aplicar a mascara privada somente dentro do subshell que cria o backup, sem propaga-la ao checkout. Nao usar `chmod -R` no projeto: segredos e dados mantem suas permissoes restritas.
+
 ```bash
 cd /home/ubuntu/projetos/wimifarma-com
+umask 022
 git pull origin main
 docker compose up -d --build
 docker compose ps
 docker compose logs --tail=80 wimifarma-com-web
 docker compose logs --tail=80 wimifarma-cotacao-app
+```
+
+Depois de qualquer deploy, validar tambem a Home por GET sem sessao. Um erro fatal PHP pode responder HTTP 200; healths dos modulos e lint executado como root nao substituem esta verificacao:
+
+```bash
+set -o pipefail
+docker exec --user www-data wimifarma-com-web test -r /var/www/html/home.php
+curl -fsS --max-time 20 https://wimifarma.com/ | python3 -c 'import sys; page = sys.stdin.read(); assert "<form" in page and "wf_home_action" in page and "Fatal error" not in page and "Permission denied" not in page, "Home nao renderizou o login"; print("Home: login renderizado")'
 ```
 
 Para mudancas no servico Miauby agente, usar rebuild direcionado:
