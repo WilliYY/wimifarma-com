@@ -34,6 +34,7 @@ type EntryRow = {
   id: string;
   scope: VaultScope;
   name: string;
+  category: string;
   login_username: string;
   sort_order: number | null;
   password_ciphertext: string;
@@ -105,6 +106,38 @@ const HOME_SSO_TIMEOUT_MS = Math.max(300, Math.min(5000, Number.parseInt(env.WIM
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=2592000, stale-while-revalidate=86400';
 const STATIC_ASSET_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 const STATIC_ASSET_FILE_RE = /\.(?:avif|gif|ico|jpe?g|mp4|png|svg|webp|woff2?)$/i;
+
+const CATEGORIES = [
+  { value: 'distribuidor', label: 'Distribuidor' },
+  { value: 'laboratorios_marcas', label: 'Laboratórios e marcas' },
+  { value: 'redes_sociais', label: 'Redes sociais e e-mail' },
+  { value: 'portais_servicos', label: 'Portais e serviços' },
+  { value: 'sistemas', label: 'Sistemas' },
+  { value: 'outros', label: 'Outros' },
+] as const;
+
+function inferCategory(name: string): string {
+  const normalized = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  if (/^(gam|profarma|panpharma|santa cruz|anb|dm arthur|gira brasil)(?:\b|[.:])/.test(normalized)) return 'distribuidor';
+  if (/^(gmail|facebook|instagram|tiktok)(?:\b|[.:])/.test(normalized)) return 'redes_sociais';
+  if (/^(hypera|oboticario|o boticario|nestle)(?:\b|[.:])/.test(normalized)) return 'laboratorios_marcas';
+  if (/^(crf|spcbrasil|serasa|portal da drogaria|sua receita digital)(?:\b|[.:])/.test(normalized)) return 'portais_servicos';
+  if (/^wmatera(?:\b|[.:])/.test(normalized)) return 'sistemas';
+  return 'outros';
+}
+
+function validCategory(value: unknown): string | null {
+  const category = String(value ?? 'outros');
+  return CATEGORIES.some((item) => item.value === category) ? category : null;
+}
+
+function canDeleteEntries(user: User): boolean {
+  return user.username === 'adm';
+}
+
+function renderCategoryOptions(selected = 'outros'): string {
+  return CATEGORIES.map((category) => `<option value="${category.value}"${selected === category.value ? ' selected' : ''}>${e(category.label)}</option>`).join('');
+}
 
 const VAULT_VIEWS: Record<VaultScope, VaultView> = {
   geral: {
@@ -544,6 +577,13 @@ async function ensureSchema(): Promise<void> {
   `);
   await pgPool.query("ALTER TABLE login_senha_entries ADD COLUMN IF NOT EXISTS scope VARCHAR(20) NOT NULL DEFAULT 'geral'");
   await pgPool.query('ALTER TABLE login_senha_entries ADD COLUMN IF NOT EXISTS sort_order INTEGER');
+  await pgPool.query('ALTER TABLE login_senha_entries ADD COLUMN IF NOT EXISTS category VARCHAR(40)');
+  // Classify existing records once; subsequent startups preserve the chosen category.
+  const uncategorized = await pgPool.query<{ id: string; name: string }>('SELECT id::text, name FROM login_senha_entries WHERE category IS NULL');
+  for (const entry of uncategorized.rows) {
+    await pgPool.query('UPDATE login_senha_entries SET category = $1 WHERE id = $2 AND category IS NULL', [inferCategory(entry.name), entry.id]);
+  }
+  await pgPool.query("ALTER TABLE login_senha_entries ALTER COLUMN category SET DEFAULT 'outros', ALTER COLUMN category SET NOT NULL");
   await pgPool.query("ALTER TABLE login_senha_audit_events ADD COLUMN IF NOT EXISTS scope VARCHAR(20) NOT NULL DEFAULT 'geral'");
   await pgPool.query('ALTER TABLE login_senha_audit_events ADD COLUMN IF NOT EXISTS actor_username TEXT');
   await pgPool.query('ALTER TABLE login_senha_audit_events ADD COLUMN IF NOT EXISTS actor_display_name TEXT');
@@ -575,7 +615,7 @@ async function listEntries(scope: VaultScope): Promise<EntryRow[]> {
       FROM login_senha_entries
       WHERE archived_at IS NULL
         AND scope = $1
-      ORDER BY COALESCE(sort_order, 2147483647), LOWER(name), id`,
+      ORDER BY LOWER(name), id`,
     [scope],
   );
   return result.rows;
@@ -630,6 +670,11 @@ async function createEntry(req: Request, user: User, scope: VaultScope): Promise
   const name = cleanText(req.body?.name, 160);
   const loginUsername = cleanText(req.body?.login_username, 240);
   const password = String(req.body?.password ?? '');
+  const category = validCategory(req.body?.category);
+  if (!category) {
+    setFlash(req, 'error', 'Selecione uma categoria válida.');
+    return;
+  }
   if (!name || !loginUsername || password.length === 0) {
     setFlash(req, 'error', 'Preencha Nome, Login / Usuario e Senha.');
     return;
@@ -641,17 +686,17 @@ async function createEntry(req: Request, user: User, scope: VaultScope): Promise
   const encrypted = encryptPassword(password);
   const result = await pgPool.query<{ id: string }>(
     `INSERT INTO login_senha_entries
-      (scope, name, login_username, password_ciphertext, password_iv, password_tag, sort_order, created_by)
+      (scope, name, login_username, password_ciphertext, password_iv, password_tag, sort_order, created_by, category)
      VALUES ($1::varchar(20), $2, $3, $4, $5, $6,
              (SELECT COALESCE(MAX(sort_order), 0) + 10
                 FROM login_senha_entries
                WHERE scope = $1::varchar(20) AND archived_at IS NULL),
-             $7)
+             $7, $8)
      RETURNING id::text`,
-    [scope, name, loginUsername, encrypted.ciphertext, encrypted.iv, encrypted.tag, user.id],
+    [scope, name, loginUsername, encrypted.ciphertext, encrypted.iv, encrypted.tag, user.id, category],
   );
   const id = result.rows[0]?.id || null;
-  await auditEvent(user, scope, 'login_senha_acesso_criado', id, `Acesso criado: ${name}.`, { name, login_username: loginUsername });
+  await auditEvent(user, scope, 'login_senha_acesso_criado', id, `Acesso criado: ${name}.`, { name, login_username: loginUsername, category });
   setFlash(req, 'success', 'Acesso salvo.');
 }
 
@@ -666,6 +711,11 @@ async function updateEntry(req: Request, user: User, scope: VaultScope): Promise
   const name = cleanText(req.body?.name, 160);
   const loginUsername = cleanText(req.body?.login_username, 240);
   const password = String(req.body?.password ?? '');
+  const category = validCategory(req.body?.category ?? entry.category);
+  if (!category) {
+    setFlash(req, 'error', 'Selecione uma categoria válida.');
+    return;
+  }
   if (!name || !loginUsername) {
     setFlash(req, 'error', 'Nome e Login / Usuario sao obrigatorios.');
     return;
@@ -685,9 +735,10 @@ async function updateEntry(req: Request, user: User, scope: VaultScope): Promise
               password_iv = $4,
               password_tag = $5,
               updated_by = $6,
-              updated_at = NOW()
+              updated_at = NOW(),
+              category = $9
         WHERE id = $7 AND scope = $8`,
-      [name, loginUsername, encrypted.ciphertext, encrypted.iv, encrypted.tag, user.id, id, scope],
+      [name, loginUsername, encrypted.ciphertext, encrypted.iv, encrypted.tag, user.id, id, scope, category],
     );
   } else {
     await pgPool.query(
@@ -695,9 +746,10 @@ async function updateEntry(req: Request, user: User, scope: VaultScope): Promise
           SET name = $1,
               login_username = $2,
               updated_by = $3,
-              updated_at = NOW()
+              updated_at = NOW(),
+              category = $6
         WHERE id = $4 AND scope = $5`,
-      [name, loginUsername, user.id, id, scope],
+      [name, loginUsername, user.id, id, scope, category],
     );
   }
 
@@ -705,6 +757,7 @@ async function updateEntry(req: Request, user: User, scope: VaultScope): Promise
     name,
     login_username: loginUsername,
     password_changed: password.length > 0,
+    category,
   });
   setFlash(req, 'success', 'Acesso atualizado.');
 }
@@ -777,49 +830,6 @@ async function clearArchivedEntries(req: Request, user: User, scope: VaultScope)
   setFlash(req, 'success', 'Historico de senhas limpo.');
 }
 
-async function reorderEntries(user: User, scope: VaultScope, order: number[]): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
-  const uniqueIds = new Set(order);
-  if (order.length === 0 || uniqueIds.size !== order.length) {
-    return { ok: false, status: 400, error: 'Ordem invalida.' };
-  }
-
-  const currentResult = await pgPool.query<{ id: string }>(
-    `SELECT id::text
-       FROM login_senha_entries
-      WHERE scope = $1
-        AND archived_at IS NULL`,
-    [scope],
-  );
-  const currentIds = new Set(currentResult.rows.map((row) => toNumber(row.id)));
-  if (order.length !== currentIds.size || order.some((id) => !currentIds.has(id))) {
-    return { ok: false, status: 409, error: 'A lista mudou. Recarregue a tela e tente de novo.' };
-  }
-
-  const client = await pgPool.connect();
-  try {
-    await client.query('BEGIN');
-    for (let index = 0; index < order.length; index += 1) {
-      await client.query(
-        `UPDATE login_senha_entries
-            SET sort_order = $1
-          WHERE id = $2
-            AND scope = $3
-            AND archived_at IS NULL`,
-        [(index + 1) * 10, order[index], scope],
-      );
-    }
-    await client.query('COMMIT');
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-
-  await auditEvent(user, scope, 'login_senha_ordem_atualizada', null, 'Ordem dos acessos atualizada.', { count: order.length });
-  return { ok: true };
-}
-
 async function handlePost(req: Request, res: Response): Promise<void> {
   const user = await requireUser(req, res);
   if (!user) return;
@@ -832,11 +842,15 @@ async function handlePost(req: Request, res: Response): Promise<void> {
   }
 
   const action = cleanText(req.body?.action, 40);
+  if (['archive', 'delete', 'delete_archived', 'clear_archived'].includes(action) && !canDeleteEntries(user)) {
+    res.status(403).send('Somente o login adm pode excluir acessos.');
+    return;
+  }
   if (action === 'create') {
     await createEntry(req, user, scope);
   } else if (action === 'update') {
     await updateEntry(req, user, scope);
-  } else if (action === 'archive') {
+  } else if (action === 'archive' || action === 'delete') {
     await archiveEntry(req, user, scope);
   } else if (action === 'delete_archived') {
     await deleteArchivedEntry(req, user, scope);
@@ -867,12 +881,9 @@ function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
   const id = toNumber(entry.id);
   const updatedText = entry.updated_at ? `Atualizado em ${e(brDateTime(entry.updated_at))}` : `Criado em ${e(brDateTime(entry.created_at))}`;
   return `
-    <tr class="vault-entry-row" data-entry-id="${id}" aria-expanded="false">
+    <tr class="vault-entry-row" data-entry-id="${id}" data-category="${e(entry.category)}" data-search="${e(`${entry.name} ${entry.login_username}`)}" aria-expanded="false">
       <td class="vault-col-index">
-        <button type="button" class="vault-drag-handle" data-vault-drag-handle draggable="true" aria-label="Mover ${e(entry.name)}" title="Arraste ou use as setas para cima e para baixo">
-          <span class="vault-drag-icon" aria-hidden="true"></span>
-          <span class="vault-row-number">${index + 1}</span>
-        </button>
+        <span class="vault-row-number">${index + 1}</span>
       </td>
       <td class="vault-cell-main">
         <strong>${e(entry.name)}</strong>
@@ -888,7 +899,13 @@ function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
         </div>
       </td>
       <td><span class="vault-pill">Ativo</span></td>
-      <td><button type="button" class="vault-edit-pill" data-vault-action="edit" data-entry-id="${id}" aria-expanded="false" aria-controls="vault-entry-editor-${id}">Editar</button></td>
+      <td><div class="vault-row-actions">
+        <button type="button" class="vault-edit-pill" data-vault-action="edit" data-entry-id="${id}" aria-expanded="false" aria-controls="vault-entry-editor-${id}">Editar</button>
+        ${canDeleteEntries(req.session.user!) ? `<form method="post" action="${basePath}/" class="vault-inline-form" data-confirm="Excluir ${e(entry.name)} da lista? O acesso ficará arquivado no histórico.">
+          ${csrfField(req)}<input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="${id}">
+          <button type="submit" class="vault-btn vault-btn-soft vault-btn-danger-line">Excluir</button>
+        </form>` : ''}
+      </div></td>
     </tr>
     <tr class="vault-entry-edit-row" id="vault-entry-editor-${id}" data-entry-id="${id}" hidden>
       <td colspan="6">
@@ -911,6 +928,10 @@ function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
                 <input name="name" maxlength="160" value="${e(entry.name)}" required>
               </label>
               <label>
+                <span>Categoria</span>
+                <select name="category" required>${renderCategoryOptions(entry.category)}</select>
+              </label>
+              <label>
                 <span>Login / Usuario</span>
                 <input name="login_username" maxlength="240" value="${e(entry.login_username)}" required>
               </label>
@@ -927,12 +948,6 @@ function renderEntryRows(req: Request, entry: EntryRow, index: number): string {
               <button class="vault-btn vault-btn-primary" type="submit">Salvar alteracoes</button>
             </div>
           </form>
-          <form method="post" action="${basePath}/" class="vault-archive-form" data-confirm="Arquivar este acesso?">
-            ${csrfField(req)}
-            <input type="hidden" name="action" value="archive">
-            <input type="hidden" name="id" value="${id}">
-            <button class="vault-btn vault-btn-danger" type="submit">Arquivar</button>
-          </form>
         </article>
       </td>
     </tr>`;
@@ -942,8 +957,14 @@ function renderEntryTable(req: Request, entries: EntryRow[]): string {
   if (entries.length === 0) {
     return '<p class="vault-empty">Nenhum acesso ativo cadastrado.</p>';
   }
-  return `
-    <div class="vault-entry-table-wrap">
+  return CATEGORIES.map((category) => {
+    const grouped = entries.filter((entry) => entry.category === category.value)
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base', numeric: true }) || toNumber(a.id) - toNumber(b.id));
+    if (grouped.length === 0) return '';
+    return `
+    <section class="vault-category" data-category="${category.value}">
+      <h3>${e(category.label)} <span class="vault-category-count">${grouped.length}</span></h3>
+      <div class="vault-entry-table-wrap">
       <table class="vault-entry-table">
         <thead>
           <tr>
@@ -956,25 +977,28 @@ function renderEntryTable(req: Request, entries: EntryRow[]): string {
           </tr>
         </thead>
         <tbody>
-          ${entries.map((entry, index) => renderEntryRows(req, entry, index)).join('')}
+          ${grouped.map((entry, index) => renderEntryRows(req, entry, index)).join('')}
         </tbody>
       </table>
-    </div>`;
+      </div>
+    </section>`;
+  }).join('');
 }
 
 function renderArchivedTable(req: Request, archivedEntries: EntryRow[]): string {
   const basePath = requestBasePath(req);
+  const canDelete = canDeleteEntries(req.session.user!);
   if (archivedEntries.length === 0) {
     return '<p class="vault-empty">Nenhum acesso arquivado no historico.</p>';
   }
   return `
     <div class="vault-history-toolbar">
       <p>Arquivados ficam fora da lista principal. Excluir remove o registro do cofre e preserva apenas a auditoria sem senha.</p>
-      <form method="post" action="${basePath}/" data-confirm="Limpar todo o historico de senhas arquivadas deste cofre? Essa acao remove os acessos arquivados e mantem apenas a auditoria sem senha.">
+      ${canDelete ? `<form method="post" action="${basePath}/" data-confirm="Limpar todo o historico de senhas arquivadas deste cofre? Essa acao remove os acessos arquivados e mantem apenas a auditoria sem senha.">
         ${csrfField(req)}
         <input type="hidden" name="action" value="clear_archived">
         <button class="vault-btn vault-btn-soft vault-btn-danger-line" type="submit">Limpar historico</button>
-      </form>
+      </form>` : '<p>Somente o login adm pode excluir do histórico.</p>'}
     </div>
     <div class="vault-history-table-wrap">
       <table class="vault-history-table">
@@ -998,12 +1022,12 @@ function renderArchivedTable(req: Request, archivedEntries: EntryRow[]): string 
                 <td><span class="vault-mono">${e(entry.login_username)}</span></td>
                 <td>${e(brDateTime(entry.archived_at))}</td>
                 <td>
-                  <form method="post" action="${basePath}/" class="vault-inline-form" data-confirm="Excluir este acesso do historico? Essa acao remove o registro do cofre e mantem apenas a auditoria sem senha.">
+                  ${canDelete ? `<form method="post" action="${basePath}/" class="vault-inline-form" data-confirm="Excluir este acesso do historico? Essa acao remove o registro do cofre e mantem apenas a auditoria sem senha.">
                     ${csrfField(req)}
                     <input type="hidden" name="action" value="delete_archived">
                     <input type="hidden" name="id" value="${id}">
                     <button class="vault-btn vault-btn-soft vault-btn-danger-line" type="submit">Excluir</button>
-                  </form>
+                  </form>` : 'Restrito ao adm'}
                 </td>
               </tr>`;
           }).join('')}
@@ -1071,8 +1095,8 @@ function renderPage(req: Request, user: User, entries: EntryRow[], archivedEntri
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="${e(csrf)}">
   <title>${e(view.title)} - Wimifarma</title>
-  <link rel="stylesheet" href="${basePath}/styles.css?v=20261025a">
-  <script src="${basePath}/app.js?v=20261025a" defer></script>
+  <link rel="stylesheet" href="${basePath}/styles.css?v=20261029a">
+  <script src="${basePath}/app.js?v=20261029a" defer></script>
 </head>
 <body data-base-path="${e(basePath)}" data-vault-scope="${e(view.scope)}">
   <header class="vault-topbar">
@@ -1112,6 +1136,10 @@ function renderPage(req: Request, user: User, entries: EntryRow[], archivedEntri
             <input name="name" maxlength="160" placeholder="Ex.: fornecedor, sistema ou portal" required>
           </label>
           <label>
+            <span>Categoria</span>
+            <select name="category" required>${renderCategoryOptions()}</select>
+          </label>
+          <label>
             <span>Login / Usuario</span>
             <input name="login_username" maxlength="240" placeholder="Email, usuario ou codigo" required>
           </label>
@@ -1126,9 +1154,15 @@ function renderPage(req: Request, user: User, entries: EntryRow[], archivedEntri
 
     <section class="vault-section">
       <div class="vault-list-head">
-        <h2>Acessos</h2>
+        <div><h2>Acessos por categoria</h2><p>Em ordem alfabética de A a Z. ${canDeleteEntries(user) ? 'Excluir move o acesso para o histórico.' : 'Exclusão disponível somente para adm.'}</p></div>
         <span class="vault-entry-count">${entries.length === 1 ? '1 ativo' : `${entries.length} ativos`}</span>
       </div>
+      <div class="vault-filter-bar">
+        <label><span>Buscar acesso</span><input type="search" id="vault-search" placeholder="Nome, login ou fornecedor" autocomplete="off"></label>
+        <label><span>Categoria</span><select id="vault-category-filter"><option value="">Todas as categorias</option>${renderCategoryOptions('')}</select></label>
+        <span id="vault-filter-count" role="status" aria-live="polite">${entries.length} acesso(s)</span>
+      </div>
+      <p class="vault-empty" id="vault-filter-empty" hidden>Nenhum acesso encontrado. Ajuste a busca ou a categoria.</p>
       ${renderEntryTable(req, entries)}
     </section>
 
@@ -1247,14 +1281,7 @@ app.post(routePaths('/api/entries/reorder'), asyncRoute(async (req, res) => {
     res.status(403).json({ ok: false, error: 'CSRF invalido.' });
     return;
   }
-  const rawOrder: unknown[] = Array.isArray(req.body?.order) ? req.body.order : [];
-  const order = rawOrder.map((value: unknown) => toNumber(value)).filter((id: number) => id > 0);
-  const result = await reorderEntries(user, requestScope(req), order);
-  if (!result.ok) {
-    res.status(result.status).json({ ok: false, error: result.error });
-    return;
-  }
-  res.json({ ok: true });
+  res.status(410).json({ ok: false, error: 'Os acessos agora são ordenados alfabeticamente por categoria. Recarregue a página.' });
 }));
 
 app.post(routePaths('/api/entries/:id/reveal'), asyncRoute(async (req, res) => {

@@ -32,12 +32,11 @@ function fixture({ clipboardFails = false, revealFails = false, legacyClipboard 
     };
   }
   const rows = ['1', '2'].map(id => {
-    const row = element({ 'data-entry-id': id });
+    const row = element({ 'data-entry-id': id, 'data-search': id === '1' ? 'Farmácia Central contato@central.com' : 'Banco Comercial gerente', 'data-category': id === '1' ? 'fornecedores' : 'bancos' });
     row.draggable = false;
     row.output = Object.assign(element(), { type: 'text', value: '' });
     row.toggle = element({ 'data-entry-id': id, 'data-vault-action': 'row-reveal' });
     row.edit = element({ 'data-entry-id': id, 'data-vault-action': 'edit' });
-    row.handle = element({ 'data-vault-drag-handle': '' });
     row.text = element();
     row.editor = element({ 'data-entry-id': id });
     row.editor.hidden = true;
@@ -45,28 +44,33 @@ function fixture({ clipboardFails = false, revealFails = false, legacyClipboard 
     row.editor.toggle = element({ 'data-entry-id': id, 'data-vault-action': 'reveal' });
     row.copy = element({ 'data-entry-id': id, 'data-vault-action': 'copy-password' });
     row.querySelector = selector => selector.includes('password-output') || selector.includes('secret-output')
-      ? row.output : selector.includes('row-number') ? null : row.toggle;
+      ? row.output : selector.includes('row-number') ? null : selector.includes('edit') ? row.edit : row.toggle;
     row.editor.querySelector = selector => selector.includes('secret-output') ? row.editor.output
       : selector.includes('data-vault-action') ? row.editor.toggle : null;
     row.closest = selector => selector.includes('vault-entry') ? row : null;
-    for (const target of [row.output, row.toggle, row.edit, row.handle, row.text, row.copy, row.editor.toggle]) {
-      target.closest = selector => selector.includes('data-vault-drag-handle') ? (target === row.handle ? target : null)
-        : selector.includes('data-vault-action') ? (target.getAttribute?.('data-vault-action') ? target : null)
+    for (const target of [row.output, row.toggle, row.edit, row.text, row.copy, row.editor.toggle]) {
+      target.closest = selector => selector.includes('data-vault-action') ? (target.getAttribute?.('data-vault-action') ? target : null)
         : selector.includes('vault-entry') ? row : null;
     }
-    row.handle.draggable = true;
     return row;
   });
+  const search = Object.assign(element(), { id: 'vault-search', value: '' });
+  const category = Object.assign(element(), { id: 'vault-category-filter', value: '' });
+  const count = element();
+  const empty = element();
+  const controls = { 'vault-search': search, 'vault-category-filter': category, 'vault-filter-count': count, 'vault-filter-empty': empty };
+  const groups = rows.map(row => Object.assign(element(), { querySelectorAll: () => [row] }));
   const document = {
     body: element({ 'data-base-path': '/login-senha' }),
     addEventListener: (name, callback) => listeners.set(name, callback),
-    getElementById: id => rows.find(row => id === `vault-entry-editor-${row.getAttribute('data-entry-id')}`)?.editor,
+    getElementById: id => controls[id] || rows.find(row => id === `vault-entry-editor-${row.getAttribute('data-entry-id')}`)?.editor,
     querySelector(selector) {
       if (selector.includes('csrf-token')) return element({ content: 'fixture-csrf' });
       return rows.find(row => selector.includes(`data-entry-id="${row.getAttribute('data-entry-id')}"`)) || null;
     },
     querySelectorAll(selector) {
       if (selector === '.vault-entry-row') return rows;
+      if (selector === '.vault-category') return groups;
       if (selector.includes('.vault-entry-row.is-selected')) return rows.filter(row => row.classList.contains('is-selected'));
       return [];
     },
@@ -99,7 +103,7 @@ function fixture({ clipboardFails = false, revealFails = false, legacyClipboard 
     listeners.get(type)?.(event);
     return event;
   }
-  return { rows, requests, timers, alerts, dispatch, settle, releaseInitialReveal: () => releaseFirstReveal() };
+  return { rows, groups, search, category, count, empty, requests, timers, alerts, dispatch, settle, releaseInitialReveal: () => releaseFirstReveal() };
 }
 
 test('senhas aparecem automaticamente por POST auditado com CSRF', async () => {
@@ -147,16 +151,52 @@ test('Editar abre e fecha apenas o editor escolhido sem requisitar outra senha',
   assert.equal(ui.requests.length, 2);
 });
 
-test('somente a alca inicia reordenacao', async () => {
+test('busca local aceita nome com acentos e login e restaura grupos ao limpar', async () => {
   const ui = fixture();
   await ui.settle();
-  let started = false;
-  const dataTransfer = { setData() { started = true; } };
-  ui.dispatch('dragstart', ui.rows[0].text, { dataTransfer });
-  assert.equal(started, false);
-  ui.dispatch('dragstart', ui.rows[0].handle, { dataTransfer });
-  assert.equal(started, true);
-  assert.equal(ui.rows[0].classList.contains('is-dragging'), true);
+  const requestsBefore = ui.requests.length;
+  ui.search.value = 'FARMACIA';
+  ui.dispatch('input', ui.search);
+  assert.equal(ui.rows[0].hidden, false);
+  assert.equal(ui.rows[1].hidden, true);
+  assert.equal(ui.groups[1].hidden, true);
+  assert.equal(ui.count.textContent, '1 de 2 acessos');
+  ui.search.value = 'contato@central.com';
+  ui.dispatch('input', ui.search);
+  assert.equal(ui.rows[0].hidden, false);
+  ui.search.value = '';
+  ui.dispatch('input', ui.search);
+  assert.ok(ui.rows.every(row => !row.hidden));
+  assert.ok(ui.groups.every(group => !group.hidden));
+  assert.equal(ui.count.textContent, '2 de 2 acessos');
+  assert.equal(ui.empty.hidden, true);
+  assert.equal(ui.requests.length, requestsBefore);
+});
+
+test('categoria combina com busca, fecha editor filtrado e mostra vazio sem pesquisar senha', async () => {
+  const ui = fixture();
+  await ui.settle();
+  ui.dispatch('click', ui.rows[0].edit);
+  ui.category.value = 'bancos';
+  ui.dispatch('change', ui.category);
+  assert.equal(ui.rows[0].hidden, true);
+  assert.equal(ui.rows[0].editor.hidden, true);
+  assert.equal(ui.rows[0].edit.getAttribute('aria-expanded'), 'false');
+  assert.equal(ui.rows[1].hidden, false);
+  ui.search.value = 'Farmácia';
+  ui.dispatch('input', ui.search);
+  assert.ok(ui.groups.every(group => group.hidden));
+  assert.equal(ui.empty.hidden, false);
+  assert.equal(ui.count.textContent, '0 de 2 acessos');
+  ui.category.value = '';
+  ui.search.value = 'Senha ficticia';
+  ui.dispatch('input', ui.search);
+  assert.ok(ui.rows.every(row => row.hidden));
+  ui.search.value = '';
+  ui.dispatch('input', ui.search);
+  assert.ok(ui.groups.every(group => !group.hidden));
+  assert.equal(ui.rows[0].editor.hidden, true);
+  assert.equal(ui.empty.hidden, true);
 });
 
 test('falha ao revelar deixa apenas aquele campo indisponivel', async () => {

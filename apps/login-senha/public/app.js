@@ -4,10 +4,6 @@
   var csrfMeta = document.querySelector('meta[name="csrf-token"]');
   var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') || '' : '';
   var mask = '********';
-  var draggedRow = null;
-  var dragStartOrder = '';
-  var lastDragAt = 0;
-  var savingOrder = false;
   var hiddenEntries = Object.create(null);
 
   function closestButton(target) {
@@ -24,10 +20,6 @@
 
   function closestEntryRow(target) {
     return target && target.closest ? target.closest('.vault-entry-row') : null;
-  }
-
-  function closestDragHandle(target) {
-    return target && target.closest ? target.closest('[data-vault-drag-handle]') : null;
   }
 
   function editorForRow(row) {
@@ -180,88 +172,44 @@
     for (var index = 0; index < Math.min(4, rows.length); index += 1) revealNext();
   }
 
-  function currentOrder() {
-    return Array.prototype.map.call(document.querySelectorAll('.vault-entry-row'), function (row) {
-      return row.getAttribute('data-entry-id') || '';
-    }).filter(Boolean);
+  function normalizeSearch(value) {
+    return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').trim();
   }
 
-  function updateRowNumbers() {
-    document.querySelectorAll('.vault-entry-row').forEach(function (row, index) {
-      var number = row.querySelector('.vault-row-number');
-      if (number) number.textContent = String(index + 1);
+  function filterEntries() {
+    var search = document.getElementById('vault-search');
+    var category = document.getElementById('vault-category-filter');
+    var query = normalizeSearch(search ? search.value : '');
+    var categoryValue = category ? category.value : '';
+    var visible = 0;
+    var rows = document.querySelectorAll('.vault-entry-row');
+    rows.forEach(function (row) {
+      var matches = (!query || normalizeSearch(row.getAttribute('data-search') || '').includes(query))
+        && (!categoryValue || row.getAttribute('data-category') === categoryValue);
+      row.hidden = !matches;
+      if (!matches) closeEntryEditor(row);
+      if (matches) visible += 1;
     });
-  }
-
-  function moveRowPair(row, target, placeAfter) {
-    if (!row || !target || row === target) return;
-    var tbody = row.parentNode;
-    var editor = editorForRow(row);
-    var targetEditor = editorForRow(target);
-    var reference = placeAfter ? (targetEditor || target).nextSibling : target;
-    tbody.insertBefore(row, reference);
-    if (editor) tbody.insertBefore(editor, row.nextSibling);
-  }
-
-  function postOrder(order) {
-    return fetch(basePath + '/api/entries/reorder', {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': csrfToken
-      },
-      body: JSON.stringify({ order: order })
-    }).then(function (response) {
-      return response.json().catch(function () {
-        return { ok: false, error: 'Resposta invalida.' };
-      }).then(function (data) {
-        if (!response.ok || !data.ok) {
-          throw new Error(data.error || 'Falha ao salvar ordem.');
-        }
-        return data;
+    document.querySelectorAll('.vault-category').forEach(function (group) {
+      group.hidden = !Array.prototype.some.call(group.querySelectorAll('.vault-entry-row'), function (row) {
+        return !row.hidden;
       });
     });
+    var count = document.getElementById('vault-filter-count');
+    var empty = document.getElementById('vault-filter-empty');
+    if (count) count.textContent = visible + ' de ' + rows.length + ' acessos';
+    if (empty) empty.hidden = visible !== 0 || rows.length === 0;
   }
 
-  function saveOrderIfChanged() {
-    var order = currentOrder();
-    if (!dragStartOrder || order.join(',') === dragStartOrder) return;
-    var wrap = document.querySelector('.vault-entry-table-wrap');
-    savingOrder = true;
-    if (wrap) wrap.classList.add('is-saving-order');
-    postOrder(order).then(function () {
-      savingOrder = false;
-      if (wrap) wrap.classList.remove('is-saving-order');
-    }).catch(function (error) {
-      savingOrder = false;
-      if (wrap) wrap.classList.remove('is-saving-order');
-      window.alert(error && error.message ? error.message : 'Falha ao salvar ordem.');
-      window.location.reload();
+  ['input', 'change'].forEach(function (type) {
+    document.addEventListener(type, function (event) {
+      if (event.target && (event.target.id === 'vault-search' || event.target.id === 'vault-category-filter')) {
+        filterEntries();
+      }
     });
-  }
-
-  function finishDrag() {
-    if (!draggedRow) return;
-    draggedRow.classList.remove('is-dragging');
-    document.querySelectorAll('.vault-entry-row.is-drop-target').forEach(function (row) {
-      row.classList.remove('is-drop-target');
-    });
-    lastDragAt = Date.now();
-    saveOrderIfChanged();
-    draggedRow = null;
-    dragStartOrder = '';
-  }
+  });
 
   document.addEventListener('click', function (event) {
-    if (Date.now() - lastDragAt < 250) {
-      event.preventDefault();
-      return;
-    }
-    if (closestDragHandle(event.target)) {
-      event.preventDefault();
-      return;
-    }
     var button = closestButton(event.target);
     if (!button) return;
     var action = button.getAttribute('data-vault-action') || '';
@@ -311,63 +259,6 @@
     });
   });
 
-  document.addEventListener('dragstart', function (event) {
-    var handle = closestDragHandle(event.target);
-    if (!handle) return;
-    if (savingOrder) {
-      event.preventDefault();
-      return;
-    }
-    var row = closestEntryRow(handle);
-    if (!row) return;
-    draggedRow = row;
-    dragStartOrder = currentOrder().join(',');
-    document.querySelectorAll('.vault-entry-row.is-selected').forEach(closeEntryEditor);
-    row.classList.add('is-dragging');
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', row.getAttribute('data-entry-id') || '');
-    }
-  });
-
-  document.addEventListener('dragover', function (event) {
-    if (!draggedRow) return;
-    var target = closestEntryRow(event.target);
-    if (!target || target === draggedRow) return;
-    event.preventDefault();
-    var rect = target.getBoundingClientRect();
-    var placeAfter = event.clientY > rect.top + rect.height / 2;
-    moveRowPair(draggedRow, target, placeAfter);
-    updateRowNumbers();
-    target.classList.add('is-drop-target');
-  });
-
-  document.addEventListener('drop', function (event) {
-    if (!draggedRow) return;
-    event.preventDefault();
-    finishDrag();
-  });
-
-  document.addEventListener('dragend', finishDrag);
-
-  document.addEventListener('keydown', function (event) {
-    var handle = closestDragHandle(event.target);
-    if (!handle || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
-    event.preventDefault();
-    if (savingOrder || draggedRow) return;
-    var row = closestEntryRow(handle);
-    var rows = Array.prototype.slice.call(document.querySelectorAll('.vault-entry-row'));
-    var index = rows.indexOf(row);
-    var target = rows[index + (event.key === 'ArrowUp' ? -1 : 1)];
-    if (!target) return;
-    dragStartOrder = currentOrder().join(',');
-    moveRowPair(row, target, event.key === 'ArrowDown');
-    updateRowNumbers();
-    saveOrderIfChanged();
-    dragStartOrder = '';
-    handle.focus();
-  });
-
   document.addEventListener('submit', function (event) {
     var form = event.target;
     if (!form || !form.matches || !form.matches('[data-confirm]')) return;
@@ -377,5 +268,6 @@
     }
   });
 
+  filterEntries();
   showInitialPasswords();
 }());

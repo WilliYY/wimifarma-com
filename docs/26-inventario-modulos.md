@@ -913,12 +913,12 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 ### Telas e endpoints
 
-- `/login-senha/` e `/login-senha/index.php`: cofre com cadastro e lista compacta tipo planilha; clicar na linha abre edicao de nome/login/nova senha, mostrar/ocultar, copiar e arquivar acesso; arquivar envia para `Historico de senhas`, recolhido por padrao, onde acessos arquivados podem ser excluidos individualmente ou limpos em lote sem revelar/copiar senha arquivada; a lista permite reorganizar linhas por arrastar e salva apenas `sort_order`; a auditoria de eventos recentes fica recolhida por padrao e abre no proprio card. Desde 2026-06-08, a tela tem refinamento visual compacto com formulario destacado, linhas-card densas, editor expandido mais claro, foco/acessibilidade visual e responsividade ajustada, sem mudar CSRF, POSTs, endpoints, reorder, criptografia ou auditoria.
+- `/login-senha/` e `/login-senha/index.php`: desde 2026-10-29, cofre agrupado por categoria persistida/editavel, com Distribuidor primeiro, A-Z pt-BR por nome e filtros combinados por nome/login e categoria. Tabelas desktop e cards mobile usam fonte ampliada; somente Editar abre o painel de nome/categoria/login/nova senha. Excluir na linha arquiva logicamente, restrito ao login exato adm, assim como excluir arquivados ou limpar historico. Historico e auditoria ficam recolhidos por padrao; senhas arquivadas nao podem ser reveladas/copiadas. AES, CSRF, escopos e reveal/copy auditados permanecem. Ver `docs/39-login-senha-categorias.md`.
 - `/login-senha-adm/` e `/login-senha-adm/index.php`: aba `Contas` para acessos especificos do sistema, filtrada por `scope='adm'` e bloqueada para usuarios sem papel administrativo/gerencial; sem card na Home desde 2026-06-05.
 - `/login-senha/api/entries/:id/reveal`: revela senha para usuario autorizado e audita visualizacao.
 - `/login-senha/api/entries/:id/copy-login`: retorna login para copiar e audita copia.
 - `/login-senha/api/entries/:id/copy-password`: retorna senha para copiar e audita copia.
-- `/login-senha/api/entries/reorder`: salva a ordem manual dos acessos ativos do mesmo `scope`, sem alterar senha, login ou arquivamento.
+- `/login-senha/api/entries/reorder`: legado; responde 410 depois de sessao/permissao/CSRF. A ordem agora e alfabetica por categoria, preservando `sort_order` historico.
 - `/login-senha/health` e `/login-senha-adm/health`: health do banco do cofre e do core.
 
 ### Permissoes e sessao
@@ -936,7 +936,7 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 ### Tabelas Postgres oficiais
 
-- `login_senha_entries`: Nome, Login / Usuario, `scope`, `sort_order` e senha cifrada (`password_ciphertext`, `password_iv`, `password_tag`).
+- `login_senha_entries`: Nome, categoria `category`, Login / Usuario, `scope`, `sort_order` historico e senha cifrada (`password_ciphertext`, `password_iv`, `password_tag`).
 - `login_senha_audit_events`: auditoria local com `scope`, snapshot curto do ator e resumo sem senha.
 - `login_senha_sessions`: sessao do Express.
 - `core_audit_logs`: espelho curto de auditoria.
@@ -955,7 +955,7 @@ Validar login admin, criacao/desativacao, vinculo XP e allowlist; tarefas privad
 
 - Criar acesso.
 - Editar nome/login e, opcionalmente, trocar senha.
-- Reorganizar a ordem visual dos acessos ativos salvando `sort_order`.
+- Escolher categoria no cadastro/edicao; listar em A-Z por categoria, buscar nome/login e filtrar sem pesquisar senhas.
 - Arquivar acesso sem apagar registro, movendo para `Historico de senhas`.
 - Excluir acesso ja arquivado ou limpar o historico de arquivados, removendo somente registros arquivados do cofre e mantendo auditoria sem senha.
 - Auditar revelar/copiar senha e copiar login.
