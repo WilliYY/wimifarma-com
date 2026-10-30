@@ -1,3 +1,4 @@
+import { BlockList, isIP } from 'node:net';
 import bcrypt from 'bcryptjs';
 import connectPgSimple from 'connect-pg-simple';
 import crypto from 'crypto';
@@ -117,6 +118,7 @@ declare module 'express-session' {
     loginBlockedUntil?: number;
     returnTo?: string;
     user?: User;
+    authenticationSource?: 'home' | 'direct';
   }
 }
 
@@ -308,25 +310,80 @@ function takeFlash(req: Request): Flash {
   return flash;
 }
 
-function loginWaitSeconds(req: Request): number {
-  const blockedUntil = Number(req.session.loginBlockedUntil || 0);
-  return Math.max(0, Math.ceil((blockedUntil - Date.now()) / 1000));
+function loginRateIdentities(req: Request, username: string): Array<{ key: string; username: string | null; ipHash: string | null; limit: number }> {
+  const normalized = String(username).trim().toLowerCase();
+  const identity = /^[a-z0-9._@-]{1,80}$/.test(normalized) ? normalized : '-';
+  const hash = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
+  const normalizeIp = (value: unknown): string => {
+    const candidate = String(value || '').trim();
+    if (!isIP(candidate) || candidate.includes('%')) return 'unknown';
+    if (isIP(candidate) === 6) {
+      const mapped = new URL('http://[' + candidate + ']/').hostname.match(/^\[::ffff:([a-f0-9]+):([a-f0-9]+)\]$/i);
+      if (mapped) {
+        const high = Number.parseInt(mapped[1], 16);
+        const low = Number.parseInt(mapped[2], 16);
+        return [high >> 8, high & 255, low >> 8, low & 255].join('.');
+      }
+    }
+    return candidate;
+  };
+  const trusted = new BlockList();
+  for (const [address, prefix] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['127.0.0.0', 8], ['169.254.0.0', 16],
+    ['172.16.0.0', 12], ['192.168.0.0', 16], ['240.0.0.0', 4]] as const) trusted.addSubnet(address, prefix, 'ipv4');
+  for (const [address, prefix] of [['::', 128], ['::1', 128], ['100::', 64], ['fc00::', 7], ['fe80::', 10]] as const) {
+    trusted.addSubnet(address, prefix, 'ipv6');
+  }
+  const remote = normalizeIp(req.socket.remoteAddress);
+  let clientIp = remote;
+  if (remote !== 'unknown' && trusted.check(remote, isIP(remote) === 4 ? 'ipv4' : 'ipv6')) {
+    const realIp = normalizeIp(req.get('x-real-ip'));
+    const forwarded = String(req.get('x-forwarded-for') || '').split(',').reverse().map(normalizeIp);
+    clientIp = realIp !== 'unknown' ? realIp : forwarded.find(value => value !== 'unknown') || remote;
+  }
+  const ipHash = hash(clientIp);
+  // Share identities with the Home: changing cookies or login endpoints cannot reset limits.
+  return [
+    { key: hash('home|pair|' + ipHash + '|' + identity), username: identity, ipHash, limit: 5 },
+    { key: hash('home|user|' + identity), username: identity, ipHash: null, limit: 10 },
+    { key: hash('home|ip|' + ipHash), username: null, ipHash, limit: 30 },
+  ];
 }
 
-function registerLoginFailure(req: Request): void {
-  const now = Date.now();
-  const windowMs = 15 * 60 * 1000;
-  const attempts = (req.session.loginAttempts || []).filter((timestamp) => now - timestamp < windowMs);
-  attempts.push(now);
-  req.session.loginAttempts = attempts;
-  if (attempts.length >= 5) {
-    req.session.loginBlockedUntil = now + 10 * 60 * 1000;
+async function loginWaitSeconds(req: Request, username: string): Promise<number> {
+  const identities = loginRateIdentities(req, username);
+  const result = await corePgPool.query(
+    'SELECT blocked_until FROM core_login_rate_limits WHERE rate_key = ANY($1::text[]) AND blocked_until > NOW()',
+    [identities.map(identity => identity.key)],
+  );
+  return result.rows.reduce((wait: number, row: { blocked_until: Date | string }) =>
+    Math.max(wait, Math.ceil((new Date(row.blocked_until).getTime() - Date.now()) / 1000)), 0);
+}
+
+async function registerLoginFailure(req: Request, username: string): Promise<void> {
+  for (const identity of loginRateIdentities(req, username)) {
+    await corePgPool.query(
+      `INSERT INTO core_login_rate_limits
+        (rate_key, username_normalized, ip_hash, attempts_count, window_started_at, blocked_until, updated_at)
+       VALUES ($1, $2, $3, 1, NOW(), NULL, NOW())
+       ON CONFLICT (rate_key) DO UPDATE SET
+         attempts_count = CASE WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes'
+           THEN 1 ELSE core_login_rate_limits.attempts_count + 1 END,
+         window_started_at = CASE WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes'
+           THEN NOW() ELSE core_login_rate_limits.window_started_at END,
+         blocked_until = CASE
+           WHEN (CASE WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes'
+             THEN 1 ELSE core_login_rate_limits.attempts_count + 1 END) >= $4 THEN NOW() + INTERVAL '10 minutes'
+           WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes' THEN NULL
+           ELSE core_login_rate_limits.blocked_until END,
+         updated_at = NOW()`,
+      [identity.key, identity.username, identity.ipHash, identity.limit],
+    );
   }
 }
 
-function clearLoginRateLimit(req: Request): void {
-  delete req.session.loginAttempts;
-  delete req.session.loginBlockedUntil;
+async function clearLoginRateLimit(req: Request, username: string): Promise<void> {
+  await corePgPool.query('DELETE FROM core_login_rate_limits WHERE rate_key = ANY($1::text[])',
+    [loginRateIdentities(req, username).slice(0, 2).map(identity => identity.key)]);
 }
 
 function safeReturnPath(value: unknown): string {
@@ -596,6 +653,7 @@ function regenerateWithUser(req: Request, user: User): Promise<void> {
         return;
       }
       req.session.user = user;
+      req.session.authenticationSource = 'home';
       req.session.csrfToken = crypto.randomBytes(24).toString('hex');
       if (returnTo) req.session.returnTo = returnTo;
       resolve();
@@ -603,16 +661,25 @@ function regenerateWithUser(req: Request, user: User): Promise<void> {
   });
 }
 
-async function requireUser(req: Request, res: Response): Promise<User | null> {
-  let user = await currentUser(req.session.user);
+async function resolveSessionUser(req: Request): Promise<User | null> {
   const homeUser = await userByHomeSso(req);
-  if (homeUser && (!user || user.id !== homeUser.id)) {
-    await regenerateWithUser(req, homeUser);
-    user = homeUser;
-  } else if (!user && homeUser) {
-    await regenerateWithUser(req, homeUser);
-    user = homeUser;
+  let user: User | null = null;
+  if (hasHomeSsoCookie(req)) {
+    if (homeUser) {
+      if (!req.session.user || req.session.user.id !== homeUser.id) await regenerateWithUser(req, homeUser);
+      req.session.authenticationSource = 'home';
+      user = homeUser;
+    }
+  } else if (req.session.authenticationSource === 'direct') {
+    user = await currentUser(req.session.user);
   }
+  if (!user) delete req.session.user;
+  if (user) req.session.user = user;
+  return user;
+}
+
+async function requireUser(req: Request, res: Response): Promise<User | null> {
+  const user = await resolveSessionUser(req);
   if (!user) {
     req.session.returnTo = req.originalUrl;
     res.redirect('/');
@@ -1452,15 +1519,7 @@ app.get(`${BASE_PATH}/internal/migration-status`, asyncRoute(async (_req, res) =
 }));
 
 app.get(`${BASE_PATH}/api/me/xp-card`, asyncRoute(async (req, res) => {
-  let user = await currentUser(req.session.user);
-  const homeUser = await userByHomeSso(req);
-  if (homeUser && (!user || user.id !== homeUser.id)) {
-    await regenerateWithUser(req, homeUser);
-    user = homeUser;
-  } else if (!user && homeUser) {
-    await regenerateWithUser(req, homeUser);
-    user = homeUser;
-  }
+  const user = await resolveSessionUser(req);
   if (!user) {
     res.status(401).json({ ok: false, authenticated: false, xp: null });
     return;
@@ -1502,28 +1561,29 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     res.status(403).type('html').send(renderLogin(req, 'Sessao expirada. Tente novamente.'));
     return;
   }
-  const username = cleanText(req.body.username, 120);
   const password = String(req.body.password || '');
-  const waitSeconds = loginWaitSeconds(req);
+  const username = cleanText(req.body.username, 120);
+  const waitSeconds = await loginWaitSeconds(req, username);
   if (waitSeconds > 0) {
     res.status(429).type('html').send(renderLogin(req, `Muitas tentativas de login. Aguarde cerca de ${Math.max(1, Math.ceil(waitSeconds / 60))} minuto(s).`));
     return;
   }
   const user = await authenticate(username, password);
   if (!user) {
-    registerLoginFailure(req);
+    await registerLoginFailure(req, username);
     void logCoreAudit(null, 'login_xp_falha', 'user', null, `Tentativa de login XP falhou para usuario: ${username}`);
     res.status(401).type('html').send(renderLogin(req, 'Usuario ou senha incorretos.'));
     return;
   }
   const returnTo = loginRedirectTarget(req);
-  clearLoginRateLimit(req);
+  await clearLoginRateLimit(req, username);
   req.session.regenerate((error) => {
     if (error) {
       res.status(500).type('html').send(renderLogin(req, 'Nao consegui renovar a sessao.'));
       return;
     }
     req.session.user = user;
+    req.session.authenticationSource = 'direct';
     req.session.csrfToken = crypto.randomBytes(24).toString('hex');
     void logCoreAudit(user.id, 'login_xp', 'user', String(user.id), 'Login XP realizado.');
     res.redirect(returnTo);

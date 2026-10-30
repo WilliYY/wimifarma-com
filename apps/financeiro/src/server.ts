@@ -1,3 +1,4 @@
+import { BlockList, isIP } from 'node:net';
 import express, { type Request, type Response } from 'express';
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -29,6 +30,7 @@ declare module 'express-session' {
     loginBlockedUntil?: number;
     returnTo?: string;
     user?: User;
+    authenticationSource?: 'home' | 'direct';
   }
 }
 
@@ -800,6 +802,7 @@ function regenerateWithUser(req: Request, user: User): Promise<void> {
         return;
       }
       req.session.user = user;
+      req.session.authenticationSource = 'home';
       req.session.csrfToken = crypto.randomBytes(24).toString('hex');
       if (returnTo) req.session.returnTo = returnTo;
       resolve();
@@ -808,15 +811,18 @@ function regenerateWithUser(req: Request, user: User): Promise<void> {
 }
 
 async function requireUser(req: Request, res: Response): Promise<User | null> {
-  let user = await currentUser(req.session.user);
   const homeUser = await userByHomeSso(req);
-  if (homeUser && (!user || user.id !== homeUser.id)) {
-    await regenerateWithUser(req, homeUser);
-    user = homeUser;
-  } else if (!user && homeUser) {
-    await regenerateWithUser(req, homeUser);
-    user = homeUser;
+  let user: User | null = null;
+  if (hasHomeSsoCookie(req)) {
+    if (homeUser) {
+      if (!req.session.user || req.session.user.id !== homeUser.id) await regenerateWithUser(req, homeUser);
+      req.session.authenticationSource = 'home';
+      user = homeUser;
+    }
+  } else if (req.session.authenticationSource === 'direct') {
+    user = await currentUser(req.session.user);
   }
+  if (!user) delete req.session.user;
   if (!user) {
     if (wantsJson(req)) {
       res.status(401).json({ ok: false, message: 'Sessao expirada. Entre novamente no financeiro e tente de novo.' });
@@ -872,22 +878,80 @@ function takeFlash(req: Request): Flash {
   return flash;
 }
 
-function loginWaitSeconds(req: Request): number {
-  const blockedUntil = Number(req.session.loginBlockedUntil || 0);
-  return Math.max(0, Math.ceil((blockedUntil - Date.now()) / 1000));
+function loginRateIdentities(req: Request, username: string): Array<{ key: string; username: string | null; ipHash: string | null; limit: number }> {
+  const normalized = String(username).trim().toLowerCase();
+  const identity = /^[a-z0-9._@-]{1,80}$/.test(normalized) ? normalized : '-';
+  const hash = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
+  const normalizeIp = (value: unknown): string => {
+    const candidate = String(value || '').trim();
+    if (!isIP(candidate) || candidate.includes('%')) return 'unknown';
+    if (isIP(candidate) === 6) {
+      const mapped = new URL('http://[' + candidate + ']/').hostname.match(/^\[::ffff:([a-f0-9]+):([a-f0-9]+)\]$/i);
+      if (mapped) {
+        const high = Number.parseInt(mapped[1], 16);
+        const low = Number.parseInt(mapped[2], 16);
+        return [high >> 8, high & 255, low >> 8, low & 255].join('.');
+      }
+    }
+    return candidate;
+  };
+  const trusted = new BlockList();
+  for (const [address, prefix] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['127.0.0.0', 8], ['169.254.0.0', 16],
+    ['172.16.0.0', 12], ['192.168.0.0', 16], ['240.0.0.0', 4]] as const) trusted.addSubnet(address, prefix, 'ipv4');
+  for (const [address, prefix] of [['::', 128], ['::1', 128], ['100::', 64], ['fc00::', 7], ['fe80::', 10]] as const) {
+    trusted.addSubnet(address, prefix, 'ipv6');
+  }
+  const remote = normalizeIp(req.socket.remoteAddress);
+  let clientIp = remote;
+  if (remote !== 'unknown' && trusted.check(remote, isIP(remote) === 4 ? 'ipv4' : 'ipv6')) {
+    const realIp = normalizeIp(req.get('x-real-ip'));
+    const forwarded = String(req.get('x-forwarded-for') || '').split(',').reverse().map(normalizeIp);
+    clientIp = realIp !== 'unknown' ? realIp : forwarded.find(value => value !== 'unknown') || remote;
+  }
+  const ipHash = hash(clientIp);
+  // Share identities with the Home: changing cookies or login endpoints cannot reset limits.
+  return [
+    { key: hash('home|pair|' + ipHash + '|' + identity), username: identity, ipHash, limit: 5 },
+    { key: hash('home|user|' + identity), username: identity, ipHash: null, limit: 10 },
+    { key: hash('home|ip|' + ipHash), username: null, ipHash, limit: 30 },
+  ];
 }
 
-function registerLoginFailure(req: Request): void {
-  const now = Date.now();
-  const attempts = (req.session.loginAttempts || []).filter((timestamp) => now - timestamp < 15 * 60 * 1000);
-  attempts.push(now);
-  req.session.loginAttempts = attempts;
-  if (attempts.length >= 5) req.session.loginBlockedUntil = now + 10 * 60 * 1000;
+async function loginWaitSeconds(req: Request, username: string): Promise<number> {
+  const identities = loginRateIdentities(req, username);
+  const result = await corePgPool.query(
+    'SELECT blocked_until FROM core_login_rate_limits WHERE rate_key = ANY($1::text[]) AND blocked_until > NOW()',
+    [identities.map(identity => identity.key)],
+  );
+  return result.rows.reduce((wait: number, row: { blocked_until: Date | string }) =>
+    Math.max(wait, Math.ceil((new Date(row.blocked_until).getTime() - Date.now()) / 1000)), 0);
 }
 
-function clearLoginRateLimit(req: Request): void {
-  delete req.session.loginAttempts;
-  delete req.session.loginBlockedUntil;
+async function registerLoginFailure(req: Request, username: string): Promise<void> {
+  for (const identity of loginRateIdentities(req, username)) {
+    await corePgPool.query(
+      `INSERT INTO core_login_rate_limits
+        (rate_key, username_normalized, ip_hash, attempts_count, window_started_at, blocked_until, updated_at)
+       VALUES ($1, $2, $3, 1, NOW(), NULL, NOW())
+       ON CONFLICT (rate_key) DO UPDATE SET
+         attempts_count = CASE WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes'
+           THEN 1 ELSE core_login_rate_limits.attempts_count + 1 END,
+         window_started_at = CASE WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes'
+           THEN NOW() ELSE core_login_rate_limits.window_started_at END,
+         blocked_until = CASE
+           WHEN (CASE WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes'
+             THEN 1 ELSE core_login_rate_limits.attempts_count + 1 END) >= $4 THEN NOW() + INTERVAL '10 minutes'
+           WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes' THEN NULL
+           ELSE core_login_rate_limits.blocked_until END,
+         updated_at = NOW()`,
+      [identity.key, identity.username, identity.ipHash, identity.limit],
+    );
+  }
+}
+
+async function clearLoginRateLimit(req: Request, username: string): Promise<void> {
+  await corePgPool.query('DELETE FROM core_login_rate_limits WHERE rate_key = ANY($1::text[])',
+    [loginRateIdentities(req, username).slice(0, 2).map(identity => identity.key)]);
 }
 
 function safeReturnPath(value: unknown): string {
@@ -910,6 +974,28 @@ function loginRedirectTarget(req: Request): string {
 
 function pgClient(client?: PoolClient): PoolClient | typeof pgPool {
   return client || pgPool;
+}
+
+const transactionAuditMirrors = new WeakMap<PoolClient, Array<() => Promise<void>>>();
+
+async function withFinanceTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pgPool.connect();
+  const mirrors: Array<() => Promise<void>> = [];
+  transactionAuditMirrors.set(client, mirrors);
+  let result: T;
+  try {
+    await client.query('BEGIN');
+    result = await work(client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    transactionAuditMirrors.delete(client);
+    client.release();
+  }
+  for (const mirror of mirrors) await mirror();
+  return result;
 }
 
 function closingToView(row: AnyRow | null): AnyRow | null {
@@ -985,6 +1071,13 @@ async function fetchClosingById(id: number, client?: PoolClient): Promise<AnyRow
   return closingToView(result.rows[0] || null);
 }
 
+async function lockClosingById(id: number, client: PoolClient): Promise<AnyRow> {
+  const result = await client.query<AnyRow>('SELECT * FROM financeiro_closings WHERE id = $1 FOR UPDATE', [id]);
+  const closing = closingToView(result.rows[0] || null);
+  if (!closing) throw new Error('Fechamento financeiro nao encontrado.');
+  return closing;
+}
+
 function isLocked(closing: AnyRow): boolean {
   return ['fechado', 'divergente'].includes(String(closing.status || ''));
 }
@@ -1001,9 +1094,10 @@ async function auditEvent(
   after: unknown,
   req?: Request,
   userId?: number | null,
+  client?: PoolClient,
 ): Promise<void> {
   try {
-    await pgPool.query(
+    await pgClient(client).query(
       `INSERT INTO financeiro_audit_events
         (user_legacy_id, action, entity_table, entity_legacy_id, previous_value, new_value, ip, user_agent)
        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8)`,
@@ -1019,13 +1113,19 @@ async function auditEvent(
       ],
     );
   } catch (error) {
+    if (client) throw error;
     console.warn('[financeiro] audit failed', error);
   }
-  try {
-    await mirrorCoreAudit(action, entityTable, recordId, after, req, userId);
-  } catch (error) {
-    console.warn('[financeiro] core audit mirror failed', error);
-  }
+  const mirror = async (): Promise<void> => {
+    try {
+      await mirrorCoreAudit(action, entityTable, recordId, after, req, userId);
+    } catch (error) {
+      console.warn('[financeiro] core audit mirror failed', error);
+    }
+  };
+  const pending = client && transactionAuditMirrors.get(client);
+  if (pending) pending.push(mirror);
+  else await mirror();
 }
 
 let xpRewardSchemaReady = false;
@@ -1204,12 +1304,12 @@ async function getOrCreateClosing(date: string, req?: Request, client?: PoolClie
   );
   const created = closingToView(result.rows[0] || null) || (await fetchClosingByDate(date, client));
   if (!created) throw new Error('Nao foi possivel criar o fechamento financeiro.');
-  await auditEvent('criar_fechamento', 'financeiro_fechamentos', Number(created.id), null, created, req);
+  if (result.rows[0]) await auditEvent('criar_fechamento', 'financeiro_fechamentos', Number(created.id), null, created, req, undefined, client);
   return created;
 }
 
-async function entrySums(closingId: number): Promise<AnyRow> {
-  const result = await pgPool.query<AnyRow>(
+async function entrySums(closingId: number, client?: PoolClient): Promise<AnyRow> {
+  const result = await pgClient(client).query<AnyRow>(
     `SELECT
         COUNT(*)::int AS total_qtd,
         COALESCE(SUM(CASE WHEN status <> 'cancelado' THEN 1 ELSE 0 END), 0)::int AS qtd,
@@ -1227,8 +1327,8 @@ async function entrySums(closingId: number): Promise<AnyRow> {
   return result.rows[0] || {};
 }
 
-async function specificSums(closingId: number): Promise<AnyRow> {
-  const result = await pgPool.query<AnyRow>(
+async function specificSums(closingId: number, client?: PoolClient): Promise<AnyRow> {
+  const result = await pgClient(client).query<AnyRow>(
     `SELECT
        (SELECT COUNT(*)::int FROM financeiro_card_entries WHERE closing_id = $1) AS card_total_qtd,
        (SELECT COALESCE(SUM(CASE WHEN reconciliation_status <> 'cancelado' AND kind IN ('credito', 'debito', 'voucher', 'outra') THEN gross_cents ELSE 0 END), 0)::bigint FROM financeiro_card_entries WHERE closing_id = $1) AS cartao,
@@ -1244,11 +1344,11 @@ async function specificSums(closingId: number): Promise<AnyRow> {
   return result.rows[0] || {};
 }
 
-async function recalculateClosing(closingId: number): Promise<AnyRow> {
-  const closing = await fetchClosingById(closingId);
+async function recalculateClosing(closingId: number, client?: PoolClient): Promise<AnyRow> {
+  const closing = await fetchClosingById(closingId, client);
   if (!closing) throw new Error('Fechamento financeiro nao encontrado.');
-  const generic = await entrySums(closingId);
-  const specific = await specificSums(closingId);
+  const generic = await entrySums(closingId, client);
+  const specific = await specificSums(closingId, client);
   const hasGeneric = Number(generic.total_qtd || 0) > 0;
   const cash = hasGeneric ? Number(generic.dinheiro || 0) : moneyTextToCents(closing.caixa_fisico);
   const card = hasGeneric
@@ -1279,7 +1379,7 @@ async function recalculateClosing(closingId: number): Promise<AnyRow> {
     ? Number(generic.total || 0)
     : cash + card + pixCorrect + sangria + moneyTextToCents(closing.retirada_caixa) + adjustments;
   const difference = total - moneyTextToCents(closing.abertura_sistema);
-  const result = await pgPool.query<AnyRow>(
+  const result = await pgClient(client).query<AnyRow>(
     `UPDATE financeiro_closings
         SET cash_cents = $1,
             card_cents = $2,
@@ -1322,9 +1422,9 @@ function closingDataFromBody(body: AnyRow, user?: User): AnyRow {
   };
 }
 
-async function updateManualClosing(closingId: number, data: AnyRow, req?: Request): Promise<AnyRow> {
-  const before = await fetchClosingById(closingId);
-  if (!before) throw new Error('Fechamento nao encontrado.');
+async function updateManualClosing(closingId: number, data: AnyRow, req?: Request, client?: PoolClient): Promise<AnyRow> {
+  if (!client) return withFinanceTransaction((transaction) => updateManualClosing(closingId, data, req, transaction));
+  const before = await lockClosingById(closingId, client);
   if (isLocked(before)) throw new Error('Este dia esta fechado. Reabra com senha para editar.');
   if (data.pix_correto_manual !== null && data.pix_correto_justificativa === '') {
     throw new Error('Informe a justificativa quando preencher PIX correto manual.');
@@ -1337,7 +1437,7 @@ async function updateManualClosing(closingId: number, data: AnyRow, req?: Reques
   } else if (Math.abs(nextRevenue - previousRevenue) > 0 || !recordedAt) {
     recordedAt = new Date().toISOString();
   }
-  await pgPool.query(
+  await client.query(
     `UPDATE financeiro_closings
         SET responsible_legacy_id = $1,
             responsible_text = $2,
@@ -1378,15 +1478,21 @@ async function updateManualClosing(closingId: number, data: AnyRow, req?: Reques
       closingId,
     ],
   );
-  const after = await recalculateClosing(closingId);
-  await auditEvent('alterar_fechamento', 'financeiro_fechamentos', closingId, before, after, req);
+  const after = await recalculateClosing(closingId, client);
+  await auditEvent('alterar_fechamento', 'financeiro_fechamentos', closingId, before, after, req, undefined, client);
   return after;
 }
 
-async function closeClosing(closingId: number, status: string, req?: Request): Promise<AnyRow> {
-  const before = await fetchClosingById(closingId);
-  if (!before) throw new Error('Fechamento financeiro nao encontrado.');
-  const result = await pgPool.query<AnyRow>(
+async function closeClosing(closingId: number, status: string, req?: Request, client?: PoolClient): Promise<AnyRow> {
+  if (!client) return withFinanceTransaction((transaction) => closeClosing(closingId, status, req, transaction));
+  const before = await lockClosingById(closingId, client);
+  if (isLocked(before)) throw new Error('Este dia esta fechado. Reabra com senha para editar.');
+  const current = await recalculateClosing(closingId, client);
+  if (status !== 'sem_movimento') {
+    const limit = await divergenceLimitCents(client);
+    status = Math.abs(moneyTextToCents(current.sobra_falta)) > limit ? 'divergente' : 'fechado';
+  }
+  const result = await client.query<AnyRow>(
     `UPDATE financeiro_closings
         SET status = $1,
             closed_at = NOW(),
@@ -1397,15 +1503,16 @@ async function closeClosing(closingId: number, status: string, req?: Request): P
     [status, req?.session.user?.id || null, closingId],
   );
   const after = closingToView(result.rows[0] || null) || before;
-  await auditEvent('fechar_fechamento', 'financeiro_fechamentos', closingId, before, after, req);
+  await auditEvent('fechar_fechamento', 'financeiro_fechamentos', closingId, before, after, req, undefined, client);
   return after;
 }
 
-async function reopenClosing(date: string, req: Request): Promise<void> {
-  const closing = await fetchClosingByDate(date);
+async function reopenClosing(date: string, req: Request, client?: PoolClient): Promise<void> {
+  if (!client) return withFinanceTransaction((transaction) => reopenClosing(date, req, transaction));
+  const closing = await fetchClosingByDate(date, client);
   if (!closing) throw new Error('Dia financeiro nao encontrado.');
-  const before = closing;
-  const result = await pgPool.query<AnyRow>(
+  const before = await lockClosingById(Number(closing.id), client);
+  const result = await client.query<AnyRow>(
     `UPDATE financeiro_closings
         SET status = 'conferencia',
             closed_at = NULL,
@@ -1416,14 +1523,16 @@ async function reopenClosing(date: string, req: Request): Promise<void> {
     [closing.id],
   );
   const after = closingToView(result.rows[0] || null) || closing;
-  await auditEvent('reabrir_fechamento', 'financeiro_fechamentos', Number(closing.id), before, after, req);
+  await auditEvent('reabrir_fechamento', 'financeiro_fechamentos', Number(closing.id), before, after, req, undefined, client);
 }
 
-async function saveDailyRevenue(date: string, valueCents: number, userId: number | null, source: string, req?: Request): Promise<AnyRow> {
-  const closing = await getOrCreateClosing(date, req);
-  const before = await fetchClosingById(Number(closing.id)) || closing;
+async function saveDailyRevenue(date: string, valueCents: number, userId: number | null, source: string, req?: Request, client?: PoolClient): Promise<AnyRow> {
+  if (!client) return withFinanceTransaction((transaction) => saveDailyRevenue(date, valueCents, userId, source, req, transaction));
+  const closing = await getOrCreateClosing(date, req, client);
+  const before = await lockClosingById(Number(closing.id), client);
+  if (isLocked(before)) throw new Error('Este dia esta fechado. Reabra com senha para editar.');
   const reopenEmpty = String(before.status || '') === 'sem_movimento' && valueCents > 0;
-  const result = await pgPool.query<AnyRow>(
+  const result = await client.query<AnyRow>(
     `UPDATE financeiro_closings
         SET daily_revenue_cents = $1,
             daily_revenue_recorded_at = $2,
@@ -1431,10 +1540,11 @@ async function saveDailyRevenue(date: string, valueCents: number, userId: number
             closed_at = CASE WHEN $3 THEN NULL ELSE closed_at END,
             closed_by_legacy_id = CASE WHEN $3 THEN NULL ELSE closed_by_legacy_id END,
             updated_at = NOW()
-      WHERE id = $4
+      WHERE id = $4 AND status NOT IN ('fechado', 'divergente')
       RETURNING *`,
     [valueCents, valueCents > 0 ? new Date().toISOString() : null, reopenEmpty, closing.id],
   );
+  if (!result.rows[0]) throw new Error('Este dia esta fechado. Reabra com senha para editar.');
   const after = closingToView(result.rows[0] || null) || closing;
   await auditEvent(
     'salvar_faturamento_diario',
@@ -1451,6 +1561,7 @@ async function saveDailyRevenue(date: string, valueCents: number, userId: number
     },
     req,
     userId,
+    client,
   );
   return after;
 }
@@ -1462,13 +1573,16 @@ async function addEntry(
   observation: string,
   userId: number | null,
   req?: Request,
+  client?: PoolClient,
 ): Promise<AnyRow> {
+  if (!client) return withFinanceTransaction((transaction) => addEntry(date, category, valueCents, observation, userId, req, transaction));
   const cleanedCategory = cleanText(category, 120);
   if (cleanedCategory === '') throw new Error('Informe a categoria.');
   if (valueCents <= 0) throw new Error('Informe o valor do lancamento.');
-  const closing = await getOrCreateClosing(date, req);
+  const initial = await getOrCreateClosing(date, req, client);
+  const closing = await lockClosingById(Number(initial.id), client);
   if (isLocked(closing)) throw new Error('Este dia esta fechado. Reabra para adicionar lancamentos.');
-  const result = await pgPool.query<AnyRow>(
+  const result = await client.query<AnyRow>(
     `INSERT INTO financeiro_entries
         (closing_id, legacy_closing_id, entry_date, category, amount_cents, observation, status, created_by_legacy_id)
      VALUES ($1, $2, $3, $4, $5, $6, 'lancado', $7)
@@ -1476,7 +1590,7 @@ async function addEntry(
     [closing.id, closing.legacy_mysql_id || null, date, cleanedCategory, valueCents, cleanText(observation, 4000), userId],
   );
   const entry = result.rows[0];
-  const updated = await recalculateClosing(Number(closing.id));
+  const updated = await recalculateClosing(Number(closing.id), client);
   await auditEvent(
     'criar_lancamento',
     'financeiro_lancamentos',
@@ -1485,20 +1599,24 @@ async function addEntry(
     { data: date, categoria: cleanedCategory, valor: centsToDecimal(valueCents), observacao: observation, total_conferido: updated.total_conferido },
     req,
     userId,
+    client,
   );
   return { ...entry, closing: updated };
 }
 
-async function cancelEntry(date: string, id: number, req: Request): Promise<void> {
-  const closing = await fetchClosingByDate(date);
-  if (!closing || isLocked(closing)) throw new Error('Este dia esta fechado. Reabra para remover lancamentos.');
-  const beforeResult = await pgPool.query<AnyRow>('SELECT * FROM financeiro_entries WHERE id = $1 AND closing_id = $2 LIMIT 1', [id, closing.id]);
+async function cancelEntry(date: string, id: number, req: Request, client?: PoolClient): Promise<void> {
+  if (!client) return withFinanceTransaction((transaction) => cancelEntry(date, id, req, transaction));
+  const initial = await fetchClosingByDate(date, client);
+  if (!initial) throw new Error('Este dia esta fechado. Reabra para remover lancamentos.');
+  const closing = await lockClosingById(Number(initial.id), client);
+  if (isLocked(closing)) throw new Error('Este dia esta fechado. Reabra para remover lancamentos.');
+  const beforeResult = await client.query<AnyRow>('SELECT * FROM financeiro_entries WHERE id = $1 AND closing_id = $2 LIMIT 1', [id, closing.id]);
   const before = beforeResult.rows[0];
   if (!before) throw new Error('Lancamento nao encontrado.');
-  const afterResult = await pgPool.query<AnyRow>("UPDATE financeiro_entries SET status = 'cancelado', updated_at = NOW() WHERE id = $1 RETURNING *", [id]);
+  const afterResult = await client.query<AnyRow>("UPDATE financeiro_entries SET status = 'cancelado', updated_at = NOW() WHERE id = $1 RETURNING *", [id]);
   const after = afterResult.rows[0];
-  await recalculateClosing(Number(closing.id));
-  await auditEvent('cancelar_lancamento', 'financeiro_lancamentos', id, before, after, req);
+  await recalculateClosing(Number(closing.id), client);
+  await auditEvent('cancelar_lancamento', 'financeiro_lancamentos', id, before, after, req, undefined, client);
 }
 
 async function monthClosings(month: number, year: number): Promise<Record<string, AnyRow>> {
@@ -1606,8 +1724,8 @@ async function fetchEntries(closingId: number): Promise<AnyRow[]> {
   }));
 }
 
-async function divergenceLimitCents(): Promise<number> {
-  const result = await pgPool.query<{ setting_value: string }>(
+async function divergenceLimitCents(client?: PoolClient): Promise<number> {
+  const result = await pgClient(client).query<{ setting_value: string }>(
     "SELECT setting_value FROM financeiro_settings WHERE setting_key = 'limite_divergencia' LIMIT 1",
   );
   return Math.max(0, moneyTextToCents(result.rows[0]?.setting_value || '10.00'));
@@ -1721,10 +1839,12 @@ function closingMovementCents(closing: AnyRow): number {
   return values.reduce<number>((sum, value) => sum + Math.abs(moneyTextToCents(value)), 0);
 }
 
-async function closeEmptyDay(date: string, req: Request, observation = 'Sem movimento.'): Promise<AnyRow> {
-  const closing = await getOrCreateClosing(date, req);
+async function closeEmptyDay(date: string, req: Request, observation = 'Sem movimento.', client?: PoolClient): Promise<AnyRow> {
+  if (!client) return withFinanceTransaction((transaction) => closeEmptyDay(date, req, observation, transaction));
+  const initial = await getOrCreateClosing(date, req, client);
+  const closing = await lockClosingById(Number(initial.id), client);
   if (isLocked(closing)) throw new Error('Este dia ja esta fechado.');
-  const sums = await entrySums(Number(closing.id));
+  const sums = await entrySums(Number(closing.id), client);
   if (Number(sums.qtd || 0) > 0 || closingMovementCents(closing) > 0) {
     throw new Error('Este dia ja tem movimento registrado. Remova os lancamentos ou zere os valores antes de marcar sem movimento.');
   }
@@ -1748,8 +1868,9 @@ async function closeEmptyDay(date: string, req: Request, observation = 'Sem movi
       observacao: observation,
     },
     req,
+    client,
   );
-  return closeClosing(Number(closing.id), 'sem_movimento', req);
+  return closeClosing(Number(closing.id), 'sem_movimento', req, client);
 }
 
 function postRedirect(res: Response, year: number, month: number, date: string, anchor = 'dia'): void {
@@ -2242,8 +2363,11 @@ app.post([BASE_PATH, `${BASE_PATH}/`, `${BASE_PATH}/index.php`], asyncRoute(asyn
     }
 
     if (action === 'save_day' || action === 'close_day') {
-      const closing = await getOrCreateClosing(date, req);
-      const updated = await updateManualClosing(Number(closing.id), closingDataFromBody(body, user), req);
+      const updated = await withFinanceTransaction(async (client) => {
+        const closing = await getOrCreateClosing(date, req, client);
+        const saved = await updateManualClosing(Number(closing.id), closingDataFromBody(body, user), req, client);
+        return action === 'close_day' ? closeClosing(Number(closing.id), 'fechado', req, client) : saved;
+      });
       if (action === 'save_day' && wantsJson(req)) {
         res.json({
           ok: true,
@@ -2259,11 +2383,9 @@ app.post([BASE_PATH, `${BASE_PATH}/`, `${BASE_PATH}/index.php`], asyncRoute(asyn
         return;
       }
       if (action === 'close_day') {
-        const limit = await divergenceLimitCents();
-        const status = Math.abs(moneyTextToCents(updated.sobra_falta)) > limit ? 'divergente' : 'fechado';
-        const closed = await closeClosing(Number(closing.id), status, req);
+        const closed = updated;
         const xpAward = await awardXpForCashClosing(req, closed);
-        const closingMessage = status === 'divergente' ? 'Dia fechado como divergente.' : 'Dia fechado com sucesso.';
+        const closingMessage = closed.status === 'divergente' ? 'Dia fechado como divergente.' : 'Dia fechado com sucesso.';
         setFlash(req, xpAward.awarded || xpAward.alreadyAwarded ? 'success' : 'warning', `${closingMessage} ${xpAward.message}`);
       } else {
         setFlash(req, 'success', 'Fechamento salvo como rascunho.');
@@ -2368,16 +2490,16 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     res.status(422).type('html').send(renderLogin(req, 'Sessao expirada. Atualize a pagina e tente novamente.'));
     return;
   }
-  const waitSeconds = loginWaitSeconds(req);
+  const username = cleanText(req.body?.username, 120);
+  const waitSeconds = await loginWaitSeconds(req, username);
   if (waitSeconds > 0) {
     res.status(429).type('html').send(renderLogin(req, `Muitas tentativas de login. Aguarde cerca de ${Math.max(1, Math.ceil(waitSeconds / 60))} minuto(s).`));
     return;
   }
-  const username = cleanText(req.body?.username, 120);
   const password = String(req.body?.password || '');
   const user = await authenticate(username, password);
   if (!user) {
-    registerLoginFailure(req);
+    await registerLoginFailure(req, username);
     await auditEvent('login_financeiro_falha', 'user', null, null, { username }, req, null);
     res.status(401).type('html').send(renderLogin(req, 'Usuario ou senha incorretos.'));
     return;
@@ -2387,7 +2509,7 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
     res.status(403).type('html').send(renderLogin(req, 'Seu usuario nao tem permissao para acessar o Financeiro.'));
     return;
   }
-  clearLoginRateLimit(req);
+  await clearLoginRateLimit(req, username);
   const returnTo = loginRedirectTarget(req);
   req.session.regenerate((error) => {
     if (error) {
@@ -2396,6 +2518,7 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
       return;
     }
     req.session.user = user;
+    req.session.authenticationSource = 'direct';
     req.session.csrfToken = crypto.randomBytes(24).toString('hex');
     void auditEvent('login_financeiro', 'user', user.id, null, { username: user.username }, req, user.id);
     res.redirect(returnTo);
@@ -2758,13 +2881,6 @@ app.post(`${BASE_PATH}/api/internal/lancamentos`, asyncRoute(async (req, res) =>
   if (!requireInternalToken(req, res)) return;
   const payload = req.body as AnyRow;
   const key = cleanText(payload.idempotency_key || payload.idempotencyKey, 160);
-  if (key) {
-    const existing = await pgPool.query<{ result: unknown }>('SELECT result FROM financeiro_internal_idempotency WHERE idempotency_key = $1 LIMIT 1', [key]);
-    if (existing.rows[0]) {
-      res.json({ ...(existing.rows[0].result as Record<string, unknown>), idempotent: true });
-      return;
-    }
-  }
   const category = cleanText(payload.categoria || payload.category, 120);
   const date = validFinanceDate(payload.data || payload.date, todayDate());
   const amountCents = payload.amount_cents !== undefined ? Number(payload.amount_cents || 0) : moneyTextToCents(payload.valor || payload.amount);
@@ -2783,29 +2899,36 @@ app.post(`${BASE_PATH}/api/internal/lancamentos`, asyncRoute(async (req, res) =>
       return;
     }
   }
-  const entry = await addEntry(date, category, amountCents, observation, actorUserId, undefined);
-  const entryClosing = (entry.closing || {}) as AnyRow;
-  const response = {
-    ok: true,
-    source: 'postgres',
-    id: Number(entry.id),
-    data: date,
-    categoria: category,
-    valor: centsToDecimal(amountCents),
-    valor_cents: amountCents,
-    responsavel: responsible,
-    observacao: observation,
-    total_conferido: entryClosing.total_conferido ?? 0,
-    sobra_falta: entryClosing.sobra_falta ?? 0,
-  };
-  if (key) {
-    await pgPool.query(
-      `INSERT INTO financeiro_internal_idempotency (idempotency_key, action, result)
-       VALUES ($1, 'lancamento', $2::jsonb)
-       ON CONFLICT (idempotency_key) DO NOTHING`,
-      [key, JSON.stringify(response)],
-    );
-  }
+  const response = await withFinanceTransaction(async (client) => {
+    if (key) {
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`financeiro:lancamento:${key}`]);
+      const existing = await client.query<{ result: unknown }>('SELECT result FROM financeiro_internal_idempotency WHERE idempotency_key = $1 LIMIT 1', [key]);
+      if (existing.rows[0]) return { ...(existing.rows[0].result as Record<string, unknown>), idempotent: true };
+    }
+    const entry = await addEntry(date, category, amountCents, observation, actorUserId, undefined, client);
+    const entryClosing = (entry.closing || {}) as AnyRow;
+    const response = {
+      ok: true,
+      source: 'postgres',
+      id: Number(entry.id),
+      data: date,
+      categoria: category,
+      valor: centsToDecimal(amountCents),
+      valor_cents: amountCents,
+      responsavel: responsible,
+      observacao: observation,
+      total_conferido: entryClosing.total_conferido ?? 0,
+      sobra_falta: entryClosing.sobra_falta ?? 0,
+    };
+    if (key) {
+      await client.query(
+        `INSERT INTO financeiro_internal_idempotency (idempotency_key, action, result)
+         VALUES ($1, 'lancamento', $2::jsonb)`,
+        [key, JSON.stringify(response)],
+      );
+    }
+    return response;
+  });
   res.json(response);
 }));
 

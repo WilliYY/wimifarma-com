@@ -754,6 +754,13 @@ Nao misturar essas portas ao configurar proxy, DNS ou WordPress.
 
 Leia `AGENTS.md` antes de qualquer alteracao.
 
+## Correcoes da auditoria de 2026-10-30
+
+- Faturamento de dia fechado exige reabertura; lancamentos internos do Financeiro gravam resultado e idempotencia na mesma transacao.
+- Os logins diretos de Notas, Usuarios, Codigos, Gestao, Pedidos, Tarefa, XP, Financeiro, Cashback e Cotacao compartilham o limitador persistente da Home.
+- Notas, Usuarios, Codigos, Gestao, Pedidos, Tarefa, XP e Financeiro encerram sessoes derivadas de SSO quando o SSO termina ou se torna invalido; o logout central inclui `WFNOTAS`.
+- Dependencias de seguranca atualizadas sem migracao de versao principal: Express `^4.22.3`, Multer `2.5.0` no XP e locks dos apps revisados. Os testes e comandos de verificacao estao em `docs/16-testes.md`.
+
 ## Baseline de seguranca
 
 Desde 2026-09-01, a Home e os modulos ativos nao aceitam mais o fallback fixo `adm`/`adm`; a Home possui rate limiting persistente, SSO com segredo minimo de 32 caracteres e auditoria de login. Cookies Node usam Secure automatico em HTTPS, o upload do XP tem allowlist e limites estritos, e existe rotina validada de backup para todos os bancos. Consulte `docs/08-autenticacao-e-permissoes.md`, `docs/09-deploy-e-ambiente.md`, `docs/11-seguranca.md`, `docs/15-logs-e-auditoria.md` e `docs/16-testes.md` antes de alterar esses controles.

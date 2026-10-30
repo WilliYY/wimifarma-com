@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import connectPgSimple from 'connect-pg-simple';
 import crypto from 'crypto';
+import { BlockList, isIP } from 'node:net';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import session from 'express-session';
 import path from 'path';
@@ -323,18 +324,18 @@ router.post('/login.php', async (req: Request, res: Response) => {
 
   const username = normalizeUsername(req.body?.username);
   const password = String(req.body?.password || '');
-  const waitSeconds = await loginRateLimitWaitSeconds(req, username);
-
-  if (waitSeconds > 0) {
-    const minutes = Math.max(1, Math.ceil(waitSeconds / 60));
-    res.send(renderLogin(req, `Muitas tentativas de login. Aguarde cerca de ${minutes} minuto(s).`));
-    return;
-  }
-
   try {
+    const waitSeconds = await loginWaitSeconds(req, username);
+
+    if (waitSeconds > 0) {
+      const minutes = Math.max(1, Math.ceil(waitSeconds / 60));
+      res.send(renderLogin(req, `Muitas tentativas de login. Aguarde cerca de ${minutes} minuto(s).`));
+      return;
+    }
+
     const user = await authenticateUser(username, password);
     if (user) {
-      await clearLoginRateLimit(req, username);
+      await clearLoginFailures(req, username);
       req.session.regenerate((err: Error | null) => {
         if (err) {
           res.status(500).send(renderLogin(req, 'Nao foi possivel iniciar a sessao.'));
@@ -1301,76 +1302,90 @@ async function ensureSessionUser(req: Request): Promise<User | null> {
   return (await canAccessModule(user, 'cashback')) ? user : null;
 }
 
-async function loginRateLimitWaitSeconds(req: Request, username: string): Promise<number> {
-  const sessionWait = Math.max(0, Math.ceil((Number(req.session.loginBlockedUntil || 0) - Date.now()) / 1000));
-  try {
-    const rateKey = loginRateKey(req, username);
-    const result = await corePgPool.query('SELECT blocked_until FROM core_login_rate_limits WHERE rate_key = $1 LIMIT 1', [rateKey.identityHash]);
-    const blockedAt = result.rows[0]?.blocked_until;
-    if (!blockedAt) return sessionWait;
-    const databaseWait = Math.max(0, Math.ceil((new Date(String(blockedAt)).getTime() - Date.now()) / 1000));
-    return Math.max(sessionWait, databaseWait);
-  } catch {
-    return sessionWait;
+function loginRateIdentities(req: Request, username: string): Array<{ key: string; username: string | null; ipHash: string | null; limit: number }> {
+  const normalized = String(username).trim().toLowerCase();
+  const identity = /^[a-z0-9._@-]{1,80}$/.test(normalized) ? normalized : '-';
+  const hash = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
+  const normalizeIp = (value: unknown): string => {
+    const candidate = String(value || '').trim();
+    if (!isIP(candidate) || candidate.includes('%')) return 'unknown';
+    if (isIP(candidate) === 6) {
+      const mapped = new URL('http://[' + candidate + ']/').hostname.match(/^\[::ffff:([a-f0-9]+):([a-f0-9]+)\]$/i);
+      if (mapped) {
+        const high = Number.parseInt(mapped[1], 16);
+        const low = Number.parseInt(mapped[2], 16);
+        return [high >> 8, high & 255, low >> 8, low & 255].join('.');
+      }
+    }
+    return candidate;
+  };
+  const trusted = new BlockList();
+  for (const [address, prefix] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['127.0.0.0', 8], ['169.254.0.0', 16],
+    ['172.16.0.0', 12], ['192.168.0.0', 16], ['240.0.0.0', 4]] as const) trusted.addSubnet(address, prefix, 'ipv4');
+  for (const [address, prefix] of [['::', 128], ['::1', 128], ['100::', 64], ['fc00::', 7], ['fe80::', 10]] as const) {
+    trusted.addSubnet(address, prefix, 'ipv6');
   }
+  const remote = normalizeIp(req.socket.remoteAddress);
+  let clientIp = remote;
+  if (remote !== 'unknown' && trusted.check(remote, isIP(remote) === 4 ? 'ipv4' : 'ipv6')) {
+    const realIp = normalizeIp(req.get('x-real-ip'));
+    const forwarded = String(req.get('x-forwarded-for') || '').split(',').reverse().map(normalizeIp);
+    clientIp = realIp !== 'unknown' ? realIp : forwarded.find(value => value !== 'unknown') || remote;
+  }
+  const ipHash = hash(clientIp);
+  // Share identities with the Home: changing cookies or login endpoints cannot reset limits.
+  return [
+    { key: hash('home|pair|' + ipHash + '|' + identity), username: identity, ipHash, limit: 5 },
+    { key: hash('home|user|' + identity), username: identity, ipHash: null, limit: 10 },
+    { key: hash('home|ip|' + ipHash), username: null, ipHash, limit: 30 },
+  ];
+}
+
+async function loginWaitSeconds(req: Request, username: string): Promise<number> {
+  const identities = loginRateIdentities(req, username);
+  const result = await corePgPool.query(
+    'SELECT blocked_until FROM core_login_rate_limits WHERE rate_key = ANY($1::text[]) AND blocked_until > NOW()',
+    [identities.map(identity => identity.key)],
+  );
+  const databaseWait = result.rows.reduce((wait: number, row: { blocked_until: Date | string }) =>
+    Math.max(wait, Math.ceil((new Date(row.blocked_until).getTime() - Date.now()) / 1000)), 0);
+  const sessionWait = Math.max(0, Math.ceil((Number(req.session.loginBlockedUntil || 0) - Date.now()) / 1000));
+  return Math.max(databaseWait, sessionWait);
 }
 
 async function registerLoginFailure(req: Request, username: string): Promise<void> {
+  for (const identity of loginRateIdentities(req, username)) {
+    await corePgPool.query(
+      `INSERT INTO core_login_rate_limits
+        (rate_key, username_normalized, ip_hash, attempts_count, window_started_at, blocked_until, updated_at)
+       VALUES ($1, $2, $3, 1, NOW(), NULL, NOW())
+       ON CONFLICT (rate_key) DO UPDATE SET
+         attempts_count = CASE WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes'
+           THEN 1 ELSE core_login_rate_limits.attempts_count + 1 END,
+         window_started_at = CASE WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes'
+           THEN NOW() ELSE core_login_rate_limits.window_started_at END,
+         blocked_until = CASE
+           WHEN (CASE WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes'
+             THEN 1 ELSE core_login_rate_limits.attempts_count + 1 END) >= $4 THEN NOW() + INTERVAL '10 minutes'
+           WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes' THEN NULL
+           ELSE core_login_rate_limits.blocked_until END,
+         updated_at = NOW()`,
+      [identity.key, identity.username, identity.ipHash, identity.limit],
+    );
+  }
   const now = Date.now();
-  const attempts = (req.session.loginAttempts || []).filter((timestamp: number) => now - timestamp <= 15 * 60 * 1000);
+  const attempts = (Array.isArray(req.session.loginAttempts) ? req.session.loginAttempts : [])
+    .filter((timestamp: number) => Number.isFinite(timestamp) && now - timestamp <= 15 * 60 * 1000);
   attempts.push(now);
   req.session.loginAttempts = attempts;
   if (attempts.length >= 5) req.session.loginBlockedUntil = now + 10 * 60 * 1000;
-  try {
-    const rateKey = loginRateKey(req, username);
-    await corePgPool.query(
-      `INSERT INTO core_login_rate_limits
-         (rate_key, username_normalized, ip_hash, attempts_count, window_started_at, blocked_until, updated_at)
-       VALUES ($1, $2, $3, 1, NOW(), NULL, NOW())
-       ON CONFLICT (rate_key) DO UPDATE SET
-         username_normalized = EXCLUDED.username_normalized,
-         ip_hash = EXCLUDED.ip_hash,
-         attempts_count = CASE
-           WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes' THEN 1
-           ELSE core_login_rate_limits.attempts_count + 1
-         END,
-         window_started_at = CASE
-           WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes' THEN NOW()
-           ELSE core_login_rate_limits.window_started_at
-         END,
-         blocked_until = CASE
-           WHEN (
-             CASE
-               WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes' THEN 1
-               ELSE core_login_rate_limits.attempts_count + 1
-             END
-           ) >= 5 THEN NOW() + INTERVAL '10 minutes'
-           ELSE core_login_rate_limits.blocked_until
-         END,
-         updated_at = NOW()`,
-      [rateKey.identityHash, username, rateKey.ipHash],
-    );
-  } catch {
-    // Session limiter remains active if the core limiter is unavailable.
-  }
 }
 
-async function clearLoginRateLimit(req: Request, username: string): Promise<void> {
+async function clearLoginFailures(req: Request, username: string): Promise<void> {
+  await corePgPool.query('DELETE FROM core_login_rate_limits WHERE rate_key = ANY($1::text[])',
+    [loginRateIdentities(req, username).slice(0, 2).map(identity => identity.key)]);
   delete req.session.loginAttempts;
   delete req.session.loginBlockedUntil;
-  try {
-    const rateKey = loginRateKey(req, username);
-    await corePgPool.query('DELETE FROM core_login_rate_limits WHERE rate_key = $1', [rateKey.identityHash]);
-  } catch {
-    // Login success should not fail because cleanup failed.
-  }
-}
-
-function loginRateKey(req: Request, username: string): { identityHash: string; ipHash: string } {
-  const ip = String(req.ip || req.socket.remoteAddress || '').slice(0, 80);
-  const ipHash = crypto.createHash('sha256').update(ip).digest('hex');
-  const identityHash = crypto.createHash('sha256').update(`cashback|${username}|${ipHash}`).digest('hex');
-  return { identityHash, ipHash };
 }
 
 async function ensureSchema(): Promise<void> {

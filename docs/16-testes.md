@@ -2,6 +2,14 @@
 
 Desde 2026-10-28, validar a retirada do Calendario com `node --test scripts/test-calendar-retirement.mjs`; `/calendario` e subrotas devem responder HTTP 410. Preservar datas/horarios de tarefas, o seletor de datas do Financeiro e os dados historicos do modulo retirado.
 
+## Regressoes da auditoria - 2026-10-30
+
+- `node --test scripts/test-module-auth.cjs` executa funcoes reais dos modulos com servicos simulados: logout SSO, SSO invalido, troca de operador, login direto legitimo e limites por usuario/IP/par que sobrevivem a troca de cookie. Cobre Notas, Usuarios, Codigos, Gestao, Pedidos, Tarefa, XP e Financeiro.
+- `node --test scripts/test-cashback-cotacao-auth.cjs` executa os POSTs de login de Cashback e Cotacao com dependencias simuladas, incluindo bloqueio global da Home com nova sessao/IP e falha SQL antes da autenticacao.
+- `npm test --prefix apps/financeiro` cobre faturamento aberto/fechado/divergente/sem movimento, corrida de fechamento, oito chamadas simultaneas com a mesma chave, retry, rollback e auditoria local. Usa os handlers/helpers reais com simulacao transacional; nao escreve dados de negocio em producao.
+- Antes de publicar, executar `npm ci`, `npm run check` e build nos 17 apps, as suites existentes, `scripts/test-auth-hardening.ps1`, `scripts/check-secrets.ps1`, `git diff --check` e `npm audit --json` em cada app. Na Cotacao, usar tambem `typecheck` e `build:ts`.
+- Validar no VPS os healths, versoes efetivas dos pacotes, leitura/lint PHP como `www-data` e a Home por GET real. Nao confundir testes simulados com integracao PostgreSQL real; validar separadamente SQL e locks em ambiente isolado quando disponivel.
+
 ## O que esta parte do sistema faz
 
 Registra como o projeto e validado hoje e como deve evoluir para testes automatizados.

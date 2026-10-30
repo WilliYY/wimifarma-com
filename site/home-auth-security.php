@@ -7,20 +7,33 @@ const WF_HOME_LOGIN_PAIR_ATTEMPTS = 5;
 const WF_HOME_LOGIN_USER_ATTEMPTS = 10;
 const WF_HOME_LOGIN_IP_ATTEMPTS = 30;
 
+function wf_home_login_normalize_ip(string $value): string
+{
+    $value = trim($value);
+    if (!filter_var($value, FILTER_VALIDATE_IP)) {
+        return 'unknown';
+    }
+    $packed = inet_pton($value);
+    if ($packed !== false && strlen($packed) === 16 && substr($packed, 0, 12) === str_repeat(chr(0), 10) . chr(255) . chr(255)) {
+        return (string) inet_ntop(substr($packed, 12));
+    }
+    return $value;
+}
+
 function wf_home_login_client_ip(): string
 {
-    $remote = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
-    $remote = $remote !== '' && filter_var($remote, FILTER_VALIDATE_IP) ? $remote : 'unknown';
+    $remote = wf_home_login_normalize_ip((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
 
     if (wf_home_is_trusted_proxy($remote)) {
-        $realIp = trim((string) ($_SERVER['HTTP_X_REAL_IP'] ?? ''));
-        if ($realIp !== '' && filter_var($realIp, FILTER_VALIDATE_IP)) {
+        $realIp = wf_home_login_normalize_ip((string) ($_SERVER['HTTP_X_REAL_IP'] ?? ''));
+        if ($realIp !== 'unknown') {
             return $realIp;
         }
 
         $forwarded = array_reverse(array_map('trim', explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''))));
         foreach ($forwarded as $candidate) {
-            if ($candidate !== '' && filter_var($candidate, FILTER_VALIDATE_IP)) {
+            $candidate = wf_home_login_normalize_ip($candidate);
+            if ($candidate !== 'unknown') {
                 return $candidate;
             }
         }
@@ -31,6 +44,7 @@ function wf_home_login_client_ip(): string
 
 function wf_home_is_trusted_proxy(string $remoteIp): bool
 {
+    $remoteIp = wf_home_login_normalize_ip($remoteIp);
     if ($remoteIp === 'unknown' || !filter_var($remoteIp, FILTER_VALIDATE_IP)) {
         return false;
     }

@@ -46,6 +46,9 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 ## Contexto atual
 
+- Desde 2026-10-30, os POSTs de login direto corrigidos devem usar `core_login_rate_limits` por usuario, IP e par, compartilhando o bloqueio da Home; descartar cookie nao pode reiniciar as tentativas. Sessoes criadas pelo SSO nao podem sobreviver a SSO ausente/invalido nem manter a identidade anterior depois da troca de operador. O logout central inclui `WFNOTAS`. Preservar as regressoes em `scripts/test-module-auth.cjs`.
+- No Financeiro, alteracao de faturamento em dia fechado/divergente exige reabertura. A escrita interna idempotente usa uma unica transacao para chave, lancamento, recalculo e auditoria local, com serializacao por chave e bloqueio do fechamento; o espelho core ocorre depois do COMMIT. Preservar os testes em `apps/financeiro/src/financial-writes.test.mjs`.
+
 - Projeto interno da Wimifarma migrado do HostGator para VPS Ubuntu/Oracle.
 - O usuario acessa o VPS por PuTTY e os arquivos por WinSCP.
 - O Codex tambem pode acessar o VPS diretamente por SSH/plink com a chave local autorizada; quando fizer deploy, deve executar os comandos no servidor e relatar o resultado, sem precisar enviar comando PuTTY equivalente ao usuario.

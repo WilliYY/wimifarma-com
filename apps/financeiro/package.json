@@ -6,12 +6,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test src/*.test.mjs",
     "start": "node dist/server.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "connect-pg-simple": "^10.0.0",
-    "express": "^4.19.2",
+    "express": "^4.22.3",
     "express-session": "^1.19.0",
     "pg": "^8.12.0"
   },

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { BlockList, isIP } from 'node:net';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
@@ -214,10 +215,6 @@ const sessionMiddleware = session({
   }
 });
 
-const loginRateLimits = new Map();
-const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
-const LOGIN_RATE_LIMIT_BLOCK_MS = 10 * 60 * 1000;
-const LOGIN_RATE_LIMIT_MAX_FAILURES = 5;
 
 const io = new Server(server, {
   path: `${BASE_PATH}/socket.io`,
@@ -316,57 +313,82 @@ function verifyCsrf(req, res, next) {
   return next();
 }
 
-function loginRateLimitKey(req, username) {
-  const normalizedUsername = String(username || '').trim().toLowerCase();
-  const clientIp = String(req.ip || req.socket?.remoteAddress || 'unknown');
-  return `${clientIp}|${normalizedUsername}`;
-}
-
-function pruneLoginRateLimits(now = Date.now()) {
-  for (const [key, value] of loginRateLimits.entries()) {
-    const blockedUntil = Number(value.blockedUntil || 0);
-    const attempts = Array.isArray(value.attempts) ? value.attempts : [];
-    const hasRecentAttempt = attempts.some((timestamp) => now - timestamp <= LOGIN_RATE_LIMIT_WINDOW_MS);
-    if (!hasRecentAttempt && blockedUntil <= now) {
-      loginRateLimits.delete(key);
+function loginRateIdentities(req, username) {
+  const normalized = String(username).trim().toLowerCase();
+  const identity = /^[a-z0-9._@-]{1,80}$/.test(normalized) ? normalized : '-';
+  const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
+  const normalizeIp = (value) => {
+    const candidate = String(value || '').trim();
+    if (!isIP(candidate) || candidate.includes('%'))
+      return 'unknown';
+    if (isIP(candidate) === 6) {
+      const mapped = new URL('http://[' + candidate + ']/').hostname.match(/^\[::ffff:([a-f0-9]+):([a-f0-9]+)\]$/i);
+      if (mapped) {
+        const high = Number.parseInt(mapped[1], 16);
+        const low = Number.parseInt(mapped[2], 16);
+        return [high >> 8, high & 255, low >> 8, low & 255].join('.');
+      }
     }
+    return candidate;
+  };
+  const trusted = new BlockList();
+  for (const [address, prefix] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['127.0.0.0', 8], ['169.254.0.0', 16],
+    ['172.16.0.0', 12], ['192.168.0.0', 16], ['240.0.0.0', 4]])
+    trusted.addSubnet(address, prefix, 'ipv4');
+  for (const [address, prefix] of [['::', 128], ['::1', 128], ['100::', 64], ['fc00::', 7], ['fe80::', 10]]) {
+    trusted.addSubnet(address, prefix, 'ipv6');
   }
-}
-
-function loginWaitSeconds(req, username) {
-  pruneLoginRateLimits();
-  const now = Date.now();
-  const sessionWait = Math.max(0, Math.ceil((Number(req.session.loginBlockedUntil || 0) - now) / 1000));
-  const record = loginRateLimits.get(loginRateLimitKey(req, username));
-  const sharedWait = record ? Math.max(0, Math.ceil((Number(record.blockedUntil || 0) - now) / 1000)) : 0;
-  return Math.max(sessionWait, sharedWait);
-}
-
-function registerLoginFailure(req, username) {
-  const now = Date.now();
-  const sessionAttempts = Array.isArray(req.session.loginAttempts) ? req.session.loginAttempts : [];
-  const freshSessionAttempts = sessionAttempts.filter((timestamp) => Number.isFinite(timestamp) && now - timestamp <= LOGIN_RATE_LIMIT_WINDOW_MS);
-  freshSessionAttempts.push(now);
-  req.session.loginAttempts = freshSessionAttempts;
-  if (freshSessionAttempts.length >= LOGIN_RATE_LIMIT_MAX_FAILURES) {
-    req.session.loginBlockedUntil = now + LOGIN_RATE_LIMIT_BLOCK_MS;
+  const remote = normalizeIp(req.socket.remoteAddress);
+  let clientIp = remote;
+  if (remote !== 'unknown' && trusted.check(remote, isIP(remote) === 4 ? 'ipv4' : 'ipv6')) {
+    const realIp = normalizeIp(req.get('x-real-ip'));
+    const forwarded = String(req.get('x-forwarded-for') || '').split(',').reverse().map(normalizeIp);
+    clientIp = realIp !== 'unknown' ? realIp : forwarded.find(value => value !== 'unknown') || remote;
   }
-
-  const key = loginRateLimitKey(req, username);
-  const current = loginRateLimits.get(key) || { attempts: [], blockedUntil: 0 };
-  const attempts = (Array.isArray(current.attempts) ? current.attempts : [])
-    .filter((timestamp) => Number.isFinite(timestamp) && now - timestamp <= LOGIN_RATE_LIMIT_WINDOW_MS);
+  const ipHash = hash(clientIp);
+  // Share identities with the Home: changing cookies or login endpoints cannot reset limits.
+  return [
+    { key: hash('home|pair|' + ipHash + '|' + identity), username: identity, ipHash, limit: 5 },
+    { key: hash('home|user|' + identity), username: identity, ipHash: null, limit: 10 },
+    { key: hash('home|ip|' + ipHash), username: null, ipHash, limit: 30 },
+  ];
+}
+async function loginWaitSeconds(req, username) {
+  const identities = loginRateIdentities(req, username);
+  const result = await corePgPool.query('SELECT blocked_until FROM core_login_rate_limits WHERE rate_key = ANY($1::text[]) AND blocked_until > NOW()', [identities.map(identity => identity.key)]);
+  const databaseWait = result.rows.reduce((wait, row) => Math.max(wait, Math.ceil((new Date(row.blocked_until).getTime() - Date.now()) / 1000)), 0);
+  const sessionWait = Math.max(0, Math.ceil((Number(req.session.loginBlockedUntil || 0) - Date.now()) / 1000));
+  return Math.max(databaseWait, sessionWait);
+}
+async function registerLoginFailure(req, username) {
+  for (const identity of loginRateIdentities(req, username)) {
+    await corePgPool.query(`INSERT INTO core_login_rate_limits
+    (rate_key, username_normalized, ip_hash, attempts_count, window_started_at, blocked_until, updated_at)
+   VALUES ($1, $2, $3, 1, NOW(), NULL, NOW())
+   ON CONFLICT (rate_key) DO UPDATE SET
+    attempts_count = CASE WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes'
+     THEN 1 ELSE core_login_rate_limits.attempts_count + 1 END,
+    window_started_at = CASE WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes'
+     THEN NOW() ELSE core_login_rate_limits.window_started_at END,
+    blocked_until = CASE
+     WHEN (CASE WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes'
+      THEN 1 ELSE core_login_rate_limits.attempts_count + 1 END) >= $4 THEN NOW() + INTERVAL '10 minutes'
+     WHEN core_login_rate_limits.updated_at < NOW() - INTERVAL '15 minutes' THEN NULL
+     ELSE core_login_rate_limits.blocked_until END,
+    updated_at = NOW()`, [identity.key, identity.username, identity.ipHash, identity.limit]);
+  }
+  const now = Date.now();
+  const attempts = (Array.isArray(req.session.loginAttempts) ? req.session.loginAttempts : [])
+    .filter((timestamp) => Number.isFinite(timestamp) && now - timestamp <= 15 * 60 * 1000);
   attempts.push(now);
-  loginRateLimits.set(key, {
-    attempts,
-    blockedUntil: attempts.length >= LOGIN_RATE_LIMIT_MAX_FAILURES ? now + LOGIN_RATE_LIMIT_BLOCK_MS : Number(current.blockedUntil || 0)
-  });
+  req.session.loginAttempts = attempts;
+  if (attempts.length >= 5)
+    req.session.loginBlockedUntil = now + 10 * 60 * 1000;
 }
-
-function clearLoginRateLimit(req, username) {
+async function clearLoginFailures(req, username) {
+  await corePgPool.query('DELETE FROM core_login_rate_limits WHERE rate_key = ANY($1::text[])', [loginRateIdentities(req, username).slice(0, 2).map(identity => identity.key)]);
   delete req.session.loginAttempts;
   delete req.session.loginBlockedUntil;
-  loginRateLimits.delete(loginRateLimitKey(req, username));
 }
 
 function requireAuth(req, res, next) {
@@ -3052,16 +3074,16 @@ app.post(`${BASE_PATH}/login.php`, asyncRoute(async (req, res) => {
   }
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
-  const waitSeconds = loginWaitSeconds(req, username);
+  const waitSeconds = await loginWaitSeconds(req, username);
   if (waitSeconds > 0) {
     return res.status(429).type('html').send(renderLogin(req, `Muitas tentativas de login. Aguarde cerca de ${Math.max(1, Math.ceil(waitSeconds / 60))} minuto(s).`));
   }
   const user = await authenticate(username, password);
   if (!user) {
-    registerLoginFailure(req, username);
+    await registerLoginFailure(req, username);
     return res.status(401).type('html').send(renderLogin(req, 'Usuario ou senha invalidos.'));
   }
-  clearLoginRateLimit(req, username);
+  await clearLoginFailures(req, username);
   await new Promise((resolve, reject) => {
     req.session.regenerate((error) => {
       if (error) reject(error);

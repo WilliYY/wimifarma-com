@@ -437,6 +437,7 @@ function wf_home_clear_module_session_cookies(): void
         'WFCOTACAOV2',
         'WFPEDIDOS',
         'WFFINANCEIRO',
+        'WFNOTAS',
         'WFTAREFA',
         'WFCODIGOS',
         'WFCALENDARIO',

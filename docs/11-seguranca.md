@@ -1,5 +1,13 @@
 # 11 - Seguranca
 
+## Correcoes da auditoria - 2026-10-30
+
+- Notas, Usuarios, Codigos, Gestao, Pedidos, Tarefa, XP, Financeiro, Cashback e Cotacao usam limitador persistente no core nos logins diretos. As identidades por usuario, IP e par sao compartilhadas com a Home; renovar a sessao nao remove o bloqueio. Falha no core interrompe a autenticacao, sem fallback para limite apenas em cookie ou memoria local.
+- A origem de autenticacao diferencia login direto e SSO. SSO invalido nao permite recuperar a sessao antiga; SSO ausente encerra sessoes originadas na Home. A troca de operador exige identidade atual. `WFNOTAS` participa da limpeza de cookies da Home.
+- Financeiro verifica o fechamento ao alterar faturamento e serializa escritas internas repetidas pela chave de idempotencia. Lancamento, totais, auditoria local e resultado idempotente confirmam ou revertem juntos.
+- Express passa a exigir `^4.22.3`, com `body-parser` e `proxy-addr` corrigidos nos locks. XP usa Multer `2.5.0`; dependencias transitivas vulneraveis tambem foram atualizadas. A auditoria NPM deve abranger os 17 apps, incluindo dependencias de desenvolvimento.
+- Regressoes de comportamento: `node --test scripts/test-module-auth.cjs scripts/test-cashback-cotacao-auth.cjs` e `npm test --prefix apps/financeiro`. Detalhes em `docs/16-testes.md`.
+
 ## O que esta parte do sistema faz
 
 Registra cuidados de seguranca ja existentes e riscos encontrados durante a migracao.

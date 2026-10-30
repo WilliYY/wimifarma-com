@@ -16,7 +16,7 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "connect-redis": "^8.0.3",
-    "express": "^4.22.2",
+    "express": "^4.22.3",
     "express-session": "^1.18.0",
     "pg": "^8.21.0",
     "redis": "^4.7.0",
