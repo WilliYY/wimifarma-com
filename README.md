@@ -37,6 +37,8 @@ Direcao futura registrada em 2026-05-30: o usuario quer usar Next.js e Prisma em
 
 ## Status atual
 
+- Desde 2026-11-03, o Miauby WhatsApp usa `gemini-3.5-flash-lite` para conversa leve e transcricao, antecipando o redirecionamento do modelo anterior em 01/12/2026. Respostas por voz ficam desativadas; audios recebidos continuam sendo transcritos. O OCR Pix preserva seu modelo atual. Configuracao, limites e cuidados de reativacao do TTS estao em `docs/21-miauby-whatsapp.md`.
+
 - Projeto local em `C:\Users\Thiesen\Desktop\wimifarma-com`.
 - Repositorio GitHub: `https://github.com/WilliYY/wimifarma-com.git`.
 - Auditoria geral de 2026-06-02 e roadmap para finalizar a migracao 100% ficam em `docs/29-roadmap-final-migracao.md`. Os checks locais, audits npm, healths do VPS e readiness do Miauby passaram; os bloqueios finais sao Miauby interno, core-auth legado, migrador sombra do Miauby e decisao sobre WordPress/site publico.

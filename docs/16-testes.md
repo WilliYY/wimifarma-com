@@ -1,5 +1,11 @@
 # 16 - Testes
 
+## Migracao Gemini - 2026-11-03
+
+- `npm test --prefix apps/miauw-whatsapp` inclui `gemini-generation-config.test.ts`: payload atual do 3.5 Flash Lite, limite de tokens de conversa/transcricao e compatibilidade dos parametros legados quando um modelo 2.5 e configurado explicitamente.
+- Para validar a migracao real, usar somente frase e audio sinteticos: testar `generateContent` de texto e transcricao com a chave existente, sem dados de clientes, sem TTS e sem enviar mensagens WhatsApp. Confirmar HTTP 200, fim normal e conteudo esperado; consulta ao catalogo de modelos sozinha nao basta.
+- Depois do deploy, confirmar `MIAUW_WHATSAPP_GEMINI_MODEL` e `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL` no modelo novo, `AUDIO_REPLY_ENABLED=false` e `AUDIO_REPLY_MODE=never` no ambiente efetivo e status do processo. Entrada de audio permanece habilitada; respostas devem ser texto. TTS antigo nao deve ser reativado sem migracao propria.
+
 Desde 2026-10-28, validar a retirada do Calendario com `node --test scripts/test-calendar-retirement.mjs`; `/calendario` e subrotas devem responder HTTP 410. Preservar datas/horarios de tarefas, o seletor de datas do Financeiro e os dados historicos do modulo retirado.
 
 ## Regressoes da auditoria - 2026-10-30

@@ -161,15 +161,15 @@ Principais variaveis:
 - `MIAUW_WHATSAPP_SEND_MIN_INTERVAL_MS=2500`
 - `MIAUW_WHATSAPP_PROVIDER_PAUSE_ON_ERROR_MS=60000`
 - `MIAUW_WHATSAPP_AI_MODE=miauw`
-- `MIAUW_WHATSAPP_GEMINI_MODEL=gemini-2.5-flash`
+- `MIAUW_WHATSAPP_GEMINI_MODEL=gemini-3.5-flash-lite`
 - `MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS=220`
 - `MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100=35`
 - `MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET=0`
 - `MIAUW_WHATSAPP_AUDIO_INPUT_ENABLED=false`
 - `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=false`
-- `MIAUW_WHATSAPP_AUDIO_REPLY_MODE=voice_on_voice`
+- `MIAUW_WHATSAPP_AUDIO_REPLY_MODE=never`
 - `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_PROVIDER=gemini`
-- `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL=gemini-2.5-flash`
+- `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL=gemini-3.5-flash-lite`
 - `MIAUW_WHATSAPP_AUDIO_TTS_PROVIDER=gemini`
 - `MIAUW_WHATSAPP_AUDIO_TTS_MODEL=gemini-2.5-flash-preview-tts`
 - `MIAUW_WHATSAPP_AUDIO_TTS_VOICE=Zephyr`
@@ -320,6 +320,14 @@ O webhook aceita token por `Authorization: Bearer`, `X-Miauw-Whatsapp-Token`, `X
 - Com `MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_ENABLED=true`, foto, print, imagem encaminhada ou PDF/documento individual de remetente autorizado pode ser tratado como comprovante Pix. O destino precisa bater com o CNPJ/chave Pix `MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ`; nomes correlatos em `MIAUW_WHATSAPP_PIX_RECEIPT_DESTINATION_ALIASES` ficam apenas como pista de OCR e nao liberam lancamento sem o CNPJ/chave configurado. Antes do OCR, o bridge aplica um filtro leve em legenda/nome/extensao: imagem/PDF sem pista negativa continua indo para leitura, mas arquivo claramente fora de formato ou legenda como nota fiscal, receita, catalogo ou planilha e respondido com `Isso ai é um comprovante pix?` sem gastar Gemini. Se o OCR extrair um CNPJ de destino diferente do configurado, ou se nao achar o CNPJ/chave configurado no destino, o bridge bloqueia o lancamento em vez de tentar aceitar por nome. CNPJ encontrado apenas no `raw_text` compacto so vale quando estiver em contexto de destino, recebedor, favorecido ou chave Pix. O contato precisa ter card `Financeiro` liberado e a gravacao continua exigindo pendencia `Sim`/`Nao`. Se faltar valor ou pagador, o bridge nao grava e pede os dados corrigidos por texto; se faltar o CNPJ/chave configurado, responde `Nao achei nosso CNPJ nesse comprovante. Nao gravei nada.`. Data/hora extraidas entram no lancamento; na correcao manual sem data/hora, o sistema usa o momento atual.
 
 ## Modo hibrido de IA
+
+### Migracao Gemini e voz desligada em 03/11/2026
+
+O modelo padrao de conversa e transcricao passou para `gemini-3.5-flash-lite`, substituto anunciado pelo Google para o redirecionamento de `gemini-2.5-flash` em 01/12/2026. As duas chamadas usam `thinkingConfig.thinkingLevel=MINIMAL` e omitem `temperature` e `thinkingBudget`. O helper preserva os parametros anteriores quando um modelo legado 2.5 e configurado explicitamente. O OCR Pix continua em `gemini-2.5-flash-lite`, sem alteracao de limite, fallback, validacao ou confirmacao.
+
+Por decisao do usuario, respostas sintetizadas por voz ficam desligadas no ambiente de producao por `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=false` e `MIAUW_WHATSAPP_AUDIO_REPLY_MODE=never`. O recebimento de audio e a transcricao continuam ativos; a resposta passa a ser somente texto. O codigo e as variaveis historicas de TTS ficam preservados, sem novas chamadas de sintese. Nao basta reativar a flag: `gemini-2.5-flash-preview-tts` tem desligamento anunciado para 17/11/2026, e sua substituicao requer adaptar o prompt para `speech_metadata.style`, validar a voz e o audio antes de novo deploy.
+
+Referencias oficiais: [depreciacoes](https://ai.google.dev/gemini-api/docs/deprecations), [migracao de texto](https://ai.google.dev/gemini-api/docs/whats-new-gemini-3.6#migrate-to-gemini-3-5-flash-lite) e [migracao TTS](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash-tts#migration-guide). Para implantar, atualizar as duas variaveis de modelo e as duas flags de resposta por voz no `.env` privado do VPS, construir e recriar somente `wimifarma-miauw-whatsapp` com `--no-deps`, e confirmar configuracao efetiva, health e Home. Nao imprimir o `.env` nem enviar WhatsApp de teste sem autorizacao especifica.
 
 `MIAUW_WHATSAPP_AI_MODE` controla o motor de resposta:
 

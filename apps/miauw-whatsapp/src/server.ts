@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import pg from 'pg';
+import { geminiGenerationConfig } from './gemini-generation-config.js';
 import { COMMERCE_SCHEMA, createCommerceBridge, postgresCommerceStore } from './commerce-bridge.js';
 import {
   formatCotacaoEncomendasDailyMessage,
@@ -777,7 +778,7 @@ const REPORT_DIALOG_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_REPORT_DIALOG_TTL_MI
 const REPLY_ENGINE = replyEngineEnv();
 const GEMINI_API_KEY = textEnv('GEMINI_API_KEY') || textEnv('GOOGLE_AI_API_KEY') || textEnv('GOOGLE_API_KEY') || textEnv('MIAUW_WHATSAPP_GEMINI_API_KEY');
 const GEMINI_API_BASE_URL = trimTrailingSlash(textEnv('GEMINI_API_BASE_URL') || textEnv('MIAUW_WHATSAPP_GEMINI_API_BASE_URL') || 'https://generativelanguage.googleapis.com/v1beta');
-const GEMINI_MODEL = textEnv('MIAUW_WHATSAPP_GEMINI_MODEL') || textEnv('GEMINI_MODEL') || 'gemini-2.5-flash';
+const GEMINI_MODEL = textEnv('MIAUW_WHATSAPP_GEMINI_MODEL') || textEnv('GEMINI_MODEL') || 'gemini-3.5-flash-lite';
 const GEMINI_LIGHT_MODEL = 'gemini-2.5-flash-lite';
 const GEMINI_MAX_OUTPUT_TOKENS = numberEnv('MIAUW_WHATSAPP_GEMINI_MAX_OUTPUT_TOKENS', 220, 80, 1200);
 const GEMINI_TEMPERATURE = numberEnv('MIAUW_WHATSAPP_GEMINI_TEMPERATURE_X100', 35, 0, 100) / 100;
@@ -9604,13 +9605,12 @@ async function requestGeminiReply(message: string, _traceId: string, _senderMask
             text: `Mensagem do usuario no WhatsApp: ${message}`,
           }],
         }],
-        generationConfig: {
-          temperature: GEMINI_TEMPERATURE,
-          maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
-          thinkingConfig: {
-            thinkingBudget: GEMINI_THINKING_BUDGET,
-          },
-        },
+        generationConfig: geminiGenerationConfig(
+          GEMINI_MODEL,
+          GEMINI_MAX_OUTPUT_TOKENS,
+          GEMINI_TEMPERATURE,
+          GEMINI_THINKING_BUDGET,
+        ),
       }),
       signal: controller.signal,
     });
@@ -10797,13 +10797,7 @@ async function requestGeminiAudioTranscript(audio: AudioMedia, traceId: string):
             },
           ],
         }],
-        generationConfig: {
-          temperature: 0,
-          maxOutputTokens: 700,
-          thinkingConfig: {
-            thinkingBudget: 0,
-          },
-        },
+        generationConfig: geminiGenerationConfig(AUDIO_TRANSCRIBE_MODEL, 700, 0, 0),
       }),
       signal: controller.signal,
     });

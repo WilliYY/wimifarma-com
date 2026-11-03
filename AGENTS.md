@@ -46,6 +46,8 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 ## Contexto atual
 
+- Desde 2026-11-03, conversa leve e transcricao do Miauby WhatsApp usam `gemini-3.5-flash-lite`, com `thinkingConfig.thinkingLevel=MINIMAL`, sem `temperature` nem `thinkingBudget`. O OCR Pix preserva `gemini-2.5-flash-lite`; modelos 2.5 explicitamente configurados mantem seu payload legado. Respostas sintetizadas por voz ficam desligadas no VPS (`MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=false`, `MIAUW_WHATSAPP_AUDIO_REPLY_MODE=never`), sem desligar a transcricao de audios recebidos. Nao reativar o TTS 2.5 antigo: seu desligamento foi anunciado para 17/11/2026; TTS 3.8 exige migracao propria do prompt para `speech_metadata`. Preservar as regressoes de configuracao Gemini em `apps/miauw-whatsapp/src/` e `docs/21-miauby-whatsapp.md`.
+
 - Desde 2026-10-30, os POSTs de login direto corrigidos devem usar `core_login_rate_limits` por usuario, IP e par, compartilhando o bloqueio da Home; descartar cookie nao pode reiniciar as tentativas. Sessoes criadas pelo SSO nao podem sobreviver a SSO ausente/invalido nem manter a identidade anterior depois da troca de operador. O logout central inclui `WFNOTAS`. Preservar as regressoes em `scripts/test-module-auth.cjs`.
 - No Financeiro, alteracao de faturamento em dia fechado/divergente exige reabertura. A escrita interna idempotente usa uma unica transacao para chave, lancamento, recalculo e auditoria local, com serializacao por chave e bloqueio do fechamento; o espelho core ocorre depois do COMMIT. Preservar os testes em `apps/financeiro/src/financial-writes.test.mjs`.
 
