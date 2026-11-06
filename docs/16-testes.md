@@ -1,5 +1,11 @@
 # 16 - Testes
 
+## Destinatario exclusivo do caixa - 2026-11-05
+
+- `npm test --prefix apps/miauw-whatsapp` inclui a politica de destinatarios de caixa: entre varios contatos Financeiro, somente o usuario core configurado e elegivel. Configuracao ausente/invalida, conta inativa e contato inelegivel precisam resultar em lista vazia.
+- Conferir que envio real, os dois dry-runs e as listas do painel/catalogo compartilham a selecao, enquanto OCR Pix, Pedidos e Tarefas mantem suas listas anteriores.
+- Depois do deploy, executar o endpoint de fechamento com `dry_run=true` e confirmar um unico destinatario correspondente ao contato escolhido, sem mensagem de teste ou escrita financeira. Validar tambem a configuracao efetiva no processo e a Home/health.
+
 ## Migracao Gemini - 2026-11-03
 
 - `npm test --prefix apps/miauw-whatsapp` inclui `gemini-generation-config.test.ts`: payload atual do 3.5 Flash Lite, limite de tokens de conversa/transcricao e compatibilidade dos parametros legados quando um modelo 2.5 e configurado explicitamente.

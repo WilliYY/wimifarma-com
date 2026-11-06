@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import pg from 'pg';
+import { CASH_CLOSING_NOTIFICATION_SOURCE, resolveAutomationRecipientsForSource } from './cash-closing-recipients.js';
 import { geminiGenerationConfig } from './gemini-generation-config.js';
 import { COMMERCE_SCHEMA, createCommerceBridge, postgresCommerceStore } from './commerce-bridge.js';
 import {
@@ -710,6 +711,7 @@ type DashboardSummary = {
   recentSync: DashboardSyncRow[];
   recentErrors: DashboardErrorRow[];
   n8nRecipients: DashboardN8nRecipientRow[];
+  cashClosingRecipients: AutomationRecipient[];
   automationSettings: DashboardAutomationSettingRow[];
   recentAutomationRuns: DashboardAutomationRunRow[];
   financeiroCashStatus: FinanceiroCashClosingStatus | null;
@@ -866,6 +868,7 @@ const DASHBOARD_SESSION_TTL_MINUTES = numberEnv('MIAUW_WHATSAPP_DASHBOARD_SESSIO
 const HOME_SSO_INTERNAL_URL = textEnv('WIMIFARMA_HOME_SSO_INTERNAL_URL') || 'http://wimifarma-com-web/home-sso.php';
 const HOME_SSO_TIMEOUT_MS = numberEnv('WIMIFARMA_HOME_SSO_TIMEOUT_MS', 1200, 300, 5000);
 const N8N_ENABLED = boolEnv('MIAUW_WHATSAPP_N8N_ENABLED', false);
+const CASH_CLOSING_RECIPIENT_USER_ID = Number(textEnv('MIAUW_WHATSAPP_CASH_CLOSING_RECIPIENT_USER_ID') || '0');
 const N8N_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_BASE_URL') || textEnv('N8N_BASE_URL'));
 const N8N_WEBHOOK_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_BASE_URL') || textEnv('N8N_WEBHOOK_URL'));
 const N8N_WEBHOOK_SECRET_CONFIGURED = textEnv('MIAUW_WHATSAPP_N8N_WEBHOOK_SECRET') !== '';
@@ -949,7 +952,7 @@ const N8N_WORKFLOW_CARDS = [
     moduleKey: 'financeiro',
     description: 'Lembra a Farmacia de finalizar caixa aberto e mostra quais dias ainda estao pendentes.',
     n8nAction: 'As 18:00 o n8n chama o endpoint interno do Financeiro. O backend consulta o status do dia e a lista de dias em aberto/em conferencia.',
-    miaubyAction: 'Se existir caixa aberto para finalizar, Miauby manda um lembrete curto para contatos com card Financeiro e inclui o dia pendente. Se nao houver caixa aberto, nao envia nada.',
+    miaubyAction: 'Miauby avisa somente o destinatario configurado para o caixa, indicando os dias pendentes ou confirmando o fechamento conforme a rotina.',
     messagePreview: 'Ex.: "Caixa em aberto para finalizar: 01/06/2026 (Aberto)."',
     safety: 'So alerta quando o Financeiro disser que existe caixa aberto, em conferencia ou sem registro para o dia consultado.',
     controlNote: 'Desligar aqui pausa apenas o lembrete do backend; nao altera dados financeiros.',
@@ -7244,7 +7247,7 @@ async function whatsappAutomationHelpItemsForCards(cards: WhatsappModuleCard[]):
 
   try {
     const settingKeys = [...new Set(workflows.map((workflow) => workflow.key))];
-    const [settingsResult, moduleRecipients] = await Promise.all([
+    const [settingsResult, moduleRecipients, cashClosingRecipients] = await Promise.all([
       pgPool.query<{ key: string; enabled: boolean }>(
         `SELECT key, enabled
            FROM miauw_whatsapp_automation_settings
@@ -7257,6 +7260,9 @@ async function whatsappAutomationHelpItemsForCards(cards: WhatsappModuleCard[]):
           recipients: await automationRecipients(moduleKey),
         })),
       ),
+      workflows.some((workflow) => workflow.key === FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY)
+        ? cashClosingPreviewRecipients()
+        : Promise.resolve([]),
     ]);
     const settings = new Map(settingsResult.rows.map((row) => [row.key, row.enabled]));
     const recipientsByModule = new Map(moduleRecipients.map((row) => [row.moduleKey, row.recipients]));
@@ -7264,7 +7270,9 @@ async function whatsappAutomationHelpItemsForCards(cards: WhatsappModuleCard[]):
     const coreNames = await coreUserDisplayNamesById(linkedUserIds);
 
     return workflows.map((workflow) => {
-      const recipients = recipientsByModule.get(workflow.moduleKey) || [];
+      const recipients = workflow.key === FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY
+        ? cashClosingRecipients
+        : recipientsByModule.get(workflow.moduleKey) || [];
       const allSafeRecipients = [
         ...new Set(
           recipients
@@ -12144,6 +12152,28 @@ async function automationRecipients(moduleKey = 'miauw'): Promise<AutomationReci
   return recipients;
 }
 
+async function automationNotificationRecipients(source: string, moduleKey: string): Promise<AutomationRecipient[]> {
+  return resolveAutomationRecipientsForSource(source, moduleKey, CASH_CLOSING_RECIPIENT_USER_ID, {
+    listRecipients: automationRecipients,
+    isActiveUser: async (userId) => {
+      const result = await corePgPool.query<{ id: string }>(
+        'SELECT id::text AS id FROM core_users WHERE id = $1 AND active = TRUE LIMIT 1',
+        [userId],
+      );
+      return result.rows.length > 0;
+    },
+  });
+}
+
+async function cashClosingPreviewRecipients(): Promise<AutomationRecipient[]> {
+  try {
+    return await automationNotificationRecipients(CASH_CLOSING_NOTIFICATION_SOURCE, 'financeiro');
+  } catch (error) {
+    console.warn(redact(`cash_closing_recipients_preview_failed ${safeError(error)}`));
+    return [];
+  }
+}
+
 async function sendAutomationNotification(
   source: string,
   severity: 'info' | 'warn' | 'error',
@@ -12273,7 +12303,7 @@ async function sendAutomationNotification(
       return result;
     }
 
-    const recipients = await automationRecipients(moduleKey);
+    const recipients = await automationNotificationRecipients(source, moduleKey);
     result.recipients = recipients.length;
     if (recipients.length === 0) {
       result.skipped = true;
@@ -15776,7 +15806,7 @@ async function fetchCotacaoEncomendaReminderStatus(): Promise<JsonRecord> {
 }
 
 async function runFinanceiroCashClosingReminder(mode: AutomationNotifyMode, dryRun: boolean, date?: string): Promise<JsonRecord> {
-  const source = 'automation_financeiro_fechamento_caixa_18h';
+  const source = CASH_CLOSING_NOTIFICATION_SOURCE;
   const enabled = await automationSettingEnabled(FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY, true);
   if (!enabled) {
     await recordAutomationRun(source, {
@@ -15799,7 +15829,7 @@ async function runFinanceiroCashClosingReminder(mode: AutomationNotifyMode, dryR
   const fingerprint = automationFingerprint(source, message);
   if (!status.should_notify) {
     if (dryRun) {
-      const recipients = await automationRecipients('financeiro');
+      const recipients = await automationNotificationRecipients(source, 'financeiro');
       await recordAutomationRun(source, {
         moduleKey: 'financeiro',
         status: 'skipped',
@@ -15843,7 +15873,7 @@ async function runFinanceiroCashClosingReminder(mode: AutomationNotifyMode, dryR
     };
   }
   if (dryRun) {
-    const recipients = await automationRecipients('financeiro');
+    const recipients = await automationNotificationRecipients(source, 'financeiro');
     await recordAutomationRun(source, {
       moduleKey: 'financeiro',
       status: 'skipped',
@@ -16582,6 +16612,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     recentSyncResult,
     recentErrorsResult,
     n8nRecipientsResult,
+    cashClosingRecipientsResult,
     automationSettingsResult,
     recentAutomationRunsResult,
     pixReceiptOcrAttemptsResult,
@@ -16789,6 +16820,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
         GROUP BY m.module_key`,
       [[...new Set(N8N_WORKFLOW_CARDS.map((workflow) => workflow.moduleKey))], protectedAliasHashes],
     ),
+    cashClosingPreviewRecipients(),
     pgPool.query<DashboardAutomationSettingRow>(
       `SELECT key, enabled, updated_at::text AS updated_at
          FROM miauw_whatsapp_automation_settings
@@ -16867,6 +16899,7 @@ async function dashboardSummary(): Promise<DashboardSummary> {
     recentSync: recentSyncResult.rows,
     recentErrors: recentErrorsResult.rows,
     n8nRecipients: n8nRecipientsResult.rows,
+    cashClosingRecipients: cashClosingRecipientsResult,
     automationSettings: automationSettingsResult.rows,
     recentAutomationRuns: recentAutomationRunsResult.rows,
     financeiroCashStatus: financeiroCashStatusResult,
@@ -17371,6 +17404,7 @@ function cotacaoEncomendaPanelText(status: JsonRecord | null): string {
 
 function renderN8nWorkflows(
   rows: DashboardN8nRecipientRow[],
+  cashClosingRecipients: AutomationRecipient[],
   settingsRows: DashboardAutomationSettingRow[],
   csrfToken: string,
   financeiroCashStatus: FinanceiroCashClosingStatus | null,
@@ -17379,7 +17413,12 @@ function renderN8nWorkflows(
   const recipients = n8nRecipientByModule(rows);
   const settings = new Map(settingsRows.map((row) => [row.key, row]));
   return N8N_WORKFLOW_CARDS.map((workflow) => {
-    const moduleRecipients = recipients.get(workflow.moduleKey);
+    const moduleRecipients = workflow.key === FINANCEIRO_CASH_CLOSING_AUTOMATION_KEY
+      ? {
+        allowed_count: String(cashClosingRecipients.length),
+        recipients: cashClosingRecipients.map((recipient) => recipient.displayName),
+      }
+      : recipients.get(workflow.moduleKey);
     const count = Number(moduleRecipients?.allowed_count || 0);
     const names = (moduleRecipients?.recipients || []).join(', ') || 'ninguem liberado ainda';
     const recipientLabel = count === 1 ? '1 autorizado' : `${count} autorizados`;
@@ -18843,7 +18882,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
           </div>
         </div>
         <div class="n8n-workflow-grid">
-          ${renderN8nWorkflows(summary.n8nRecipients, summary.automationSettings, csrfToken, summary.financeiroCashStatus, summary.cotacaoEncomendaStatus)}
+          ${renderN8nWorkflows(summary.n8nRecipients, summary.cashClosingRecipients, summary.automationSettings, csrfToken, summary.financeiroCashStatus, summary.cotacaoEncomendaStatus)}
         </div>
         <div class="table-wrap automation-runs-wrap">
           <table class="ops-table ops-automation-table">

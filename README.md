@@ -37,6 +37,8 @@ Direcao futura registrada em 2026-05-30: o usuario quer usar Next.js e Prisma em
 
 ## Status atual
 
+- Desde 2026-11-05, avisos de fechamento de caixa do Miauby WhatsApp possuem um destinatario core exclusivo, configurado no ambiente privado. Conta inativa, contato bloqueado, ausencia de card ou destino nao configurado impedem o envio; o painel e a simulacao mostram a mesma selecao. Detalhes em `docs/21-miauby-whatsapp.md`.
+
 - Desde 2026-11-03, o Miauby WhatsApp usa `gemini-3.5-flash-lite` para conversa leve e transcricao, antecipando o redirecionamento do modelo anterior em 01/12/2026. Respostas por voz ficam desativadas; audios recebidos continuam sendo transcritos. O OCR Pix preserva seu modelo atual. Configuracao, limites e cuidados de reativacao do TTS estao em `docs/21-miauby-whatsapp.md`.
 
 - Projeto local em `C:\Users\Thiesen\Desktop\wimifarma-com`.
