@@ -135,7 +135,7 @@ const INTENTS: IntentSpec[] = [
   },
   {
     intent: 'registrar_pix_cnpj', module: 'financeiro', risk: 'alto', prefix: 'pix cnpj', priority: 60,
-    groups: [['pix'], ['cnpj', 'cpnj']], optional: ['lancar', 'registrar', 'comprovante'], moneyFirst: true,
+    groups: [['pix']], optional: ['cnpj', 'cpnj', 'lancar', 'registrar', 'comprovante', 'recebi', 'recebido', 'recebida', 'entrou', 'caiu', 'um', 'de', 'no', 'na conta da farmacia', 'na conta da empresa', 'na conta cnpj'], moneyFirst: true,
     requiredPayload: 'valor',
   },
   {
@@ -302,6 +302,25 @@ export function interpretSemanticCommand(message: string, _options: SemanticOpti
 
   const top = candidates[0];
   const second = candidates[1];
+  if (top.spec.intent === 'registrar_pix_cnpj') {
+    const excluded = /\b(?:enviei|enviar|enviado|enviada|paguei|pagar|pago|paga|transferi|saiu|pessoal)\b|\bconta\s+(?:do\s+)?cpf\b/u.test(normalized);
+    const naturalReceipt = /\b(?:recebi|recebido|recebida|entrou|caiu)\b/u.test(normalized);
+    const destination = /\b(?:na|no|para a|para o|pra|em)\s+(?:conta\s+(?:(?:da|de)\s+)?)?(?:empresa|farmacia|cnpj|cpnj)\b/u.test(normalized);
+    const legacy = /\b(?:cnpj|cpnj)\b/u.test(normalized)
+      && (!naturalReceipt || /\bpix\s+c(?:npj|pnj)\b/u.test(normalized))
+      && !/\b(?:do|de um|de)\s+(?:cnpj|cpnj)\b/u.test(normalized);
+    const business = destination || legacy;
+    if (excluded || !business) {
+      return {
+        ...empty, status: excluded || hasBlockingNegation(top, tokens) ? 'blocked' : 'ambiguous',
+        intent: top.spec.intent, module: top.spec.module, risk: top.spec.risk,
+        confidence: round(top.confidence), evidence: top.evidence,
+        entities: extractEntities(original, tokens), missing: excluded ? [] : ['destino'],
+        clarification: excluded ? 'Nao vou registrar esse Pix como entrada da empresa.'
+          : 'Esse Pix foi recebido na conta da empresa/CNPJ ou em uma conta pessoal?',
+      };
+    }
+  }
   if (top.spec.risk !== 'baixo' && hasBlockingNegation(top, tokens)) {
     return {
       status: 'blocked',
@@ -362,6 +381,21 @@ export function interpretSemanticCommand(message: string, _options: SemanticOpti
   }
 
   const entities = extractEntities(original, tokens, top.spec, top.consumed);
+  const pixAmounts = top.spec.intent === 'registrar_pix_cnpj'
+    ? new Set(entities.filter((entity) => entity.type === 'money').map((entity) => {
+      const value = entity.value.replace(/[^\d,.-]/gu, '');
+      return Number(value.includes(',') ? value.replace(/\./gu, '').replace(',', '.') : value.replace(/\.(?=\d{3}(?:\.|$))/gu, ''));
+    })) : new Set();
+  if (top.spec.intent === 'registrar_pix_cnpj' && /\d/u.test(original)
+      && pixAmounts.size !== 1) {
+    return {
+      ...empty, status: 'ambiguous', intent: top.spec.intent, module: top.spec.module,
+      risk: top.spec.risk, confidence: round(top.confidence), evidence: top.evidence,
+      entities, missing: ['valor'], clarification: pixAmounts.size > 1
+        ? 'Encontrei valores diferentes. Qual foi o valor recebido nesse Pix da empresa?'
+        : 'Qual foi o valor recebido nesse Pix da empresa?',
+    };
+  }
   const canonical = canonicalMessage(top, tokens, entities, original);
   const missing = missingFields(top.spec, canonical, entities);
 
@@ -401,6 +435,8 @@ function candidateFor(
   activated: boolean,
   question: boolean,
 ): Candidate | null {
+  if (spec.intent === 'registrar_pix_cnpj'
+      && !/\b(?:cnpj|cpnj|recebi|recebido|recebida|entrou|caiu)\b/u.test(normalized)) return null;
   const blockers = (spec.blockers || []).filter((phrase) => hasPhrase(tokens, phrase));
   if (blockers.length) return null;
 
@@ -496,9 +532,15 @@ function canonicalMessage(candidate: Candidate, tokens: MessageToken[], entities
 
   let money = '';
   if (candidate.spec.moneyFirst) {
-    const entity = entities.find((item) => item.type === 'money') || plainMoneyEntity(payload);
+    const entity = entities.find((item) => item.type === 'money')
+      || (candidate.spec.intent === 'registrar_pix_cnpj' ? null : plainMoneyEntity(payload));
     if (entity) {
       money = entity.value;
+      if (candidate.spec.intent === 'registrar_pix_cnpj' && /\bvalor\s*[:=]?\s*$/iu.test(original.slice(0, entity.start))) {
+        money = `valor ${money}`;
+        const label = [...payload].reverse().find((token) => token.end <= entity.start && token.normalized === 'valor');
+        payload = payload.filter((token) => token !== label);
+      }
       payload = payload.filter((token) => !rangesOverlap(token.start, token.end, entity.start, entity.end));
       while (payload.length && /^(r|rs|real|reais|valor)$/.test(payload[0].normalized)) payload.shift();
     }
@@ -675,6 +717,21 @@ function extractEntities(
   collectMatches(entities, message, 'quantity', /\b\d+\s*(?:ampolas?|caixas?|comprimidos?|frascos?|itens?|pacotes?|unidades?)\b/gi);
   collectMatches(entities, message, 'money', /(?:R\$\s*\d+(?:\.\d{3})*(?:,\d{1,2})?|\b\d+(?:[.,]\d{1,2})?\s*(?:reais?|real))\b/gi);
 
+  if (spec?.intent === 'registrar_pix_cnpj') {
+    const safe = message.replace(/\b(?:cpf|cnpj)\s*[:=]?\s*\d[\d./-]{9,}|\b(?:telefone|fone|celular|saldo|tarifa)(?:\s+(?:de|dispon[ií]vel|atual|total|banc[aá]ria|cobrada))*\s*[:=]?\s*(?:r\$\s*)?[\d.,/()+ -]+|\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b|\b\d{1,2}\s*(?::\s*\d{2}|h(?:\s*\d{2})?)(?:\s*(?:h|horas?))?\b|\b\d[\d./()-]{9,}\b/giu,
+      (match) => ' '.repeat(match.length));
+    for (let index = entities.length - 1; index >= 0; index -= 1) {
+      if (entities[index].type === 'money') entities.splice(index, 1);
+    }
+    collectMatches(entities, safe, 'money', /(?:R\$\s*)?[-+]?\b\d+(?:\.\d{3})*(?:[,.]\d{1,2})?\b/giu);
+    const explicit = entities.filter((entity) => entity.type === 'money' && /\bvalor\s*[:=]?\s*$/iu.test(message.slice(0, entity.start)));
+    if (explicit.length) {
+      for (let index = entities.length - 1; index >= 0; index -= 1) {
+        if (entities[index].type === 'money' && !explicit.includes(entities[index])) entities.splice(index, 1);
+      }
+    }
+  }
+
   if (spec?.intent === 'criar_cashback_rapido') {
     const specific = extractCashbackEntities(message);
     entities.push(...specific);
@@ -706,7 +763,7 @@ function extractEntities(
     }
   }
 
-  if (spec?.moneyFirst && !entities.some((entity) => entity.type === 'money')) {
+  if (spec?.moneyFirst && spec.intent !== 'registrar_pix_cnpj' && !entities.some((entity) => entity.type === 'money')) {
     const plain = spec.intent === 'criar_cashback_rapido'
       ? cashbackMoneyEntity(tokens, entities)
       : plainMoneyEntity(tokens, entities);

@@ -6,6 +6,28 @@ Ponte restrita de alertas do Wimifarma BR: contrato, rede e idempotencia em [37 
 
 Este documento registra a primeira estrutura do canal WhatsApp do Miauby. A implementacao inicial cria um backend dedicado em Node.js/TypeScript, com Postgres 17 proprio, webhook para Evolution API ou Meta Cloud API, fila duravel, deduplicacao, allowlist, painel operacional e outbox. O repositorio nasce desligado por padrao; em producao, o canal pode ser ligado por `.env` quando token, cifragem e allowlist estiverem revisados.
 
+## Texto sem prefixo e migracao OpenAI - 2026-11-06
+
+O padrao agora e `MIAUW_WHATSAPP_REQUIRE_PREFIX=false` e `MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX=true`: contatos autorizados podem conversar e enviar comandos diretamente. O prefixo `miauby` continua aceito. Allowlist, vinculo core, cards, bloqueio de grupos/fromMe, limites, selecoes e confirmacoes existentes continuam sendo aplicados; remover o prefixo nao concede acesso.
+
+O parser e o interpretador compartilhado reconhecem recebimento explicito na empresa, como `recebi um pix de 28,90 na conta da farmacia`. `Recebi um pix de 28,90` pede se o destino e empresa/CNPJ ou conta pessoal e nao gera comando executavel. CNPJ do pagador nao comprova destino. Pix pago, enviado, pessoal, negado ou apenas consultado nao gera entrada. CPF/CNPJ, telefone, data, saldo e tarifa sao separados do valor; numero negativo nunca vira positivo. Identidade, permissoes, idempotencia e gravacao continuam no fluxo Financeiro existente.
+
+O bridge suporta OpenAI em tres rotas, sem novas dependencias:
+
+| Rota | Configuracao para migrar | Modelo |
+| --- | --- | --- |
+| Conversa leve | `MIAUW_WHATSAPP_AI_MODE=openai` | `MIAUW_WHATSAPP_OPENAI_MODEL=gpt-6.1-terra` |
+| Foto/PDF de Pix | `MIAUW_WHATSAPP_PIX_RECEIPT_OCR_PROVIDER=openai` | `MIAUW_WHATSAPP_PIX_RECEIPT_OPENAI_MODEL=gpt-6.1-terra` |
+| Audio recebido | `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_PROVIDER=openai` | `MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL=gpt-transcribe` |
+
+Usar uma chave exclusiva em `MIAUW_WHATSAPP_OPENAI_API_KEY`, criada na organizacao Personal escolhida pelo usuario. O modelo do core (`MIAUW_OPENAI_MODEL`) permanece independente. O modo legado continua disponivel; `OCR_PROVIDER=auto` preserva sua selecao automatica. Na migracao, configurar explicitamente as tres rotas evita herdar overrides Gemini antigos do `.env`/Compose. A conversa usa Responses com `store:false`, reasoning `none` e limite `MIAUW_WHATSAPP_OPENAI_MAX_OUTPUT_TOKENS=220`; o OCR usa reasoning `low` e JSON Schema estrito. Refusal, resposta incompleta ou JSON invalido falham sem lancar. Retry de OCR continua no provider selecionado, sem fallback de OpenAI para Google; o guard de gastos Gemini so bloqueia chamadas Gemini, e o limite diario OCR de 10 permanece comum.
+
+Imagem/PDF ficam apenas em memoria, com os limites de tamanho atuais. O esquema estruturado nao comprova pagamento: valor, destino CNPJ/chave configurados, confianca, dedupe e identificacao do ator ainda sao revalidados. A transcricao OpenAI usa multipart com `languages[]=pt`, sem prompt/glossario, e passa pelos filtros locais existentes antes do roteador. Respostas por voz permanecem `MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED=false` e `MIAUW_WHATSAPP_AUDIO_REPLY_MODE=never`.
+
+Antes de ativar OpenAI no VPS, provisionar a nova chave pelo fluxo seguro, confirmar organizacao/projeto, validar acesso aos modelos e testar texto, comprovantes sinteticos imagem/PDF e audio sintetico WAV/OGG. Nao reutilizar a chave antiga como teste. A indisponibilidade do conector de chaves bloqueia essa ativacao; testes mockados e compilacao nao comprovam acesso real. Depois do corte, recriar somente os servicos afetados, verificar health/Home como `www-data`, e revalidar contas revogadas, voz desligada e fechamento de caixa exclusivo do usuario configurado. Rollback de provider usa os valores anteriores do `.env`, sem restaurar dados nem reabrir acesso.
+
+Referencias oficiais: [Responses](https://developers.openai.com/api/docs/guides/migrate-to-responses), [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs), [arquivos PDF](https://developers.openai.com/api/docs/guides/file-inputs), [transcricao](https://developers.openai.com/api/docs/guides/speech-to-text), [modelo Terra](https://developers.openai.com/api/docs/models/gpt-6.1-terra). Creditos de assinatura valem somente na organizacao vinculada e expiram conforme o ciclo; conferir concessao/saldo no painel antes de concluir que a chave da Personal utiliza o beneficio ([regra oficial](https://developers.openai.com/api/docs/guides/chatgpt-api-credits)).
+
 ## Prazo do responsavel no PIX CNPJ e na sangria
 
 Desde 2026-09-06, a escolha de responsavel do PIX CNPJ e da sangria fica aberta por 30 minutos, configuravel em `MIAUW_WHATSAPP_RESPONSIBLE_SELECTION_TTL_MINUTES`. Numero, nome valido ou `cancelar` continuam resolvendo a escolha normalmente. Se ninguem responder no prazo, ou se chegar outra mensagem/foto antes da escolha, o worker registra a operacao anterior uma unica vez com `responsavel='Wimifarma'`, `actor_user_id` nulo, observacao auditavel e idempotencia `whatsapp-responsavel:<confirmation_id>`, avisa o contato e continua processando a nova mensagem. Assim, numa sequencia de duas fotos de PIX, a primeira fecha como Wimifarma e a segunda abre sua propria pergunta de responsavel. Resposta recebida antes do vencimento continua valida mesmo se a fila a processar logo depois; resposta posterior informa que o registro ja foi feito e nao duplica. Pedidos e tarefas continuam expirando sem escrita automatica.

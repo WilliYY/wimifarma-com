@@ -98,12 +98,24 @@ export function parsePixCnpjCommand(message: string): PixCnpjCommand | null {
   const raw = stripActivationWord(message).replace(/[?!;]+$/g, '').trim();
   const normalized = normalizeIntentText(raw);
   if (!normalized || !hasPixCnpjIntent(normalized)) return null;
+  const excluded = /\b(?:nao|nunca|jamais|nem|enviei|enviar|enviado|enviada|paguei|pagar|pago|paga|transferi|saiu|pessoal|cpf)\b/u
+    .test(normalized.replace(/\bcpf\s+[\d./-]+/gu, ' '));
+  const informational = /[?]/u.test(message) || /\b(?:como|posso|devo|consultar|consulta)\b/u.test(normalized);
+  const payerOnly = /\b(?:do|de um|de)\s+(?:cnpj|cpnj)\b/u.test(normalized)
+    && !/\b(?:na|no|para|pra|em)\s+(?:conta\s+)?(?:da\s+)?(?:cnpj|cpnj|empresa|farmacia)\b/u.test(normalized);
+  if (excluded || informational || payerOnly) return null;
 
   const commandText = stripPixCnpjCommandWords(raw);
-  const numericAmount = findNumericAmount(commandText);
+  const numericAmounts = findNumericAmounts(commandText);
+  const explicitAmounts = numericAmounts.filter((amount) => /\bvalor\s*[:=]?\s*$/iu.test(commandText.slice(0, amount.index)));
+  const eligibleAmounts = explicitAmounts.length ? explicitAmounts : numericAmounts;
+  const base = buildCommand(raw, 0, '', '', '');
+  if (new Set(eligibleAmounts.map((amount) => amount.negative ? -amount.cents : amount.cents)).size > 1) {
+    return invalidCommand(base, 'invalid_amount', 'Nao registrei. Valor ficou confuso.');
+  }
+  const numericAmount = eligibleAmounts[0] || null;
   const wordAmount = numericAmount ? null : findWordAmount(commandText);
   const amount = numericAmount || wordAmount;
-  const base = buildCommand(raw, 0, '', '', '');
 
   if (!amount) {
     if (hasConfusingAmount(normalized)) {
@@ -124,7 +136,8 @@ export function parsePixCnpjCommand(message: string): PixCnpjCommand | null {
   const afterAmount = commandText.slice(amount.end).trim();
   const beforeParts = parseSegment(beforeAmount);
   const afterParts = parseSegment(afterAmount);
-  const responsibleHint = beforeParts.responsibleHint || afterParts.responsibleHint;
+  const responsibleHint = /\b(?:respons[aá]vel|resp)\s+/iu.test(afterAmount)
+    ? afterParts.responsibleHint : beforeParts.responsibleHint || afterParts.responsibleHint;
   const observation = [beforeParts.observation, afterParts.observation].filter(Boolean).join(' ');
 
   return buildCommand(raw, amount.cents, formatMoneyLabel(amount.cents), responsibleHint, observation);
@@ -167,11 +180,17 @@ function invalidCommand(command: PixCnpjCommand, error: string, message: string)
 
 function hasPixCnpjIntent(normalized: string): boolean {
   const words = normalized.split(/\s+/g).map(canonicalWord).filter(Boolean);
-  return words.includes('pix') && words.includes('cnpj');
+  const naturalReceipt = /\b(?:recebi|recebido|recebida|entrou|caiu)\b/u.test(normalized);
+  const destination = /\b(?:na|no|para a|para o|pra|em)\s+(?:conta\s+(?:(?:da|de)\s+)?)?(?:empresa|farmacia|cnpj|cpnj)\b/u.test(normalized);
+  const legacy = words.includes('cnpj') && (!naturalReceipt || /\bpix\s+c(?:npj|pnj)\b/u.test(normalized));
+  return words.includes('pix') && (legacy || naturalReceipt && destination);
 }
 
 function stripPixCnpjCommandWords(value: string): string {
   return value
+    .replace(/\b(?:na|para a|pra|em)\s+(?:conta\s+(?:da|de)\s+)?(?:empresa|farm[aá]cia)\b/giu, ' ')
+    .replace(/\b(?:no|na|para o|pra|em)\s+(?:conta\s+)?c(?:npj|pnj)\b/giu, ' ')
+    .replace(/\b(?:recebi|recebido|recebida|entrou|caiu)\s*(?:um\s+)?/giu, ' ')
     .replace(/\b(?:lancar|lan[çc]ar|lanca|lan[çc]a|lance|registrar|registra|registre|criar|cria|colocar|coloca)\b/giu, ' ')
     .replace(/\bpix\s+c(?:npj|pnj)\b/giu, ' ')
     .replace(/\b(?:pix|c(?:npj|pnj))\b/giu, ' ')
@@ -179,9 +198,13 @@ function stripPixCnpjCommandWords(value: string): string {
     .trim();
 }
 
-function findNumericAmount(value: string): AmountMatch | null {
+function findNumericAmounts(value: string): AmountMatch[] {
+  // Keep offsets while excluding identifiers and contextual balances from the money scan.
+  const searchable = value.replace(/\b(?:cpf|cnpj)\s*[:=]?\s*\d[\d./-]{9,}|\b(?:telefone|fone|celular|saldo|tarifa)(?:\s+(?:de|dispon[ií]vel|atual|total|banc[aá]ria|cobrada))*\s*[:=]?\s*(?:r\$\s*)?[\d.,/()+ -]+|\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b|\b\d{1,2}\s*(?::\s*\d{2}|h(?:\s*\d{2})?)(?:\s*(?:h|horas?))?\b|\b\d[\d./()-]{9,}\b/giu,
+    (match) => ' '.repeat(match.length));
   const pattern = /(?:r\$\s*)?[-+]?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:[,.]\d{1,2})?(?=\s*(?:reais?|rs|conto?s?|pila?s?)?(?:$|[\s.,;:!?-]))/giu;
-  for (const match of value.matchAll(pattern)) {
+  const amounts: AmountMatch[] = [];
+  for (const match of searchable.matchAll(pattern)) {
     const raw = match[0] || '';
     const index = match.index ?? -1;
     if (index < 0) continue;
@@ -190,15 +213,15 @@ function findNumericAmount(value: string): AmountMatch | null {
     if (before === '/' || after === '/' || /^[hH]$/.test(after)) continue;
     const parsed = parseMoneyToCents(raw);
     if (parsed === null) continue;
-    return {
+    amounts.push({
       cents: parsed.cents,
       raw,
       index,
       end: index + raw.length,
       negative: parsed.negative,
-    };
+    });
   }
-  return null;
+  return amounts;
 }
 
 function findWordAmount(value: string): AmountMatch | null {

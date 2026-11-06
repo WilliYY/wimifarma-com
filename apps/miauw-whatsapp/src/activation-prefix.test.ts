@@ -54,3 +54,9 @@ test('audio preserva prefixo exato e ambiente sem prefixo obrigatorio', () => {
   );
   assert.equal(parseActivationPrefix('pedidos de hoje', 'miauby', true).reason, 'missing_prefix');
 });
+
+test('modo sem prefixo entrega frases operacionais intactas ao fluxo controlado', () => {
+  for (const message of ['recebi pix 30', 'recebi pix 30 na farmacia', 'nao registrar pix 30', 'paguei pix pessoal 30', 'sim', 'nao']) {
+    assert.deepEqual(parseActivationPrefix(message, 'miauby', false), { accepted: true, text: message, reason: '' });
+  }
+});

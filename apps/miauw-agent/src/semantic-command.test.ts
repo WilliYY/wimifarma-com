@@ -5,6 +5,69 @@ import { interpretSemanticCommand } from './semantic-command.js';
 
 const resolved = (message: string) => interpretSemanticCommand(message, { channel: 'internal' });
 
+test('Pix exclui horario, saldo e tarifa, prioriza valor explicito e recusa conflito nos dois canais', () => {
+  for (const channel of ['internal', 'whatsapp'] as const) {
+    for (const detail of ['as 14:30', 'as 14h30', 'as 14h', 'saldo de 500', 'saldo disponivel de R$ 500', 'tarifa de 2', 'tarifa cobrada de R$ 2']) {
+      for (const body of [`${detail} valor 90`, `valor 90 ${detail}`]) {
+        const result = interpretSemanticCommand(`recebi pix cnpj ${body} responsavel Sueli`, { channel });
+        assert.equal(result.status, 'resolved', body);
+        assert.match(result.canonical_message, /^pix cnpj valor 90\b/, body);
+      }
+    }
+    assert.match(interpretSemanticCommand('pix cnpj 30 valor 90', { channel }).canonical_message, /^pix cnpj valor 90\b/);
+    for (const body of ['30 90', 'valor 30 valor 90']) {
+      const result = interpretSemanticCommand(`pix cnpj ${body}`, { channel });
+      assert.equal(result.status, 'ambiguous', body);
+      assert.equal(result.canonical_message, '', body);
+      assert.deepEqual(result.missing, ['valor']);
+    }
+    const payer = interpretSemanticCommand('recebi pix 30 CNPJ do pagador 12.345.678/0001-90', { channel });
+    assert.equal(payer.status, 'ambiguous');
+    assert.equal(payer.canonical_message, '');
+    assert.deepEqual(payer.missing, ['destino']);
+    assert.equal(interpretSemanticCommand('recebi pix 30 CNPJ do pagador 12.345.678/0001-90 na conta da farmacia', { channel }).status, 'resolved');
+  }
+});
+
+test('Pix recebido natural exige destino empresarial nos dois canais', () => {
+  for (const channel of ['internal', 'whatsapp'] as const) {
+    for (const destination of ['na conta da farmacia', 'na conta da empresa', 'no CNPJ']) {
+      const result = interpretSemanticCommand(`recebi pix de 30 ${destination} Sueli obs venda`, { channel });
+      assert.equal(result.status, 'resolved', destination);
+      assert.equal(result.intent, 'registrar_pix_cnpj');
+      assert.match(result.canonical_message, /^pix cnpj 30 Sueli obs venda$/);
+    }
+    const generic = interpretSemanticCommand('recebi pix 30', { channel });
+    assert.equal(generic.status, 'ambiguous');
+    assert.equal(generic.canonical_message, '');
+    assert.match(generic.clarification, /conta.*(?:empresa|CNPJ)/i);
+    assert.equal(interpretSemanticCommand('recebi pix 30 do CNPJ 12.345.678/0001-90', { channel }).status, 'ambiguous');
+  }
+});
+
+test('Pix pessoal, enviado e negado nunca resolve como entrada empresarial', () => {
+  for (const message of ['nao recebi pix cnpj 30', 'enviei pix cnpj 30', 'paguei pix cnpj 30', 'recebi pix cnpj 30 na minha conta pessoal', 'como registrar pix cnpj 30?']) {
+    const result = resolved(message);
+    assert.notEqual(result.status, 'resolved', message);
+    assert.equal(result.canonical_message, '', message);
+  }
+});
+
+test('Pix nao promove identificadores, saldo ou tarifa a valor na mensagem canonica', () => {
+  assert.match(resolved('pix cnpj -30 Sueli').canonical_message, /^pix cnpj -30\b/);
+  for (const detail of ['CPF 123.456.789-09', 'CNPJ 12.345.678/0001-90', 'telefone 11987654321', 'dia 06/11/2026', 'saldo 500 tarifa 2']) {
+    const result = resolved(`recebi pix cnpj ${detail} valor 30 responsavel Sueli`);
+    assert.equal(result.status, 'resolved', detail);
+    assert.match(result.canonical_message, /^pix cnpj valor 30\b/, detail);
+  }
+  for (const detail of ['telefone 11987654321', 'saldo 500 tarifa 2', 'dia 06/11/2026']) {
+    const result = resolved(`recebi pix cnpj ${detail}`);
+    assert.equal(result.status, 'ambiguous', detail);
+    assert.equal(result.canonical_message, '');
+    assert.deepEqual(result.missing, ['valor']);
+  }
+});
+
 test('preserva calendario como titulo, produto ou observacao de outro dominio', () => {
   for (const [message, intent] of [
     ['Miauby criar tarefa imprimir calendario amanha 15h', 'criar_tarefa'],

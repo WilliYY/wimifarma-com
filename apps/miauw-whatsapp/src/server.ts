@@ -3,6 +3,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import pg from 'pg';
 import { CASH_CLOSING_NOTIFICATION_SOURCE, resolveAutomationRecipientsForSource } from './cash-closing-recipients.js';
 import { geminiGenerationConfig } from './gemini-generation-config.js';
+import { requestOpenAiResponse, requestOpenAiTranscription, PIX_RECEIPT_RESPONSE_FORMAT } from './openai-provider.js';
 import { COMMERCE_SCHEMA, createCommerceBridge, postgresCommerceStore } from './commerce-bridge.js';
 import {
   formatCotacaoEncomendasDailyMessage,
@@ -80,8 +81,8 @@ const { Pool } = pg;
 
 type JsonRecord = Record<string, unknown>;
 type WhatsappProvider = 'evolution' | 'meta';
-type ReplyEngine = 'miauw' | 'gemini' | 'hybrid';
-type ReplyRuntimeEngine = 'local' | 'blocked' | 'miauw' | 'gemini' | 'gemini_cache';
+type ReplyEngine = 'miauw' | 'gemini' | 'hybrid' | 'openai';
+type ReplyRuntimeEngine = 'local' | 'blocked' | 'miauw' | 'gemini' | 'gemini_cache' | 'openai';
 type ReplyIntent = 'local' | 'simple_chat' | 'internal_read' | 'internal_write' | 'sensitive' | 'forced_gemini' | 'forced_miauw' | 'activated_core';
 type AudioReplyMode = 'never' | 'voice_on_voice' | 'always';
 
@@ -788,13 +789,14 @@ const GEMINI_THINKING_BUDGET = numberEnv('MIAUW_WHATSAPP_GEMINI_THINKING_BUDGET'
 const GEMINI_SPEND_GUARD_PAUSE_MINUTES = numberEnv('MIAUW_WHATSAPP_GEMINI_SPEND_GUARD_PAUSE_MINUTES', 1440, 1, 43200);
 const OPENAI_API_KEY = textEnv('MIAUW_WHATSAPP_OPENAI_API_KEY') || textEnv('MIAUW_OPENAI_API_KEY') || textEnv('OPENAI_API_KEY');
 const OPENAI_API_BASE_URL = trimTrailingSlash(textEnv('MIAUW_WHATSAPP_OPENAI_API_BASE_URL') || textEnv('OPENAI_API_BASE_URL') || 'https://api.openai.com/v1');
-const OPENAI_MODEL = textEnv('MIAUW_WHATSAPP_OPENAI_MODEL') || textEnv('MIAUW_OPENAI_MODEL') || textEnv('OPENAI_MODEL') || 'gpt-5.4-mini';
+const OPENAI_MODEL = textEnv('MIAUW_WHATSAPP_OPENAI_MODEL') || 'gpt-6.1-terra';
+const OPENAI_MAX_OUTPUT_TOKENS = numberEnv('MIAUW_WHATSAPP_OPENAI_MAX_OUTPUT_TOKENS', 220, 80, 1200);
 const AUDIO_INPUT_ENABLED = boolEnv('MIAUW_WHATSAPP_AUDIO_INPUT_ENABLED', false);
 const AUDIO_REPLY_ENABLED = boolEnv('MIAUW_WHATSAPP_AUDIO_REPLY_ENABLED', false);
 const AUDIO_REPLY_MODE = audioReplyModeEnv();
-const AUDIO_TRANSCRIBE_PROVIDER = (textEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_PROVIDER') || 'gemini').toLowerCase();
+const AUDIO_TRANSCRIBE_PROVIDER = (textEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_PROVIDER') || (REPLY_ENGINE === 'openai' ? 'openai' : 'gemini')).toLowerCase();
 const AUDIO_TTS_PROVIDER = (textEnv('MIAUW_WHATSAPP_AUDIO_TTS_PROVIDER') || 'gemini').toLowerCase();
-const AUDIO_TRANSCRIBE_MODEL = textEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL') || GEMINI_MODEL;
+const AUDIO_TRANSCRIBE_MODEL = textEnv('MIAUW_WHATSAPP_AUDIO_TRANSCRIBE_MODEL') || (AUDIO_TRANSCRIBE_PROVIDER === 'openai' ? 'gpt-transcribe' : GEMINI_MODEL);
 const AUDIO_TTS_MODEL = textEnv('MIAUW_WHATSAPP_AUDIO_TTS_MODEL') || 'gemini-2.5-flash-preview-tts';
 const AUDIO_TTS_VOICE = textEnv('MIAUW_WHATSAPP_AUDIO_TTS_VOICE') || DEFAULT_AUDIO_TTS_VOICE;
 const AUDIO_TTS_STYLE = safeText(textEnv('MIAUW_WHATSAPP_AUDIO_TTS_STYLE'), 320)
@@ -807,6 +809,7 @@ const AUDIO_TTS_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_CACHE_TT
 const PIX_RECEIPT_IMAGE_ENABLED = boolEnv('MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_ENABLED', false);
 const PIX_RECEIPT_CNPJ = onlyDigits(textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ') || '07676534000181');
 const PIX_RECEIPT_OCR_MODEL = textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL') || GEMINI_LIGHT_MODEL;
+const PIX_RECEIPT_OCR_PROVIDER = (textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_PROVIDER') || (REPLY_ENGINE === 'openai' ? 'openai' : 'auto')).toLowerCase();
 const PIX_RECEIPT_OPENAI_OCR_MODEL = textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OPENAI_MODEL') || OPENAI_MODEL;
 const PIX_RECEIPT_IMAGE_MAX_BYTES = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_MAX_BYTES', 10000000, 100000, 20000000);
 const PIX_RECEIPT_OCR_DAILY_LIMIT = numberEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_DAILY_LIMIT', 10, 0, 500);
@@ -837,10 +840,10 @@ const WHATSAPP_CONTEXT_PACK = safeText(textEnv('MIAUW_WHATSAPP_CONTEXT_PACK'), 3
 const REPLY_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_REPLY_CACHE_TTL_SECONDS', 90, 0, 600);
 const RECIPIENT_ALIASES = parseRecipientAliases(textEnv('MIAUW_WHATSAPP_RECIPIENT_ALIASES'));
 const RECIPIENT_ALIAS_SOURCE_HASHES = new Set(Array.from(RECIPIENT_ALIASES.keys()).map((source) => sha256(source)));
-const REQUIRE_PREFIX = boolEnv('MIAUW_WHATSAPP_REQUIRE_PREFIX', true);
+const REQUIRE_PREFIX = boolEnv('MIAUW_WHATSAPP_REQUIRE_PREFIX', false);
 const PREFIX = (textEnv('MIAUW_WHATSAPP_PREFIX') || 'miauby').toLowerCase();
 const FORCED_GEMINI_PREFIX_PATTERN = /^(gemini|barato|simples)\b[\s,:-]*/i;
-const ALLOW_COMMANDS_WITHOUT_PREFIX = boolEnv('MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX', !REQUIRE_PREFIX);
+const ALLOW_COMMANDS_WITHOUT_PREFIX = boolEnv('MIAUW_WHATSAPP_ALLOW_COMMANDS_WITHOUT_PREFIX', true);
 const DEFAULT_BRAZIL_AREA_CODE = normalizeBrazilAreaCode(textEnv('MIAUW_WHATSAPP_DEFAULT_DDD') || textEnv('MIAUW_WHATSAPP_DEFAULT_AREA_CODE') || '44');
 const GROUPS_ENABLED = boolEnv('MIAUW_WHATSAPP_GROUPS_ENABLED', false);
 const MAX_REPLIES_PER_INBOUND = numberEnv('MIAUW_WHATSAPP_MAX_REPLIES_PER_INBOUND', 1, 0, 3);
@@ -1124,6 +1127,7 @@ function providerEnv(): WhatsappProvider {
 function replyEngineEnv(): ReplyEngine {
   const value = (textEnv('MIAUW_WHATSAPP_AI_MODE') || textEnv('MIAUW_WHATSAPP_REPLY_ENGINE') || 'miauw').toLowerCase();
   if (value === 'gemini') return 'gemini';
+  if (value === 'openai') return 'openai';
   if (value === 'hybrid' || value === 'hibrido') return 'hybrid';
   return 'miauw';
 }
@@ -4152,7 +4156,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           ],
         );
       } catch (error) {
-        markGeminiSpendGuardIfNeeded(error);
+        if (AUDIO_TRANSCRIBE_PROVIDER === 'gemini') markGeminiSpendGuardIfNeeded(error);
         audioFailureReason = safeError(error);
         await recordErrorLog('audio_transcription', 'warn', error, {
           eventId: row.id,
@@ -4323,7 +4327,7 @@ async function processQueueRow(row: QueueRow): Promise<void> {
           }
         }
       } catch (error) {
-        const spendGuardBlocked = markGeminiSpendGuardIfNeeded(error);
+        const spendGuardBlocked = pixReceiptOcrUsesGemini() && markGeminiSpendGuardIfNeeded(error);
         if (isRetriablePixReceiptError(error, row)) throw error;
         const media = mediaSummaryFromPayload(row.payload_summary);
         await recordErrorLog('pix_receipt_ocr', 'warn', error, {
@@ -7489,6 +7493,9 @@ function forcedReplyRoute(message: string): ReplyRoute | null {
         localText: 'Manda a pergunta depois de "gemini". Ex.: gemini me responde um teste.',
       };
     }
+    if (REPLY_ENGINE === 'openai') {
+      return { engine: 'openai', intent: 'simple_chat', message: forcedMessage, reason: 'mode_openai_legacy_prefix' };
+    }
     if (!geminiConfigured()) {
       return {
         engine: 'miauw',
@@ -7517,7 +7524,18 @@ function openAiConfigured(): boolean {
 }
 
 function pixReceiptOcrConfigured(): boolean {
+  if (PIX_RECEIPT_OCR_PROVIDER === 'openai') return openAiConfigured();
+  if (PIX_RECEIPT_OCR_PROVIDER === 'gemini') return geminiConfigured();
+  if (PIX_RECEIPT_OCR_PROVIDER !== 'auto') return false;
   return geminiConfigured() || openAiConfigured();
+}
+
+function pixReceiptOcrUsesGemini(): boolean {
+  return PIX_RECEIPT_OCR_PROVIDER === 'gemini' || (PIX_RECEIPT_OCR_PROVIDER === 'auto' && geminiConfigured());
+}
+
+function pixReceiptActiveOcrModel(): string {
+  return pixReceiptOcrUsesGemini() ? PIX_RECEIPT_OCR_MODEL : PIX_RECEIPT_OPENAI_OCR_MODEL;
 }
 
 function geminiSpendGuardRemainingMs(): number {
@@ -7527,6 +7545,7 @@ function geminiSpendGuardRemainingMs(): number {
 }
 
 function isGeminiSpendGuardText(error: unknown): boolean {
+  if (safeError(error).toLowerCase().includes('openai_')) return false;
   const message = safeError(error).toLowerCase();
   return message.includes('monthly spending cap')
     || message.includes('spending cap')
@@ -7807,6 +7826,9 @@ function routeWhatsappReply(message: string): ReplyRoute {
     if (looksLikeSensitiveRequest(routedMessage)) {
       return { engine: 'blocked', intent: 'sensitive', message: routedMessage, reason: 'blocked_sensitive', localText: blockedReplyFor('sensitive') };
     }
+    if (REPLY_ENGINE === 'openai' && !looksLikeStrongWriteCommand(routedMessage) && !looksLikeInternalReadCommand(routedMessage)) {
+      return { engine: 'openai', intent: 'simple_chat', message: routedMessage, reason: 'mode_openai_activated' };
+    }
     return {
       engine: 'miauw',
       intent: 'activated_core',
@@ -7844,6 +7866,10 @@ function routeWhatsappReply(message: string): ReplyRoute {
     };
   }
 
+  if (REPLY_ENGINE === 'openai') {
+    if (looksLikeInternalReadCommand(message)) return { engine: 'miauw', intent: 'internal_read', message, reason: 'openai_internal_read', useTools: true };
+    return { engine: 'openai', intent: 'simple_chat', message, reason: 'mode_openai' };
+  }
   if (REPLY_ENGINE === 'miauw') return { engine: 'miauw', intent: 'simple_chat', message, reason: 'mode_miauw' };
 
   if (REPLY_ENGINE === 'gemini' || REPLY_ENGINE === 'hybrid') {
@@ -9388,6 +9414,20 @@ async function requestWhatsappReply(message: string, traceId: string, senderMask
   if (route.engine === 'local' || route.engine === 'blocked') {
     return { text: route.localText || route.message, engine: route.engine, reason: route.reason };
   }
+  if (route.engine === 'openai') {
+    let sharedContext: SharedMiauwContext | null = null;
+    try {
+      sharedContext = await requestSharedMiauwContext(route.message, traceId, senderMask, route, senderHashes, GEMINI_CONTEXT_TIMEOUT_MS, userContext);
+    } catch {
+      await recordErrorLog('shared_miauw_context', 'warn', new Error('shared_miauw_context_unavailable'), {
+        traceId,
+        details: { engine: 'openai', source: 'requestSharedMiauwContext' },
+      });
+      sharedContext = null;
+    }
+    const reply = await requestOpenAiReply(route.message, allowedCards, sharedContext);
+    return { text: reply.text, engine: 'openai', reason: route.reason };
+  }
   if (route.engine === 'gemini') {
     try {
       const cachedReply = route.cacheable ? getCachedReply(route.message) : '';
@@ -9541,7 +9581,7 @@ function sharedMiaubyTrainingPromptSnippet(shared: SharedMiauwContext | null): s
   if (examples.length) lines.push(`Exemplos aprovados para inspirar forma, sem citar treino: ${examples.join(' | ')}.`);
 
   return lines.length > 0
-    ? `Contexto aprovado do Miauby interno para o Gemini: ${lines.join(' ')}`
+    ? `Contexto aprovado do Miauby interno: ${lines.join(' ')}`
     : '';
 }
 
@@ -9551,7 +9591,7 @@ function whatsappGeminiSystemPrompt(allowedCards: WhatsappModuleCard[], shared: 
   const miaubyTrainingContext = sharedMiaubyTrainingPromptSnippet(shared);
   const baseContext = [
     'Voce e o Miauby WhatsApp da Wimifarma: assistente interno com personalidade de gato fiscal, direto, esperto e util.',
-    'Este caminho e conversa leve via Gemini; responda so quando for papo curto, duvida simples ou algo util para o trabalho na Wimifarma. Nao consulte nem finja consultar sistemas internos.',
+    'Este caminho e conversa leve; responda so quando for papo curto, duvida simples ou algo util para o trabalho na Wimifarma. Nao consulte nem finja consultar sistemas internos.',
     'Cards liberados para este telefone no WhatsApp: ' + cardsText + '. Para ver cards, o usuario pode mandar "miauby menu".',
     'A tabela oficial do que o Miauby WhatsApp consegue fazer e o menu local de ajuda por card, acoes e automacoes n8n. Se perguntarem capacidades, nao invente comando: oriente mandar qualquer texto sem "miauby" ou "miauby n8n" para ver o catalogo atualizado.',
     'Comandos operacionais sao roteados antes daqui para o core interno quando a permissao do WhatsApp permitir. Se um comando chegar por engano aqui, peca somente o menor dado faltante e diga que o core vai pedir confirmacao.',
@@ -9632,6 +9672,20 @@ async function requestGeminiReply(message: string, _traceId: string, _senderMask
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function requestOpenAiReply(message: string, allowedCards: WhatsappModuleCard[], sharedContext: SharedMiauwContext | null = null): Promise<{ text: string }> {
+  if (!openAiConfigured()) throw new Error('openai_not_configured');
+  const text = await requestOpenAiResponse(
+    { apiKey: OPENAI_API_KEY, baseUrl: OPENAI_API_BASE_URL, model: OPENAI_MODEL, timeoutMs: REQUEST_TIMEOUT_MS },
+    {
+      instructions: whatsappGeminiSystemPrompt(allowedCards, sharedContext),
+      input: [{ role: 'user', content: [{ type: 'input_text', text: safeInboundText(message, 4000) }] }],
+      maxOutputTokens: OPENAI_MAX_OUTPUT_TOKENS,
+      effort: 'none',
+    },
+  );
+  return { text: safeText(text, 1800) };
 }
 
 function mediaSummaryFromPayload(summary: JsonRecord): JsonRecord {
@@ -10293,13 +10347,14 @@ async function markPixReceiptOcrAttempt(row: QueueRow): Promise<void> {
     pix_receipt_attempted: true,
     pix_receipt_ocr_attempted: true,
     pix_receipt_ocr_attempted_at: new Date().toISOString(),
-    pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
+    pix_receipt_ocr_provider: pixReceiptOcrUsesGemini() ? 'gemini' : 'openai',
+    pix_receipt_ocr_model: pixReceiptActiveOcrModel(),
   });
 }
 
 async function pixReceiptOcrBlockReason(): Promise<string> {
   if (!pixReceiptOcrConfigured()) return 'pix_receipt_ocr_not_configured';
-  if (geminiSpendGuardRemainingMs() > 0) return 'gemini_spend_guard_paused';
+  if (pixReceiptOcrUsesGemini() && geminiSpendGuardRemainingMs() > 0) return 'gemini_spend_guard_paused';
   if (PIX_RECEIPT_OCR_DAILY_LIMIT <= 0) return 'pix_receipt_ocr_disabled_by_daily_limit';
   const attempts = await pixReceiptOcrAttempts24h();
   if (attempts >= PIX_RECEIPT_OCR_DAILY_LIMIT) return 'pix_receipt_ocr_daily_limit_reached';
@@ -10308,7 +10363,7 @@ async function pixReceiptOcrBlockReason(): Promise<string> {
 
 function pixReceiptOcrBlockedReply(reason: string): ReplyResult {
   const reasonLabel = reason === 'gemini_spend_guard_paused'
-    ? 'Gemini pausado por limite/cota.'
+    ? 'Leitura automatica pausada por limite/cota.'
     : reason === 'pix_receipt_ocr_daily_limit_reached'
       ? 'Limite diario de leitura de Pix atingido.'
       : reason === 'pix_receipt_ocr_disabled_by_daily_limit'
@@ -10590,11 +10645,17 @@ function assertReceiptMediaSize(sizeBytes: number): void {
 
 async function transcribeQueuedAudio(row: QueueRow): Promise<string> {
   if (!AUDIO_INPUT_ENABLED) throw new Error('audio_input_disabled');
-  if (AUDIO_TRANSCRIBE_PROVIDER !== 'gemini') throw new Error('audio_transcribe_provider_unsupported');
+  if (AUDIO_TRANSCRIBE_PROVIDER !== 'gemini' && AUDIO_TRANSCRIBE_PROVIDER !== 'openai') throw new Error('audio_transcribe_provider_unsupported');
   const media = audioProviderFromSummary(row.payload_summary) === 'meta'
     ? await fetchMetaAudioMedia(row)
     : await fetchEvolutionAudioMedia(row);
-  const transcript = safeText(await requestGeminiAudioTranscript(media, row.trace_id), 4000);
+  if (AUDIO_TRANSCRIBE_PROVIDER === 'openai' && !openAiConfigured()) throw new Error('openai_not_configured_for_audio');
+  const transcript = safeText(AUDIO_TRANSCRIBE_PROVIDER === 'openai'
+    ? await requestOpenAiTranscription(
+      { apiKey: OPENAI_API_KEY, baseUrl: OPENAI_API_BASE_URL, model: AUDIO_TRANSCRIBE_MODEL, timeoutMs: AUDIO_TRANSCRIBE_TIMEOUT_MS },
+      media,
+    )
+    : await requestGeminiAudioTranscript(media, row.trace_id), 4000);
   validateAudioTranscript(transcript, audioDurationMsFromPayload(row.payload_summary));
   return cleanTranscript(transcript);
 }
@@ -10937,7 +10998,12 @@ function parsePixReceiptExtractionText(
   ocrModel: string,
   ocrPass: PixReceiptExtraction['ocrPass'] = 'primary',
 ): PixReceiptExtraction {
-  const parsed = JSON.parse(extractJsonObjectText(text)) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(extractJsonObjectText(text)) as unknown;
+  } catch {
+    throw new Error('pix_receipt_json_invalid');
+  }
   if (!isRecord(parsed)) throw new Error('pix_receipt_json_invalid');
   return {
     ...normalizePixReceiptExtraction(parsed),
@@ -10947,26 +11013,6 @@ function parsePixReceiptExtractionText(
   };
 }
 
-function openAiTextFromResponse(data: JsonRecord, partLimit = 8000): string {
-  const outputText = safeText(data.output_text, partLimit);
-  if (outputText) return outputText;
-
-  const output = Array.isArray(data.output) ? data.output : [];
-  const chunks: string[] = [];
-  for (const itemRaw of output) {
-    if (!isRecord(itemRaw)) continue;
-    const content = Array.isArray(itemRaw.content) ? itemRaw.content : [];
-    for (const partRaw of content) {
-      if (!isRecord(partRaw)) continue;
-      const text = safeText(partRaw.text || partRaw.value || partRaw.output_text, partLimit);
-      if (text) chunks.push(text);
-    }
-  }
-  const text = chunks.join(' ').trim();
-  if (text) return safeText(text, partLimit);
-  throw new Error('openai_empty_reply');
-}
-
 async function requestOpenAiPixReceiptExtraction(
   media: AudioMedia,
   traceId: string,
@@ -10974,51 +11020,36 @@ async function requestOpenAiPixReceiptExtraction(
   pass: PixReceiptExtraction['ocrPass'] = 'fallback',
 ): Promise<PixReceiptExtraction> {
   if (!openAiConfigured()) throw new Error('openai_not_configured_for_pix_receipt');
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PIX_RECEIPT_OCR_TIMEOUT_MS);
-  try {
-    const isPdf = media.mimeType === 'application/pdf';
-    const filename = safeText(hints.fileName, 120) || (isPdf ? 'comprovante-pix.pdf' : 'comprovante-pix.jpg');
-    const mediaPart = isPdf
-      ? {
-          type: 'input_file',
-          filename,
-          file_data: `data:${media.mimeType};base64,${media.base64}`,
-        }
-      : {
-          type: 'input_image',
-          image_url: `data:${media.mimeType};base64,${media.base64}`,
-          detail: 'high',
-        };
-    const response = await fetch(`${OPENAI_API_BASE_URL}/responses`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: PIX_RECEIPT_OPENAI_OCR_MODEL,
-        instructions: pixReceiptExtractionSystemInstruction(pass),
-        input: [{
-          role: 'user',
-          content: [
-            { type: 'input_text', text: pixReceiptExtractionPrompt(media, traceId, hints, pass) },
-            mediaPart,
-          ],
-        }],
-        max_output_tokens: 1200,
-      }),
-      signal: controller.signal,
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !isRecord(data)) {
-      const error = isRecord(data) && isRecord(data.error) ? data.error : data;
-      throw new Error(safeText(isRecord(error) ? error.message || error.error : '', 180) || `openai_pix_receipt_http_${response.status}`);
-    }
-    return parsePixReceiptExtractionText(openAiTextFromResponse(data), 'openai', PIX_RECEIPT_OPENAI_OCR_MODEL, pass);
-  } finally {
-    clearTimeout(timeout);
-  }
+  const isPdf = media.mimeType === 'application/pdf';
+  const filename = safeText(hints.fileName, 120) || (isPdf ? 'comprovante-pix.pdf' : 'comprovante-pix.jpg');
+  const mediaPart = isPdf
+    ? {
+        type: 'input_file',
+        filename,
+        file_data: `data:${media.mimeType};base64,${media.base64}`,
+      }
+    : {
+        type: 'input_image',
+        image_url: `data:${media.mimeType};base64,${media.base64}`,
+        detail: 'high',
+      };
+  const text = await requestOpenAiResponse(
+    { apiKey: OPENAI_API_KEY, baseUrl: OPENAI_API_BASE_URL, model: PIX_RECEIPT_OPENAI_OCR_MODEL, timeoutMs: PIX_RECEIPT_OCR_TIMEOUT_MS },
+    {
+      instructions: pixReceiptExtractionSystemInstruction(pass),
+      input: [{
+        role: 'user',
+        content: [
+          { type: 'input_text', text: pixReceiptExtractionPrompt(media, traceId, hints, pass) },
+          mediaPart,
+        ],
+      }],
+      maxOutputTokens: 2400,
+      effort: 'low',
+      format: PIX_RECEIPT_RESPONSE_FORMAT,
+    },
+  );
+  return parsePixReceiptExtractionText(text, 'openai', PIX_RECEIPT_OPENAI_OCR_MODEL, pass);
 }
 
 function isPixReceiptOcrFallbackError(error: unknown): boolean {
@@ -11044,6 +11075,8 @@ function isPixReceiptOcrFallbackError(error: unknown): boolean {
 function isPixReceiptOcrContentError(error: unknown): boolean {
   const message = safeError(error).toLowerCase();
   return message.includes('gemini_empty_')
+    || message.includes('openai_empty_reply')
+    || message.includes('openai_response_incomplete')
     || message.includes('pix_receipt_json_invalid')
     || message.includes('pix_receipt_json_missing');
 }
@@ -11111,6 +11144,26 @@ function choosePixReceiptExtractionCandidate(
 }
 
 async function requestPixReceiptExtraction(media: AudioMedia, traceId: string, hints: PixReceiptExtractionHints): Promise<PixReceiptExtraction> {
+  if (PIX_RECEIPT_OCR_PROVIDER === 'openai') {
+    let primary: PixReceiptExtraction;
+    try {
+      primary = await requestOpenAiPixReceiptExtraction(media, traceId, hints, 'primary');
+    } catch (error) {
+      if (!isPixReceiptOcrContentError(error)) throw error;
+      const secondary = await requestOpenAiPixReceiptExtraction(media, traceId, hints, 'conservative');
+      return annotatePixReceiptRetryChoice(secondary, true, 'primary_content_error');
+    }
+    const retryReason = pixReceiptConservativeRetryReason(primary);
+    if (!retryReason) return primary;
+    try {
+      const secondary = await requestOpenAiPixReceiptExtraction(media, traceId, hints, 'conservative');
+      return choosePixReceiptExtractionCandidate(primary, secondary, retryReason);
+    } catch (error) {
+      return annotatePixReceiptRetryChoice(primary, true, retryReason, safeError(error));
+    }
+  }
+  if (PIX_RECEIPT_OCR_PROVIDER !== 'auto' && PIX_RECEIPT_OCR_PROVIDER !== 'gemini') throw new Error('pix_receipt_ocr_provider_unsupported');
+  if (PIX_RECEIPT_OCR_PROVIDER === 'gemini' && !geminiConfigured()) throw new Error('gemini_not_configured_for_pix_receipt');
   if (geminiConfigured()) {
     try {
       const primary = await requestGeminiPixReceiptExtraction(media, traceId, hints, 'primary');
@@ -11154,7 +11207,7 @@ async function requestPixReceiptExtraction(media: AudioMedia, traceId: string, h
           });
         }
       }
-      if (!openAiConfigured() || !isPixReceiptOcrFallbackError(error)) throw error;
+      if (PIX_RECEIPT_OCR_PROVIDER === 'gemini' || !openAiConfigured() || !isPixReceiptOcrFallbackError(error)) throw error;
       await recordErrorLog('pix_receipt_ocr_fallback', 'warn', error, {
         traceId,
         details: {
@@ -11725,9 +11778,9 @@ function publicStatus(): JsonRecord {
   const geminiReady = geminiConfigured();
   const openAiReady = openAiConfigured();
   const geminiSpendGuardMsRemaining = geminiSpendGuardRemainingMs();
-  const pixReceiptOcrProvider = geminiReady
-    ? (openAiReady ? 'gemini/openai-fallback' : 'gemini')
-    : (openAiReady ? 'openai' : 'none');
+  const pixReceiptOcrProvider = PIX_RECEIPT_OCR_PROVIDER === 'auto'
+    ? (geminiReady ? (openAiReady ? 'gemini/openai-fallback' : 'gemini') : (openAiReady ? 'openai' : 'none'))
+    : PIX_RECEIPT_OCR_PROVIDER;
   pruneProviderSendWindow();
   return {
     ok: true,
@@ -11780,9 +11833,11 @@ function publicStatus(): JsonRecord {
     pix_receipt_media_enabled: PIX_RECEIPT_IMAGE_ENABLED,
     pix_receipt_cnpj_configured: PIX_RECEIPT_CNPJ !== '',
     pix_receipt_ocr_provider: pixReceiptOcrProvider,
-    pix_receipt_ocr_model: PIX_RECEIPT_OCR_MODEL,
+    pix_receipt_ocr_model: pixReceiptActiveOcrModel(),
+    pix_receipt_ocr_configured: pixReceiptOcrConfigured(),
+    pix_receipt_ocr_uses_gemini: pixReceiptOcrUsesGemini(),
     pix_receipt_ocr_daily_limit: PIX_RECEIPT_OCR_DAILY_LIMIT,
-    pix_receipt_openai_fallback_configured: openAiReady,
+    pix_receipt_openai_fallback_configured: PIX_RECEIPT_OCR_PROVIDER === 'auto' && openAiReady,
     pix_receipt_openai_ocr_model: PIX_RECEIPT_OPENAI_OCR_MODEL,
     pix_receipt_image_max_bytes: PIX_RECEIPT_IMAGE_MAX_BYTES,
     pix_receipt_media_max_bytes: PIX_RECEIPT_IMAGE_MAX_BYTES,
@@ -17623,7 +17678,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
   const evolutionEndpoint = textStatus(status, 'evolution_status_endpoint') || `${BASE_PATH}/internal/evolution-status`;
   const evolutionConfigured = boolStatus(status, 'evolution_configured');
   const pixReceiptEnabled = boolStatus(status, 'pix_receipt_image_enabled');
-  const pixReceiptConfigured = boolStatus(status, 'pix_receipt_cnpj_configured');
+  const pixReceiptConfigured = boolStatus(status, 'pix_receipt_cnpj_configured') && boolStatus(status, 'pix_receipt_ocr_configured');
   const pixReceiptProvider = textStatus(status, 'pix_receipt_ocr_provider') || '-';
   const pixReceiptModel = textStatus(status, 'pix_receipt_ocr_model') || '-';
   const pixReceiptOpenAiFallback = boolStatus(status, 'pix_receipt_openai_fallback_configured');
@@ -17634,7 +17689,8 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
   const geminiSpendGuardStatus = textStatus(status, 'gemini_spend_guard_status') || 'normal';
   const geminiSpendGuardRecent = summary.geminiSpendGuardError !== null;
   const pixReceiptDailyBlocked = pixReceiptOcrDailyLimit >= 0 && pixReceiptOcrDailyLimit <= pixReceiptOcrAttempts;
-  const pixReceiptBlocked = geminiSpendGuardBlocked || pixReceiptDailyBlocked || geminiSpendGuardRecent;
+  const pixReceiptGeminiGuard = boolStatus(status, 'pix_receipt_ocr_uses_gemini') && (geminiSpendGuardBlocked || geminiSpendGuardRecent);
+  const pixReceiptBlocked = pixReceiptGeminiGuard || pixReceiptDailyBlocked;
   const pixReceiptTone: DashboardTone = pixReceiptBlocked
     ? 'warn'
     : (pixReceiptEnabled && pixReceiptConfigured) ? 'ok' : pixReceiptConfigured ? 'muted' : 'warn';
@@ -18791,7 +18847,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
             ['Outbox', outboxProblems > 0 ? `${outboxProblems} problema(s)` : pendingOutbox > 0 ? `${pendingOutbox} pendente(s)` : 'ok'],
             ['Check', evolutionEndpoint],
           ])}
-          ${renderConfigCard('Agente Miauby', (agentConfigured || geminiReady) ? 'ok' : 'warn', (agentConfigured || geminiReady) ? (aiMode === 'hybrid' ? 'Hibrido' : aiMode) : 'Pendente', [
+          ${renderConfigCard('Agente Miauby', (agentConfigured || geminiReady || openAiReady) ? 'ok' : 'warn', (agentConfigured || geminiReady || openAiReady) ? (aiMode === 'hybrid' ? 'Hibrido' : aiMode) : 'Pendente', [
             ['Modo IA', aiMode],
             ['Gemini', geminiReady ? geminiModel : 'sem chave'],
             ['OpenAI', openAiReady ? openAiModel : 'sem chave'],
@@ -18812,8 +18868,8 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
             ...(providerPauseReasonText ? [['Motivo', providerPauseReasonText] as [string, string]] : []),
           ])}
           ${renderConfigCard('Roteador', 'ok', 'Ativo', [
-            ['Sem miauby', localRepliesEnabled ? 'local rapido/Gemini' : 'Gemini'],
-            ['Com miauby', 'core'],
+            ['Sem miauby', aiMode === 'openai' ? 'local/OpenAI; comandos no core' : localRepliesEnabled ? 'local rapido/Gemini' : 'Gemini'],
+            ['Com miauby', aiMode === 'openai' ? 'OpenAI; comandos no core' : 'core'],
             ['Escrita', writePolicy],
             ['Cache', `${cacheTtl}s/${cacheEntries}`],
           ])}
@@ -18830,7 +18886,7 @@ function renderDashboard(summary: DashboardSummary, csrfToken: string, notice = 
             ['OCR', pixReceiptProvider],
             ['Modelo 1', pixReceiptModel],
             ['Diario', pixReceiptDailyLabel],
-            ['Guard', geminiSpendGuardBlocked ? geminiSpendGuardStatus : geminiSpendGuardRecent ? 'erro de cota recente' : 'normal'],
+            ['Guard', pixReceiptGeminiGuard ? geminiSpendGuardStatus : 'normal'],
             ['Fallback', pixReceiptOpenAiFallback ? `${pixReceiptOpenAiModel} (so transitorio)` : 'sem OpenAI'],
             ['Limite', `${pixReceiptMaxMb} MB`],
             ['Alvo', `CNPJ/chave ou ${pixReceiptAliasCount} nomes (${pixReceiptMinScore}%)`],

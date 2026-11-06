@@ -1,5 +1,12 @@
 # 16 - Testes
 
+## Pix natural, prefixo opcional e OpenAI - 2026-11-06
+
+- Rodar `npm run check --prefix apps/miauw-agent`, `npm test --prefix apps/miauw-agent`, `npm run check --prefix apps/miauw-whatsapp` e `npm test --prefix apps/miauw-whatsapp`. As suites incluem build TypeScript e contrato de persona do agente.
+- Pix deve separar destino e pagador, preservar sinal negativo e recusar ambiguidades; testar horarios `14:30`/`14h30`, CPF/CNPJ/telefone/data, saldo/tarifa com preposicoes, valor explicito antes/depois e valores conflitantes. Testar tanto mensagem canonica quanto parser direto, incluindo fallback quando o interpretador esta indisponivel.
+- Os testes OpenAI usam HTTP simulado para Responses, refusals/incomplete, JSON Schema, imagem/PDF, retry no mesmo provider, guard Gemini, multipart `languages[]=pt` sem prompt e preservacao do modo legado. Prefixo opcional nao libera `ambiguous`/`blocked` nem elimina os controles de contato/cards/confirmacao.
+- Teste simulado nao valida chave, saldo, acesso ao modelo nem suporte real de OGG. O corte depende da nova chave exclusiva da Personal e de smoke com texto/recibo/audio sinteticos; nunca usar comprovante de cliente ou criar lancamento financeiro/mensagem WhatsApp para validar. No VPS, conferir Home/health, conta desativada, caixa restrito e TTS desligado.
+
 ## Destinatario exclusivo do caixa - 2026-11-05
 
 - `npm test --prefix apps/miauw-whatsapp` inclui a politica de destinatarios de caixa: entre varios contatos Financeiro, somente o usuario core configurado e elegivel. Configuracao ausente/invalida, conta inativa e contato inelegivel precisam resultar em lista vazia.

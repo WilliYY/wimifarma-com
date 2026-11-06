@@ -41,6 +41,12 @@ E retorna:
 13. Frases e sinonimos normalizados ficam em cache no processo. Datas relativas, quantidades naturais e valores brasileiros como `1.500,20` sao extraidos como contexto sem inventar nem reformatar dados.
 14. Se o servico estiver indisponivel ou retornar `none`, usar o parser legado com a mensagem original; os detectores de contingencia dos dois canais reconhecem tambem os sinais de estoque baixo.
 
+## Pix recebido - 2026-11-06
+
+`registrar_pix_cnpj` aceita recebimento explicitamente destinado a empresa/CNPJ/farmacia sem exigir o nome Miauby. Exemplos: `recebi pix de 28,90 na conta da farmacia` e os formatos antigos `pix cnpj 28,90 sueli`. Pix generico, como `recebi pix 28,90`, retorna `ambiguous`, `canonical_message=''`, `missing=['destino']` e pergunta se foi na empresa/CNPJ ou em conta pessoal. O parser direto recusa essa frase; indisponibilidade do interpretador nao pode transforma-la em entrada.
+
+CNPJ de pagador, CPF, telefone, datas, horarios, saldo e tarifa nao fornecem valor nem destino. Falta de valor retorna `missing=['valor']`; valores negativos preservam o sinal para serem recusados. Valor explicitamente rotulado tem prioridade sobre metadados, mas valores elegiveis conflitantes pedem esclarecimento. A mensagem canonica preserva o rotulo `valor` quando presente. Negacao, pergunta, pagamento/envio e conta pessoal nao produzem comando de entrada. Responsavel explicitamente informado e separado dos metadados, mas a identidade oficial segue sendo validada pelo canal/modulo. As regressoes ficam em `semantic-command.test.ts` e `pix-cnpj-command.test.ts`.
+
 ## Comandos cobertos
 
 O registro inicial cobre as familias operacionais existentes:
