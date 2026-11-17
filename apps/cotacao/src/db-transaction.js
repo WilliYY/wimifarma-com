@@ -1,7 +1,7 @@
-export async function withTransaction(pool, task) {
+export async function withTransaction(pool, task, { readOnlySnapshot = false } = {}) {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query(readOnlySnapshot ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN');
     const result = await task(client);
     await client.query('COMMIT');
     return result;

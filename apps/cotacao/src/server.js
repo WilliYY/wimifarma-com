@@ -1158,75 +1158,77 @@ function parseEventCursor(value) {
 }
 
 async function loadEventDelta(quoteId, after) {
-  const latest = await pgPool.query(
-    'SELECT COALESCE(MAX(id), 0)::bigint AS id FROM cotacao_v2_events WHERE quote_id = $1',
-    [quoteId]
-  );
-  const latestEventId = Number(latest.rows[0]?.id || 0);
-  if (after >= latestEventId) {
+  return withTransaction(pgPool, async (client) => {
+    const latest = await client.query(
+      'SELECT COALESCE(MAX(id), 0)::bigint AS id FROM cotacao_v2_events WHERE quote_id = $1',
+      [quoteId]
+    );
+    const latestEventId = Number(latest.rows[0]?.id || 0);
+    if (after >= latestEventId) {
+      return {
+        events: [],
+        latestEventId,
+        pendingEvents: 0,
+        requiresSnapshot: false,
+        reason: ''
+      };
+    }
+
+    const count = await client.query(
+      'SELECT COUNT(*)::int AS total FROM cotacao_v2_events WHERE quote_id = $1 AND id > $2',
+      [quoteId, after]
+    );
+    const pendingEvents = Number(count.rows[0]?.total || 0);
+    if (pendingEvents > DELTA_EVENT_LIMIT) {
+      return {
+        events: [],
+        latestEventId,
+        pendingEvents,
+        requiresSnapshot: true,
+        reason: 'event_limit'
+      };
+    }
+
+    const result = await client.query(
+      `SELECT id,
+              type,
+              row_id AS "rowId",
+              column_key AS "columnKey",
+              payload,
+              user_id AS "userId",
+              username,
+              client_id AS "clientId",
+              created_at AS "createdAt"
+       FROM cotacao_v2_events
+       WHERE quote_id = $1
+         AND id > $2
+       ORDER BY id ASC
+       LIMIT $3`,
+      [quoteId, after, DELTA_EVENT_LIMIT]
+    );
+    const snapshotEvent = result.rows.find((event) => SNAPSHOT_EVENT_TYPES.has(event.type));
+    if (snapshotEvent) {
+      return {
+        events: [],
+        latestEventId,
+        pendingEvents,
+        requiresSnapshot: true,
+        reason: 'snapshot_event',
+        snapshotEvent: {
+          id: Number(snapshotEvent.id),
+          type: snapshotEvent.type
+        }
+      };
+    }
+
     return {
-      events: [],
+      events: result.rows.map((event) => ({ ...event, id: Number(event.id) })),
       latestEventId,
-      pendingEvents: 0,
+      pendingEvents,
       requiresSnapshot: false,
       reason: ''
     };
-  }
-
-  const count = await pgPool.query(
-    'SELECT COUNT(*)::int AS total FROM cotacao_v2_events WHERE quote_id = $1 AND id > $2',
-    [quoteId, after]
-  );
-  const pendingEvents = Number(count.rows[0]?.total || 0);
-  if (pendingEvents > DELTA_EVENT_LIMIT) {
-    return {
-      events: [],
-      latestEventId,
-      pendingEvents,
-      requiresSnapshot: true,
-      reason: 'event_limit'
-    };
-  }
-
-  const result = await pgPool.query(
-    `SELECT id,
-            type,
-            row_id AS "rowId",
-            column_key AS "columnKey",
-            payload,
-            user_id AS "userId",
-            username,
-            client_id AS "clientId",
-            created_at AS "createdAt"
-     FROM cotacao_v2_events
-     WHERE quote_id = $1
-       AND id > $2
-     ORDER BY id ASC
-     LIMIT $3`,
-    [quoteId, after, DELTA_EVENT_LIMIT]
-  );
-  const snapshotEvent = result.rows.find((event) => SNAPSHOT_EVENT_TYPES.has(event.type));
-  if (snapshotEvent) {
-    return {
-      events: [],
-      latestEventId,
-      pendingEvents,
-      requiresSnapshot: true,
-      reason: 'snapshot_event',
-      snapshotEvent: {
-        id: Number(snapshotEvent.id),
-        type: snapshotEvent.type
-      }
-    };
-  }
-
-  return {
-    events: result.rows.map((event) => ({ ...event, id: Number(event.id) })),
-    latestEventId,
-    pendingEvents,
-    requiresSnapshot: false,
-    reason: ''
-  };
+  }, { readOnlySnapshot: true });
 }
 
 async function getOrCreateDefaultQuote() {
@@ -1307,8 +1309,8 @@ async function seedColumns(quoteId) {
   await normalizeColumnOrder(quoteId);
 }
 
-async function normalizeColumnOrder(quoteId) {
-  const current = await pgPool.query(
+async function normalizeColumnOrder(quoteId, db = pgPool) {
+  const current = await db.query(
     `SELECT *
      FROM cotacao_v2_columns
      WHERE quote_id = $1
@@ -1330,7 +1332,7 @@ async function normalizeColumnOrder(quoteId) {
   if (winner) ordered.push(winner);
 
   for (let index = 0; index < ordered.length; index += 1) {
-    await pgPool.query(
+    await db.query(
       'UPDATE cotacao_v2_columns SET position = $3, updated_at = now() WHERE quote_id = $1 AND key = $2',
       [quoteId, ordered[index].key, index + 1]
     );
@@ -1359,53 +1361,53 @@ async function seedRows(quoteId) {
 
 async function loadSheet() {
   const quote = await getOrCreateDefaultQuote();
-  const [columns, rows, rules, styles, lastEvent] = await Promise.all([
-    pgPool.query(
-      `SELECT * FROM cotacao_v2_columns
-       WHERE quote_id = $1
-         AND COALESCE((options->>'hidden')::boolean, false) = false
-       ORDER BY position ASC, label ASC`,
-      [quote.id]
-    ),
-    pgPool.query(
-      `SELECT * FROM cotacao_v2_rows
-       WHERE quote_id = $1
-         AND deleted_at IS NULL
-       ORDER BY position ASC, id ASC`,
-      [quote.id]
-    ),
-    pgPool.query('SELECT * FROM cotacao_v2_rules WHERE quote_id = $1 ORDER BY priority ASC, created_at ASC', [quote.id]),
-    pgPool.query(
-      `SELECT id,
-              style_key AS "styleKey",
-              scope,
-              row_id AS "rowId",
-              column_key AS "columnKey",
-              background,
-              color,
-              updated_by AS "updatedBy",
-              updated_at AS "updatedAt"
-       FROM cotacao_v2_styles
-       WHERE quote_id = $1
-       ORDER BY updated_at ASC`,
-      [quote.id]
-    ),
-    pgPool.query('SELECT COALESCE(MAX(id), 0)::bigint AS id FROM cotacao_v2_events WHERE quote_id = $1', [quote.id])
-  ]);
-  return {
-    quote,
-    columns: columns.rows,
-    rows: rows.rows.map((row) => ({
-      id: row.id,
-      position: row.position,
-      values: row.values || {},
-      version: Number(row.version),
-      updatedAt: row.updated_at
-    })),
-    rules: rules.rows,
-    styles: styles.rows,
-    lastEventId: Number(lastEvent.rows[0].id)
-  };
+  return withTransaction(pgPool, async (client) => {
+    const columns = await client.query(
+        `SELECT * FROM cotacao_v2_columns
+         WHERE quote_id = $1
+           AND COALESCE((options->>'hidden')::boolean, false) = false
+         ORDER BY position ASC, label ASC`,
+        [quote.id]
+      );
+    const rows = await client.query(
+        `SELECT * FROM cotacao_v2_rows
+         WHERE quote_id = $1
+           AND deleted_at IS NULL
+         ORDER BY position ASC, id ASC`,
+        [quote.id]
+      );
+    const rules = await client.query('SELECT * FROM cotacao_v2_rules WHERE quote_id = $1 ORDER BY priority ASC, created_at ASC', [quote.id]);
+    const styles = await client.query(
+        `SELECT id,
+                style_key AS "styleKey",
+                scope,
+                row_id AS "rowId",
+                column_key AS "columnKey",
+                background,
+                color,
+                updated_by AS "updatedBy",
+                updated_at AS "updatedAt"
+         FROM cotacao_v2_styles
+         WHERE quote_id = $1
+         ORDER BY updated_at ASC`,
+        [quote.id]
+      );
+    const lastEvent = await client.query('SELECT COALESCE(MAX(id), 0)::bigint AS id FROM cotacao_v2_events WHERE quote_id = $1', [quote.id]);
+    return {
+      quote,
+      columns: columns.rows,
+      rows: rows.rows.map((row) => ({
+        id: row.id,
+        position: row.position,
+        values: row.values || {},
+        version: Number(row.version),
+        updatedAt: row.updated_at
+      })),
+      rules: rules.rows,
+      styles: styles.rows,
+      lastEventId: Number(lastEvent.rows[0].id)
+    };
+  }, { readOnlySnapshot: true });
 }
 
 function columnOption(column, key) {
@@ -1500,6 +1502,7 @@ async function activeRowExists(quoteId, rowId) {
 
 async function addRowsInTransaction(client, quoteId, count, valuesList = []) {
   const total = Math.max(1, Math.min(Number(count || valuesList.length || 1), 200));
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_events:${quoteId}`]);
   await client.query('SELECT id FROM cotacao_v2_quotes WHERE id = $1 FOR UPDATE', [quoteId]);
   const maxPosition = await client.query(
     'SELECT COALESCE(MAX(position), 0)::int AS position FROM cotacao_v2_rows WHERE quote_id = $1 AND deleted_at IS NULL',
@@ -1537,6 +1540,7 @@ async function addRows(quoteId, count, valuesList = []) {
 
 async function insertRowsAtInTransaction(client, quoteId, anchorRowId, placement = 'below', count = 1) {
   const total = Math.max(1, Math.min(Number(count || 1), 50));
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_events:${quoteId}`]);
   await client.query('SELECT id FROM cotacao_v2_quotes WHERE id = $1 FOR UPDATE', [quoteId]);
   const current = await client.query(
     `SELECT id
@@ -1878,10 +1882,11 @@ function rowsFromMatrix(matrix, columns) {
     });
 }
 
-async function replaceRowsFromImport(quoteId, rows) {
+async function replaceRowsFromImport(quoteId, rows, beforeCommit = null) {
   const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_events:${quoteId}`]);
     const incomingIds = rows.map((row) => row.id).filter(Boolean);
     if (incomingIds.length) {
       await client.query(
@@ -1941,6 +1946,7 @@ async function replaceRowsFromImport(quoteId, rows) {
         updatedAt: empty.rows[0].updated_at
       });
     }
+    if (beforeCommit) await beforeCommit(client, inserted);
     await client.query('COMMIT');
     return inserted;
   } catch (error) {
@@ -2065,7 +2071,7 @@ async function listBackups() {
   return backups.sort((a, b) => b.name.localeCompare(a.name));
 }
 
-async function restoreBackup(backupName, quoteId) {
+async function restoreBackup(backupName, quoteId, beforeCommit = null) {
   if (!/^cotacao-v2-[\w.-]+\.json$/.test(backupName)) {
     const error = new Error('Backup invalido.');
     error.status = 422;
@@ -2086,6 +2092,7 @@ async function restoreBackup(backupName, quoteId) {
   const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_events:${quoteId}`]);
     await client.query('DELETE FROM cotacao_v2_styles WHERE quote_id = $1', [quoteId]);
     await client.query('DELETE FROM cotacao_v2_rules WHERE quote_id = $1', [quoteId]);
     await client.query('DELETE FROM cotacao_v2_rows WHERE quote_id = $1', [quoteId]);
@@ -2237,8 +2244,9 @@ async function restoreBackup(backupName, quoteId) {
         ]
       );
     }
+    await normalizeColumnOrder(quoteId, client);
+    if (beforeCommit) await beforeCommit(client, insertedRows);
     await client.query('COMMIT');
-    await normalizeColumnOrder(quoteId);
     return insertedRows;
   } catch (error) {
     await client.query('ROLLBACK');
@@ -2249,6 +2257,13 @@ async function restoreBackup(backupName, quoteId) {
 }
 
 async function appendEvent({ quoteId, type, rowId = null, columnKey = null, payload = {}, user, clientId = null, db = pgPool }) {
+  if (db === pgPool) {
+    return withTransaction(pgPool, (client) => appendEvent({ quoteId, type, rowId, columnKey, payload, user, clientId, db: client }));
+  }
+  // Allocate IDs only while holding this lock until COMMIT. A later committed
+  // event must never hide an earlier uncommitted ID from incremental polling.
+  // Transactional writers acquire this same lock before row/quote locks.
+  await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_events:${quoteId}`]);
   const result = await db.query(
     `INSERT INTO cotacao_v2_events (quote_id, type, row_id, column_key, payload, user_id, username, client_id)
      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
@@ -2462,7 +2477,9 @@ async function syncEncomendaRemindersForRows(quoteId, rowIds, options = {}) {
 }
 
 async function syncEncomendaRemindersForQuote(quoteId, options = {}) {
-  const result = await pgPool.query(
+  let result;
+  try {
+    result = await pgPool.query(
     `SELECT id::text AS row_id
        FROM cotacao_v2_rows
       WHERE quote_id = $1
@@ -2474,6 +2491,10 @@ async function syncEncomendaRemindersForQuote(quoteId, options = {}) {
         AND status IN ('pendente', 'erro')`,
     [quoteId]
   );
+  } catch (error) {
+    console.warn('[cotacao] encomenda reminder quote query failed', { quoteId, error: error.message });
+    return { rows: 0, synced: 0, failed: 1 };
+  }
   const ids = result.rows.map((row) => String(row.row_id || '')).filter(isUuid);
   let synced = 0;
   let failed = 0;
@@ -3012,7 +3033,7 @@ function renderApp(req) {
   </script>
   <script src="${BASE_PATH}/socket.io/socket.io.js"></script>
   <script src="${BASE_PATH}/product-similarity.js?v=20260828-similar-products"></script>
-  <script src="${BASE_PATH}/app.js?v=20260828-similar-products"></script>
+  <script src="${BASE_PATH}/app.js?v=20261117-editing-safety"></script>
   <script src="/miauw/widget.js?v=20260610-miauby-video" defer></script>
 </body>
 </html>`;
@@ -3586,6 +3607,7 @@ app.post(`${BASE_PATH}/api/internal/falteiro/commands`, requireInternalToken, as
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_falteiro:${quote.id}`]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_events:${quote.id}`]);
 
     const previous = await client.query(
       `SELECT command.row_id AS "rowId",
@@ -3821,6 +3843,7 @@ app.post(`${BASE_PATH}/api/internal/encomendas`, requireInternalToken, asyncRout
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_encomenda:${quote.id}`]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_events:${quote.id}`]);
     const previous = await client.query(
       `SELECT command.row_id AS "rowId",
               command.event_id AS "eventId",
@@ -4329,6 +4352,7 @@ app.delete(`${BASE_PATH}/api/rows/:id`, requireApiAuth, verifyCsrf, asyncRoute(a
   const rowId = String(req.params.id || '');
   const clientId = String(req.body?.clientId || '');
   const { deleted, event } = await withTransaction(pgPool, async (client) => {
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_events:${quote.id}`]);
     const deletedResult = await client.query(
       `UPDATE cotacao_v2_rows
        SET deleted_at = now(), updated_at = now()
@@ -4764,6 +4788,7 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
   let event;
   try {
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_events:${quote.id}`]);
     const current = await client.query(
       `SELECT id, position, values, version, updated_at
        FROM cotacao_v2_rows
@@ -4838,10 +4863,13 @@ app.patch(`${BASE_PATH}/api/cells`, requireApiAuth, verifyCsrf, asyncRoute(async
 }));
 
 app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
+  if (Array.isArray(req.body.changes) && req.body.changes.length > 1000) {
+    return res.status(422).json({ ok: false, error: 'Lote excede o limite de 1000 celulas.' });
+  }
   const quote = await getOrCreateDefaultQuote();
   const clientId = String(req.body.clientId || '');
   const changes = sortCellChangesForLocking(
-    Array.isArray(req.body.changes) ? req.body.changes.slice(0, 1000) : []
+    Array.isArray(req.body.changes) ? req.body.changes : []
   );
   if (!changes.length) {
     return res.status(422).json({ ok: false, error: 'Nenhuma celula informada.' });
@@ -4853,10 +4881,12 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
 
   const client = await pgPool.connect();
   const updatedCells = [];
+  const acknowledgedCells = [];
   let clearedStyleKeys = [];
   let event = null;
   try {
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`cotacao_v2_events:${quote.id}`]);
     for (const raw of changes) {
       const rowId = String(raw.rowId || '');
       const columnKey = String(raw.columnKey || '');
@@ -4878,7 +4908,19 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
         return res.status(404).json({ ok: false, error: 'Linha nao encontrada.', rowId });
       }
       const previousValue = String(currentRow.values?.[columnKey] ?? '');
-      if (previousValue === value) continue;
+      if (previousValue === value) {
+        acknowledgedCells.push({
+          rowId: currentRow.id,
+          columnKey,
+          value,
+          previousValue: value,
+          expectedValue: hasExpectedValue ? expectedValue : null,
+          overwroteRemote: false,
+          version: Number(currentRow.version),
+          updatedAt: currentRow.updated_at
+        });
+        continue;
+      }
       const updated = await client.query(
         `UPDATE cotacao_v2_rows
          SET values = jsonb_set(COALESCE(values, '{}'::jsonb), ARRAY[$2], to_jsonb($3::text), true),
@@ -4899,6 +4941,7 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
         updatedAt: updated.rows[0].updated_at
       };
       updatedCells.push(updatedCell);
+      acknowledgedCells.push(updatedCell);
     }
     if (updatedCells.length) {
       clearedStyleKeys = await clearProductCellStyles(client, quote.id, updatedCells);
@@ -4920,7 +4963,7 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
   }
 
   if (!updatedCells.length) {
-    return res.json({ ok: true, cells: [], clearedStyleKeys: [], eventId: null, noop: true });
+    return res.json({ ok: true, cells: acknowledgedCells, clearedStyleKeys: [], eventId: null, noop: true });
   }
 
   io.to(`quote:${quote.id}`).emit('cells:update', {
@@ -4935,7 +4978,7 @@ app.patch(`${BASE_PATH}/api/cells/batch`, requireApiAuth, verifyCsrf, asyncRoute
     clientId,
     source: 'cells_batch_updated'
   });
-  return res.json({ ok: true, cells: updatedCells, clearedStyleKeys, eventId: Number(event.id) });
+  return res.json({ ok: true, cells: acknowledgedCells, clearedStyleKeys, eventId: Number(event.id) });
 }));
 
 app.post(`${BASE_PATH}/api/rules`, requireApiAuth, verifyCsrf, asyncRoute(async (req, res) => {
@@ -5144,20 +5187,23 @@ app.post(`${BASE_PATH}/api/google-sheets/import`, requireApiAuth, verifyCsrf, re
   const data = await googleSheetsRequest('GET', range);
   const rows = rowsFromMatrix(data.values || [], sheet.columns);
   const backup = await createBackup(sheet.quote.id, req.session.user?.username);
-  const inserted = await replaceRowsFromImport(sheet.quote.id, rows);
+  let event;
+  const inserted = await replaceRowsFromImport(sheet.quote.id, rows, async (client, insertedRows) => {
+    event = await appendEvent({
+      quoteId: sheet.quote.id,
+      type: 'google_sheets_imported',
+      payload: { range, rows: insertedRows.length, backup: backup.name },
+      user: req.session.user,
+      clientId: String(req.body.clientId || ''),
+      db: client
+    });
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('sheet:reload', { eventId: Number(event.id), clientId: String(req.body.clientId || '') });
   const reminderSync = await syncEncomendaRemindersForQuote(sheet.quote.id, {
     user: req.session.user,
     clientId: String(req.body.clientId || ''),
     source: 'google_sheets_import'
   });
-  const event = await appendEvent({
-    quoteId: sheet.quote.id,
-    type: 'google_sheets_imported',
-    payload: { range, rows: inserted.length, backup: backup.name, encomendaReminders: reminderSync },
-    user: req.session.user,
-    clientId: String(req.body.clientId || '')
-  });
-  io.to(`quote:${sheet.quote.id}`).emit('sheet:reload', { eventId: Number(event.id), clientId: String(req.body.clientId || '') });
   res.json({ ok: true, range, rows: inserted.length, backup: backup.name, encomendaReminders: reminderSync, eventId: Number(event.id) });
 }));
 
@@ -5181,20 +5227,23 @@ app.post(`${BASE_PATH}/api/backups`, requireApiAuth, verifyCsrf, asyncRoute(asyn
 
 app.post(`${BASE_PATH}/api/backups/:name/restore`, requireApiAuth, verifyCsrf, requireStrongCotacaoPermission, asyncRoute(async (req, res) => {
   const sheet = await loadSheet();
-  const rows = await restoreBackup(String(req.params.name || ''), sheet.quote.id);
+  let event;
+  const rows = await restoreBackup(String(req.params.name || ''), sheet.quote.id, async (client, insertedRows) => {
+    event = await appendEvent({
+      quoteId: sheet.quote.id,
+      type: 'backup_restored',
+      payload: { name: String(req.params.name || ''), rows: insertedRows.length },
+      user: req.session.user,
+      clientId: String(req.body.clientId || ''),
+      db: client
+    });
+  });
+  io.to(`quote:${sheet.quote.id}`).emit('sheet:reload', { eventId: Number(event.id), clientId: String(req.body.clientId || '') });
   const reminderSync = await syncEncomendaRemindersForQuote(sheet.quote.id, {
     user: req.session.user,
     clientId: String(req.body.clientId || ''),
     source: 'backup_restore'
   });
-  const event = await appendEvent({
-    quoteId: sheet.quote.id,
-    type: 'backup_restored',
-    payload: { name: String(req.params.name || ''), rows: rows.length, encomendaReminders: reminderSync },
-    user: req.session.user,
-    clientId: String(req.body.clientId || '')
-  });
-  io.to(`quote:${sheet.quote.id}`).emit('sheet:reload', { eventId: Number(event.id), clientId: String(req.body.clientId || '') });
   res.json({ ok: true, rows: rows.length, encomendaReminders: reminderSync, eventId: Number(event.id) });
 }));
 
