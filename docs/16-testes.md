@@ -1,5 +1,13 @@
 # 16 - Testes
 
+## Preservacao da Cotacao - 2026-11-17
+
+- `npm run test:frontend --prefix apps/cotacao` inclui `public/editing-safety.test.js`: editor preservado em redraw, ACK de cor durante autosave, rascunho/retry/beforeunload, snapshot tardio, evento antigo por celula e lotes maiores/incompletos. `npm run test:runtime --prefix apps/cotacao` inclui `src/persistence-regression.test.js`: snapshot/delta coerentes, locks de eventos, limite de lote, confirmacao de unchanged/noop, rollback e falha auxiliar de lembrete.
+- Rodar tambem check, typecheck, build:ts, test:falteiro, test:encomendas, regressoes de autenticacao e checks de segredos. Regressoes com mocks nao substituem PostgreSQL real: em banco isolado, confirmar bloqueio de uma segunda alocacao de evento ate COMMIT, snapshot durante escrita concorrente e rollback de valor/evento.
+- No navegador isolado com dados ficticios, reproduzir digitacao durante insercao de linha remota, limpeza de PRODUTO com cor e resposta atrasada, falha/retry e eventos fora de ordem; validar texto, foco, cursor e estado de salvamento. Nunca executar esses cenarios na planilha oficial em uso.
+- Validacao de 2026-11-17: instalacao limpa, check, typecheck e build:ts passaram; 40 testes frontend, 26 runtime, 44 Falteiro e 7 Encomendas passaram, alem do extrator. Sete cenarios no Chromium isolado passaram, incluindo duas abas, resposta fora de ordem, rascunho de linha removida e descarte apos resposta perdida. PostgreSQL 17 isolado confirmou espera do lock ate COMMIT, snapshot durante escrita concorrente e rollback conjunto de valor/evento.
+- O preflight dos outros 16 apps executou instalacao limpa, check/build e suites disponiveis, alem das regressoes centrais de autenticacao e verificacao de segredos. A Cotacao nao apresentou vulnerabilidades no npm audit. O audit do Miauw agente encontrou duas moderadas preexistentes nas dependencias transitivas `hono` e `@hono/node-server`; nao houve atualizacao dessas dependencias nesta tarefa, que fica limitada a Cotacao.
+
 ## Pix natural, prefixo opcional e OpenAI - 2026-11-06
 
 - Rodar `npm run check --prefix apps/miauw-agent`, `npm test --prefix apps/miauw-agent`, `npm run check --prefix apps/miauw-whatsapp` e `npm test --prefix apps/miauw-whatsapp`. As suites incluem build TypeScript e contrato de persona do agente.

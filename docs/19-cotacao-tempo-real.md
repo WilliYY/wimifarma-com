@@ -1,5 +1,7 @@
 # 19 - Cotacao tempo real
 
+Desde 2026-11-17, a V2 preserva o editor durante redraws e snapshots concorrentes, guarda rascunhos com falha em memoria para retry manual e confirma eventos somente pelo cursor de bootstrap/delta. Backend usa snapshots REPEATABLE READ, ordem transacional de eventos por quote e ACK completo de lotes de ate 1.000 celulas; lotes maiores sao divididos pelo navegador. Consulte a secao de preservacao de edicao em `docs/20-cotacao-v2.md`; notas anteriores de reversao otimista nao autorizam descartar rascunhos pendentes.
+
 ## O que esta parte do sistema faz
 
 Este documento registra a camada atual de sincronizacao e presenca ao vivo da Cotacao e o caminho para evoluir a ferramenta para um comportamento mais proximo do Google Sheets. A prioridade e evitar perda de dados, conflito silencioso e divergencia entre computadores.

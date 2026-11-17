@@ -97,6 +97,17 @@
     styles: [],
     presence: [],
     lastEventId: 0,
+    snapshotEventId: 0,
+    highestObservedEventId: 0,
+    localMutationVersion: 0,
+    snapshotPending: false,
+    snapshotInFlight: false,
+    cellEventIds: new Map(),
+    localCellRevisions: new Map(),
+    unsavedCellDrafts: new Map(),
+    draftRecoveryItems: new Map(),
+    pendingRemoteCells: new Map(),
+    pendingBatchCellSaves: new Map(),
     deltaInFlight: false,
     lastDeltaAt: null,
     search: '',
@@ -202,8 +213,8 @@
 
   function rememberEventId(value) {
     const eventId = Number(value || 0);
-    if (Number.isFinite(eventId) && eventId > state.lastEventId) {
-      state.lastEventId = eventId;
+    if (Number.isFinite(eventId) && eventId > state.highestObservedEventId) {
+      state.highestObservedEventId = eventId;
     }
   }
 
@@ -1402,6 +1413,10 @@
     const type = payload.type || '';
     if (['column_created', 'column_moved', 'column_deleted', 'column_restored'].includes(type)) {
       if (!setColumnsFromServer(payload.columns)) return false;
+      if (state.editing && !colByKey(state.editing.columnKey)) {
+        rememberUnsavedDraft(state.editing.rowId, state.editing.columnKey, state.editing.input.value, state.editing.originalValue);
+        updatePendingSaveStatus();
+      }
       renderTable();
       return true;
     }
@@ -1472,6 +1487,10 @@
   }
 
   function refreshRenderedRow(rowId, context = {}) {
+    if (state.editing?.rowId === rowId) {
+      deferRemoteRender([rowId]);
+      return;
+    }
     const row = rowById(rowId);
     const existing = table.querySelector(`tr[data-row-id="${rowId}"]`);
     const visibleRows = context.visibleRows || getVisibleRows();
@@ -1564,6 +1583,10 @@
   }
 
   function renderTable() {
+    if (state.editing) {
+      deferRemoteRender([], { full: true });
+      return;
+    }
     const visibleRows = getVisibleRows();
     const styles = styleMap();
     const colgroup = [
@@ -1815,6 +1838,8 @@
     state.styles = data.styles || [];
     state.presence = data.presence || [];
     state.lastEventId = Number(data.lastEventId || 0);
+    state.snapshotEventId = state.lastEventId;
+    state.highestObservedEventId = state.lastEventId;
     if (!state.activeCell && state.rows[0] && state.columns[0]) {
       setSelection(state.rows[0].id, state.columns[0].key);
     }
@@ -1829,9 +1854,18 @@
     const row = rowById(payload.rowId);
     if (!row) return false;
     const key = cellKey(payload.rowId, payload.columnKey);
+    const eventId = Number(payload.eventId || 0);
+    if (eventId && eventId <= Math.max(state.snapshotEventId || 0, state.cellEventIds.get(key) || 0)) return false;
+    if (state.pendingCellSaves.has(key) || state.pendingBatchCellSaves.has(key) || state.unsavedCellDrafts.has(key)) {
+      const pending = state.pendingRemoteCells.get(key);
+      if (!pending || Number(pending.eventId || 0) < eventId) state.pendingRemoteCells.set(key, payload);
+      deferRemoteRender([payload.rowId]);
+      return false;
+    }
+    if (eventId) state.cellEventIds.set(key, eventId);
     if (state.editing && state.editing.rowId === payload.rowId && state.editing.columnKey === payload.columnKey) {
       row.values = { ...(row.values || {}), [payload.columnKey]: payload.value };
-      row.version = payload.version;
+      row.version = Math.max(Number(row.version || 0), Number(payload.version || 0));
       row.updatedAt = payload.updatedAt;
       state.conflicts.set(key, {
         currentValue: payload.value,
@@ -1844,7 +1878,7 @@
       return false;
     }
     row.values = { ...(row.values || {}), [payload.columnKey]: payload.value };
-    row.version = payload.version;
+    row.version = Math.max(Number(row.version || 0), Number(payload.version || 0));
     rememberEditedRowInFilteredView(row);
     state.conflicts.delete(key);
     if (state.editing) {
@@ -1888,6 +1922,10 @@
 
   function applyRemoteRowDeleted(rowId) {
     if (!rowId) return false;
+    if (state.editing?.rowId === rowId) {
+      rememberUnsavedDraft(rowId, state.editing.columnKey, state.editing.input.value, state.editing.originalValue);
+      updatePendingSaveStatus();
+    }
     const before = state.rows.length;
     state.rows = state.rows.filter((row) => row.id !== rowId);
     if (state.activeCell?.rowId === rowId) {
@@ -1982,7 +2020,7 @@
           changedRowIds.add(payload.rowId);
         }
       } else if (event.type === 'cells_batch_updated') {
-        const cellsChanged = applyRemoteCellsUpdate(payload.cells || []);
+        const cellsChanged = applyRemoteCellsUpdate((payload.cells || []).map((cell) => ({ ...cell, eventId: event.id })));
         const stylesChanged = applyRemoteStylesDeleted(payload.clearedStyleKeys || []);
         if (cellsChanged || stylesChanged) {
           needsRender = true;
@@ -2091,7 +2129,7 @@
     socket.on('cells:update', (payload) => {
       rememberEventId(payload.eventId);
       if (payload.clientId === clientId) return;
-      const cellsChanged = applyRemoteCellsUpdate(payload.cells || []);
+      const cellsChanged = applyRemoteCellsUpdate((payload.cells || []).map((cell) => ({ ...cell, eventId: payload.eventId })));
       const stylesChanged = applyRemoteStylesDeleted(payload.clearedStyleKeys || []);
       if ((cellsChanged || stylesChanged) && !state.editing) {
         const rowIds = new Set(applyRemoteCellsUpdate.rowIds || []);
@@ -2169,21 +2207,44 @@
   }
 
   async function reloadSheet() {
-    const data = await api('/api/bootstrap');
+    if (state.editing || hasUnsavedWork() || state.snapshotInFlight) {
+      state.snapshotPending = true;
+      return false;
+    }
+    const mutationVersion = state.localMutationVersion;
+    const observedEventId = state.highestObservedEventId;
+    state.snapshotInFlight = true;
+    let data;
+    try {
+      data = await api('/api/bootstrap');
+    } finally {
+      state.snapshotInFlight = false;
+    }
+    if (state.editing || hasUnsavedWork() || mutationVersion !== state.localMutationVersion
+      || observedEventId !== state.highestObservedEventId) {
+      state.snapshotPending = true;
+      return false;
+    }
     state.columns = data.columns || [];
     state.rows = data.rows || [];
     state.rules = data.rules || [];
     state.styles = data.styles || [];
     state.presence = data.presence || [];
     state.lastEventId = Number(data.lastEventId || 0);
+    state.snapshotEventId = state.lastEventId;
+    state.highestObservedEventId = Math.max(state.highestObservedEventId, state.lastEventId);
+    state.cellEventIds.clear();
+    state.snapshotPending = false;
     renderPresence();
     renderRules();
     renderTable();
+    updatePendingSaveStatus();
   }
 
   async function syncEvents(options = {}) {
     const fallback = options.fallback !== false;
     if (!state.quote?.id || state.deltaInFlight) return false;
+    if (state.snapshotPending && !state.editing && !hasUnsavedWork()) return reloadSheet();
     if (!state.lastEventId) {
       if (fallback) await reloadSheet();
       return false;
@@ -2200,7 +2261,8 @@
         if (fallback) await reloadSheet();
         return true;
       }
-      rememberEventId(data.latestEventId);
+      state.lastEventId = Math.max(state.lastEventId, Number(data.latestEventId || 0));
+      rememberEventId(state.lastEventId);
       state.lastDeltaAt = new Date().toISOString();
       return true;
     } catch (error) {
@@ -2228,10 +2290,127 @@
     });
   }
 
+  function updateDraftRetryControl() {
+    let button = document.getElementById('retryCellSaves');
+    if (!button && state.unsavedCellDrafts.size) {
+      button = document.createElement('button');
+      button.id = 'retryCellSaves';
+      button.type = 'button';
+      button.textContent = 'Tentar salvar novamente';
+      button.addEventListener('click', () => retryUnsavedDrafts().catch(console.error));
+      saveStatus.parentNode?.insertBefore(button, saveStatus.nextSibling);
+    }
+    if (button) {
+      button.hidden = state.unsavedCellDrafts.size === 0;
+      button.disabled = hasPendingSaves();
+    }
+    updateDraftRecoveryPanel();
+  }
+
+  function updateDraftRecoveryPanel() {
+    let panel = document.getElementById('draftRecoveryPanel');
+    if (!panel && state.unsavedCellDrafts.size) {
+      panel = document.createElement('details');
+      panel.id = 'draftRecoveryPanel';
+      panel.open = true;
+      const summary = document.createElement('summary');
+      summary.textContent = 'Rascunhos nao salvos. Selecione o texto para recuperar.';
+      panel.appendChild(summary);
+      sheetWrap.before(panel);
+    }
+    if (!panel) return;
+    panel.hidden = state.unsavedCellDrafts.size === 0;
+    state.draftRecoveryItems.forEach((item, key) => {
+      if (!state.unsavedCellDrafts.has(key)) {
+        item.container.remove();
+        state.draftRecoveryItems.delete(key);
+      }
+    });
+    state.unsavedCellDrafts.forEach((draft, key) => {
+      let item = state.draftRecoveryItems.get(key);
+      if (!item) {
+        const container = document.createElement('div');
+        const label = document.createElement('label');
+        const title = document.createElement('span');
+        title.textContent = `${draft.name} / ${draft.columnLabel} / ${draft.rowId}`;
+        const output = document.createElement('textarea');
+        output.readOnly = true;
+        output.rows = 3;
+        output.setAttribute('aria-label', `Rascunho de ${draft.columnLabel} em ${draft.name}`);
+        label.appendChild(title);
+        label.appendChild(output);
+        const discard = document.createElement('button');
+        discard.type = 'button';
+        discard.textContent = 'Descartar rascunho';
+        discard.addEventListener('click', () => discardUnsavedDraft(key));
+        container.appendChild(label);
+        container.appendChild(discard);
+        panel.appendChild(container);
+        item = { container, output, discard };
+        state.draftRecoveryItems.set(key, item);
+      }
+      if (item.output.value !== draft.value) item.output.value = draft.value;
+      item.discard.disabled = hasPendingSaves();
+    });
+  }
+
+  function discardUnsavedDraft(key) {
+    const draft = state.unsavedCellDrafts.get(key);
+    if (!draft || hasPendingSaves() || !window.confirm('Descartar este rascunho nao salvo? Copie o texto antes de continuar.')) return;
+    state.unsavedCellDrafts.delete(key);
+    state.snapshotPending = true;
+    if (state.editing?.rowId === draft.rowId && state.editing.columnKey === draft.columnKey) cancelEdit();
+    const remote = state.pendingRemoteCells.get(key);
+    if (remote) {
+      state.pendingRemoteCells.delete(key);
+      if (applyRemoteCellUpdate(remote)) refreshRenderedRows(new Set([draft.rowId]));
+    }
+    updatePendingSaveStatus();
+    flushDeferredRemoteRender();
+  }
+
+  function rememberUnsavedDraft(rowId, columnKey, value, expectedValue) {
+    const key = cellKey(rowId, columnKey);
+    const previous = state.unsavedCellDrafts.get(key);
+    state.unsavedCellDrafts.set(key, {
+      rowId, columnKey, value: String(value ?? ''),
+      name: previous?.name || rowById(rowId)?.values?.produto || `Linha ${rowId}`,
+      columnLabel: previous?.columnLabel || colByKey(columnKey)?.label || columnKey,
+      expectedValue: previous?.expectedValue ?? expectedValue
+    });
+  }
+
+  async function retryUnsavedDrafts() {
+    if (hasPendingSaves()) return;
+    for (const key of Array.from(state.unsavedCellDrafts.keys())) {
+      const draft = state.unsavedCellDrafts.get(key);
+      if (!draft) continue;
+      if (!rowById(draft.rowId) || !colByKey(draft.columnKey)) {
+        status('Rascunho preservado. A linha ou coluna foi removida.', 'error');
+        continue;
+      }
+      const editing = state.editing;
+      const value = editing?.rowId === draft.rowId && editing.columnKey === draft.columnKey
+        ? editing.input.value : draft.value;
+      await setCellValue(draft.rowId, draft.columnKey, value, { expectedValue: draft.expectedValue });
+    }
+    updatePendingSaveStatus();
+    flushDeferredRemoteRender();
+  }
+
   function updatePendingSaveStatus() {
+    updateDraftRetryControl();
     const pending = state.pendingCellSaves.size + state.pendingBatchSaves;
     if (pending > 0) {
       status(pending === 1 ? 'Salvando...' : 'Salvando alteracoes...', 'busy');
+      return;
+    }
+    if (state.unsavedCellDrafts.size) {
+      status(`${state.unsavedCellDrafts.size} alteracao(oes) nao salva(s). Tente novamente.`, 'error');
+      return;
+    }
+    if (state.snapshotPending || state.snapshotInFlight) {
+      status('Conferindo dados confirmados...', 'busy');
       return;
     }
     if (hasDirtyActiveEdit()) {
@@ -2262,7 +2441,7 @@
   }
 
   function hasUnsavedWork() {
-    return hasPendingSaves() || hasDirtyActiveEdit();
+    return hasPendingSaves() || hasDirtyActiveEdit() || state.unsavedCellDrafts.size > 0;
   }
 
   function clearEditAutosaveTimer(editing = state.editing) {
@@ -2282,6 +2461,9 @@
   function markActiveEditDirty(input) {
     const editing = state.editing;
     if (!editing || editing.input !== input) return;
+    state.localMutationVersion += 1;
+    const key = cellKey(editing.rowId, editing.columnKey);
+    state.localCellRevisions.set(key, (state.localCellRevisions.get(key) || 0) + 1);
     if (!hasDirtyActiveEdit(editing)) {
       clearEditAutosaveTimer(editing);
       updatePendingSaveStatus();
@@ -2346,6 +2528,10 @@
 
   function flushDeferredRemoteRender() {
     if (state.editing) return;
+    if (state.snapshotPending && !hasUnsavedWork()) {
+      reloadSheet().catch(console.error);
+      return;
+    }
     if (state.deferredRemoteFullRender) {
       clearDeferredRemoteRender();
       renderTable();
@@ -2357,6 +2543,11 @@
   }
 
   function applyLocalCellValue(row, columnKey, value, options = {}) {
+    const key = cellKey(row.id, columnKey);
+    const draft = state.unsavedCellDrafts.get(key);
+    if (draft) draft.value = String(value ?? '');
+    state.localCellRevisions.set(key, (state.localCellRevisions.get(key) || 0) + 1);
+    state.localMutationVersion += 1;
     row.values = { ...(row.values || {}), [columnKey]: value };
     state.conflicts.delete(cellKey(row.id, columnKey));
     rememberEditedRowInFilteredView(row);
@@ -2364,26 +2555,39 @@
   }
 
   async function setCellValue(rowId, columnKey, value, options = {}) {
-    const column = colByKey(columnKey);
-    if (!column || column.options?.computed === true) return;
-    let row = rowById(rowId);
-    if (!row) return;
     const key = cellKey(rowId, columnKey);
-    const pendingSameCell = state.pendingCellSaves.get(key);
-    if (pendingSameCell) {
+    const draftAtIntent = state.unsavedCellDrafts.get(key);
+    const column = colByKey(columnKey);
+    if (column?.options?.computed === true) return;
+    let row = rowById(rowId);
+    if (!row || !column) {
+      if (!state.unsavedCellDrafts.has(key) || state.unsavedCellDrafts.get(key) === draftAtIntent) {
+        rememberUnsavedDraft(rowId, columnKey, value, options.expectedValue);
+      }
+      updatePendingSaveStatus();
+      throw new Error('Linha ou coluna removida. Rascunho preservado.');
+    }
+    let pendingSameCell = state.pendingCellSaves.get(key) || state.pendingBatchCellSaves.get(key);
+    while (pendingSameCell) {
       await pendingSameCell.catch(() => {});
       row = rowById(rowId);
-      if (!row) return;
+      if (!row || !colByKey(columnKey)) {
+        if (!state.unsavedCellDrafts.has(key) || state.unsavedCellDrafts.get(key) === draftAtIntent) {
+          rememberUnsavedDraft(rowId, columnKey, value, options.expectedValue);
+        }
+        updatePendingSaveStatus();
+        throw new Error('Linha ou coluna removida. Rascunho preservado.');
+      }
+      pendingSameCell = state.pendingCellSaves.get(key) || state.pendingBatchCellSaves.get(key);
     }
     const before = String(row.values?.[columnKey] ?? '');
     const after = String(value ?? '');
-    if (before === after) return;
+    if (before === after && !state.unsavedCellDrafts.has(key)) return;
     const expectedValue = Object.hasOwn(options, 'expectedValue')
       ? String(options.expectedValue ?? '')
       : before;
-    const previousVersion = row.version;
-    const previousUpdatedAt = row.updatedAt;
     applyLocalCellValue(row, columnKey, after, { render: options.render !== false });
+    const draftAtSend = state.unsavedCellDrafts.get(key);
     status('Salvando...', 'busy');
     const saveTask = (async () => {
       const data = await api('/api/cells', {
@@ -2392,16 +2596,21 @@
       });
       const currentRow = rowById(rowId);
       if (currentRow) {
-        currentRow.version = data.version;
-        currentRow.updatedAt = data.updatedAt;
+        if (Number(data.version || 0) >= Number(currentRow.version || 0)) {
+          currentRow.version = data.version;
+          currentRow.updatedAt = data.updatedAt;
+        }
         state.conflicts.delete(key);
       }
+      if (Number(data.eventId || 0)) state.cellEventIds.set(key, Math.max(state.cellEventIds.get(key) || 0, Number(data.eventId)));
+      if (currentRow && colByKey(columnKey)
+        && state.unsavedCellDrafts.get(key) === draftAtSend) state.unsavedCellDrafts.delete(key);
       const clearedStyles = historyStylesForTargets(styleTargetsFromKeys(data.clearedStyleKeys || []));
       if (applyRemoteStylesDeleted(data.clearedStyleKeys || []) && currentRow) {
         refreshRenderedRows(new Set([rowId]));
       }
       rememberEventId(data.eventId);
-      if (options.history !== false) {
+      if (options.history !== false && (before !== after || clearedStyles.length)) {
         pushHistory({ type: 'cell', rowId, columnKey, before, after, clearedStyles });
       }
       rememberCellValueAction(after, options);
@@ -2419,20 +2628,21 @@
       }
     } catch (error) {
       const currentRow = rowById(rowId);
-      if (currentRow) {
-        currentRow.version = previousVersion;
-        currentRow.updatedAt = previousUpdatedAt;
-        const renderOnError = options.render !== false
-          || !state.editing
-          || state.editing.rowId !== rowId
-          || state.editing.columnKey !== columnKey;
-        applyLocalCellValue(currentRow, columnKey, before, { render: renderOnError });
+      if (!state.unsavedCellDrafts.has(key) || state.unsavedCellDrafts.get(key) === draftAtSend) {
+        if (currentRow) {
+          const editing = state.editing;
+          const draftValue = editing?.rowId === rowId && editing.columnKey === columnKey
+            ? editing.input.value : currentRow.values?.[columnKey] ?? after;
+          rememberUnsavedDraft(rowId, columnKey, draftValue, expectedValue);
+        } else {
+          rememberUnsavedDraft(rowId, columnKey, after, expectedValue);
+        }
       }
       if (error.status === 409 && error.data?.conflict) {
         state.conflicts.set(cellKey(rowId, columnKey), error.data.conflict);
         status('Conflito visual nesta celula', 'warn');
         markConflictCell(rowId, columnKey);
-        return;
+        throw error;
       }
       status(error.message || 'Erro ao salvar', 'error');
       throw error;
@@ -2443,7 +2653,13 @@
       if (state.pendingCommit === saveTask) {
         state.pendingCommit = null;
       }
+      const remote = state.pendingRemoteCells.get(key);
+      if (remote && !state.unsavedCellDrafts.has(key)) {
+        state.pendingRemoteCells.delete(key);
+        if (applyRemoteCellUpdate(remote)) refreshRenderedRows(new Set([rowId]));
+      }
       updatePendingSaveStatus();
+      if (state.snapshotPending && !state.editing && !hasUnsavedWork()) flushDeferredRemoteRender();
     }
   }
 
@@ -2453,30 +2669,65 @@
       if (!change?.rowId || !change?.columnKey) return;
       unique.set(cellKey(change.rowId, change.columnKey), change);
     });
-    const pendingSameCells = Array.from(unique.keys())
-      .map((key) => state.pendingCellSaves.get(key))
+    let pendingSameCells = Array.from(unique.keys())
+      .map((key) => state.pendingCellSaves.get(key) || state.pendingBatchCellSaves.get(key))
       .filter(Boolean);
-    if (pendingSameCells.length) {
+    while (pendingSameCells.length) {
       await Promise.allSettled(pendingSameCells);
+      pendingSameCells = Array.from(unique.keys())
+        .map((key) => state.pendingCellSaves.get(key) || state.pendingBatchCellSaves.get(key))
+        .filter(Boolean);
     }
     const prepared = Array.from(unique.values()).map((change) => {
       const column = colByKey(change.columnKey);
       const row = rowById(change.rowId);
-      if (!row || !column || column.options?.computed === true) return null;
+      if (!row || !column) {
+        rememberUnsavedDraft(change.rowId, change.columnKey, change.value, change.before);
+        updatePendingSaveStatus();
+        throw new Error('Linha ou coluna removida. Rascunho do lote preservado.');
+      }
+      if (column.options?.computed === true) return null;
       const before = String(row.values?.[change.columnKey] ?? '');
       const after = String(change.value ?? '');
-      if (before === after) return null;
+      if (before === after && !state.unsavedCellDrafts.has(cellKey(change.rowId, change.columnKey))) return null;
       return {
         rowId: change.rowId,
         columnKey: change.columnKey,
         value: after,
         expectedValue: before,
         before,
-        after
+        after,
+        revision: state.localCellRevisions.get(cellKey(change.rowId, change.columnKey)) || 0
       };
     }).filter(Boolean);
     if (!prepared.length) return;
+    if (prepared.length > 1000) {
+      let confirmed = 0;
+      state.pendingBatchSaves += 1;
+      try {
+        while (confirmed < prepared.length) {
+          const chunk = prepared.slice(confirmed, confirmed + 1000);
+          await saveCellsBatch(chunk, options);
+          confirmed += chunk.length;
+        }
+      } catch (error) {
+        const confirmedKeys = new Set(error.confirmedCellKeys || []);
+        prepared.slice(confirmed).forEach((change) => {
+          const key = cellKey(change.rowId, change.columnKey);
+          if (confirmedKeys.has(key)) return;
+          if ((state.localCellRevisions.get(key) || 0) !== change.revision) return;
+          rememberUnsavedDraft(change.rowId, change.columnKey, change.after, change.before);
+        });
+        updatePendingSaveStatus();
+        throw error;
+      } finally {
+        state.pendingBatchSaves = Math.max(0, state.pendingBatchSaves - 1);
+        updatePendingSaveStatus();
+      }
+      return;
+    }
     const affectedRowIds = new Set(prepared.map((change) => change.rowId));
+    const acknowledged = new Set();
     const optimistic = options.optimistic === true;
     if (optimistic) {
       prepared.forEach((change) => {
@@ -2485,32 +2736,56 @@
       });
       refreshRenderedRows(affectedRowIds);
     }
+    prepared.forEach((change) => {
+      if (state.unsavedCellDrafts.has(cellKey(change.rowId, change.columnKey))) {
+        rememberUnsavedDraft(change.rowId, change.columnKey, change.after, change.before);
+      }
+      change.revision = state.localCellRevisions.get(cellKey(change.rowId, change.columnKey)) || 0;
+      change.draftAtSend = state.unsavedCellDrafts.get(cellKey(change.rowId, change.columnKey));
+    });
     state.pendingBatchSaves += 1;
     updatePendingSaveStatus();
     status('Salvando lote...', 'busy');
+    let batchTask = null;
     try {
-      const data = await api('/api/cells/batch', {
+      batchTask = api('/api/cells/batch', {
         method: 'PATCH',
         body: JSON.stringify({
           changes: prepared.map(({ rowId, columnKey, value, expectedValue }) => ({ rowId, columnKey, value, expectedValue })),
           clientId
         })
       });
+      prepared.forEach((change) => state.pendingBatchCellSaves.set(cellKey(change.rowId, change.columnKey), batchTask));
+      const data = await batchTask;
       const clearedStyles = historyStylesForTargets(styleTargetsFromKeys(data.clearedStyleKeys || []));
       applyRemoteStylesDeleted(data.clearedStyleKeys || []);
       (data.cells || []).forEach((cell) => {
+        const key = cellKey(cell.rowId, cell.columnKey);
+        const change = prepared.find((item) => cellKey(item.rowId, item.columnKey) === key);
+        if (!change) return;
+        acknowledged.add(key);
         const row = rowById(cell.rowId);
-        if (!row) return;
-        row.values = { ...(row.values || {}), [cell.columnKey]: cell.value };
-        row.version = cell.version;
-        row.updatedAt = cell.updatedAt;
+        if (!row || !colByKey(cell.columnKey)) return;
+        const eventId = Number(cell.eventId || data.eventId || 0);
+        if (eventId && eventId < (state.cellEventIds.get(key) || 0)) return;
+        if (eventId) state.cellEventIds.set(key, eventId);
+        if ((state.localCellRevisions.get(key) || 0) === change.revision) {
+          row.values = { ...(row.values || {}), [cell.columnKey]: cell.value };
+        }
+        if (state.unsavedCellDrafts.get(key) === change.draftAtSend) state.unsavedCellDrafts.delete(key);
+        if (Number(cell.version || 0) >= Number(row.version || 0)) {
+          row.version = cell.version;
+          row.updatedAt = cell.updatedAt;
+        }
         state.conflicts.delete(cellKey(cell.rowId, cell.columnKey));
         rememberEditedRowInFilteredView(row);
       });
-      if (options.history !== false && data.cells?.length) {
+      const historyCells = (data.cells || []).filter((cell) => Object.hasOwn(cell, 'previousValue')
+        && String(cell.previousValue ?? '') !== String(cell.value ?? ''));
+      if (options.history !== false && historyCells.length) {
         pushHistory({
           type: 'batch',
-          changes: data.cells.map((cell) => ({
+          changes: historyCells.map((cell) => ({
             rowId: cell.rowId,
             columnKey: cell.columnKey,
             before: cell.previousValue,
@@ -2518,6 +2793,10 @@
           })),
           clearedStyles
         });
+      }
+      rememberEventId(data.eventId);
+      if (acknowledged.size !== prepared.length) {
+        throw new Error('O servidor nao confirmou todas as celulas. Alteracoes restantes preservadas para tentar novamente.');
       }
       if ((data.cells || []).some((cell) => cell?.overwroteRemote === true)) {
         status('Lote salvou por cima de alteracoes recentes. Historico guardou os valores anteriores.', 'warn');
@@ -2527,35 +2806,32 @@
       if (optimistic || options.render === 'rows') refreshRenderedRows(affectedRowIds);
       else renderTable();
     } catch (error) {
+      error.confirmedCellKeys = Array.from(acknowledged);
+      prepared.forEach((change) => {
+        const key = cellKey(change.rowId, change.columnKey);
+        if (acknowledged.has(key)) return;
+        const row = rowById(change.rowId);
+        const value = (state.localCellRevisions.get(key) || 0) === change.revision
+          ? change.after : row?.values?.[change.columnKey] ?? change.after;
+        rememberUnsavedDraft(change.rowId, change.columnKey, value, change.before);
+      });
       if (error.status === 409 && error.data?.conflict) {
         const conflict = error.data.conflict;
-        if (optimistic) {
-          prepared.forEach((change) => {
-            const row = rowById(change.rowId);
-            if (row) applyLocalCellValue(row, change.columnKey, change.before, { render: false });
-          });
-          const conflictRow = rowById(conflict.rowId);
-          if (conflictRow) {
-            applyLocalCellValue(conflictRow, conflict.columnKey, conflict.currentValue ?? '', { render: false });
-          }
-          refreshRenderedRows(affectedRowIds);
-        }
         state.conflicts.set(cellKey(conflict.rowId, conflict.columnKey), conflict);
-        status('Conflito visual nesta celula', 'warn');
-        if (optimistic) markConflictCell(conflict.rowId, conflict.columnKey);
-        else await reloadSheet();
-        return;
-      }
-      if (optimistic) {
-        prepared.forEach((change) => {
-          const row = rowById(change.rowId);
-          if (row) applyLocalCellValue(row, change.columnKey, change.before, { render: false });
-        });
-        refreshRenderedRows(affectedRowIds);
+        markConflictCell(conflict.rowId, conflict.columnKey);
       }
       status(error.message || 'Erro ao salvar lote', 'error');
       throw error;
     } finally {
+      prepared.forEach((change) => {
+        const key = cellKey(change.rowId, change.columnKey);
+        if (state.pendingBatchCellSaves.get(key) === batchTask) state.pendingBatchCellSaves.delete(key);
+        const remote = state.pendingRemoteCells.get(key);
+        if (remote && !state.unsavedCellDrafts.has(key)) {
+          state.pendingRemoteCells.delete(key);
+          if (applyRemoteCellUpdate(remote)) refreshRenderedRows(new Set([change.rowId]));
+        }
+      });
       state.pendingBatchSaves = Math.max(0, state.pendingBatchSaves - 1);
       updatePendingSaveStatus();
     }
@@ -2598,6 +2874,7 @@
   }
 
   async function beginEdit(rowId, columnKey, initialText = null, options = {}) {
+    state.localMutationVersion += 1;
     if (state.editing && (state.editing.rowId !== rowId || state.editing.columnKey !== columnKey)) {
       commitEdit();
     } else {

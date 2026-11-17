@@ -4,6 +4,8 @@ Projeto interno da Wimifarma migrado do HostGator para VPS Ubuntu/Oracle, com Wo
 
 Estado base desta documentacao: 2026-05-10.
 
+Desde 2026-11-17, a Cotacao protege texto/foco durante atualizacoes, preserva rascunhos com falha para retry manual e confirma lotes por inteiro. A sincronizacao separa eventos observados do cursor confirmado, com snapshots Postgres consistentes e eventos ordenados por COMMIT. Consulte `docs/20-cotacao-v2.md` e `docs/16-testes.md` para limites, verificacoes e publicacao segura com a planilha em uso.
+
 ## Objetivo do sistema
 
 O sistema centraliza a presenca web e ferramentas internas da Wimifarma:

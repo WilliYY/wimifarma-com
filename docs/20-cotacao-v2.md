@@ -1,5 +1,16 @@
 # 20 - Cotacao V2
 
+## Preservacao de edicao e sincronizacao - 2026-11-17
+
+- Redesenhos da tabela/linha sao adiados enquanto existe um editor ativo. Eventos estruturais, regras e a resposta que remove a cor de PRODUTO nao podem desconectar o textarea nem tirar foco/cursor no meio da digitacao. Ao encerrar a edicao, a atualizacao adiada e aplicada.
+- Falha de salvamento preserva o rascunho em memoria da aba e oferece `Tentar salvar novamente`. Rascunhos pendentes contam no aviso antes de sair. Nao gravar conteudo da cotacao em localStorage, sessionStorage ou logs; fechar a aba encerra essa memoria. Retry e manual, revalida sessao/permissao/CSRF no servidor e nao recria linhas removidas.
+- O cursor confirmado de eventos vem somente de bootstrap/delta aplicado por inteiro. ACKs e Socket.IO mantem separadamente o maior evento observado; eventos de celula/respostas antigas nao podem substituir um valor mais recente daquela celula. Snapshot em voo e descartado quando ha atividade local ou eventos novos que tornem a resposta obsoleta.
+- `loadSheet` e o delta usam um cliente Postgres e transacao `REPEATABLE READ READ ONLY`, mantendo valores e cursor no mesmo snapshot. O delta nao pagina: se exceder o limite existente, exige snapshot e nao confirma eventos parcialmente aplicados.
+- Escritas transacionais adquirem um advisory lock exclusivo de eventos por cotacao antes de travar quote/linhas. `appendEvent` usa o mesmo lock ate COMMIT, inclusive quando chamado isoladamente. IDs deixam de ser alocados fora da ordem de confirmacao; manter essa ordem de locks em novas escritas para evitar inversao com a FK da quote.
+- A API de lote rejeita mais de 1.000 mudancas com 422 antes de escrever. O navegador divide lotes maiores sequencialmente, valida a confirmacao de todas as celulas e preserva a parte nao confirmada em caso de falha. A resposta HTTP inclui celulas sem mudanca tambem; retry sem diferenca retorna `noop` sem evento novo. Evento/socket contem somente mudancas efetivas. Linha inexistente causa rollback e 404, nunca sucesso parcial.
+- Importar Sheets e restaurar backup continuam restritos e destrutivos mediante confirmacao existente, mas agora gravam o evento duravel dentro da transacao da troca. Falha do evento reverte a troca. Reconciliacao de lembretes depois do COMMIT nao pode transformar gravacao confirmada em erro de salvamento; falhas ficam diagnosticaveis.
+- Nao ha migracao de schema, limpeza de linhas, alteracao de credenciais nem mudanca da regra de ultimo salvamento vence. Publicacao deve ter backup validado e pausa de digitacao combinada; nao recarregar a aba de quem esta trabalhando. Codigo ja aberto no navegador precisa ser atualizado somente depois de confirmar suas edicoes.
+
 ## O que esta parte do sistema faz
 
 A Cotacao V2 substitui a planilha PHP antiga em `/cotacao/` por um servico dedicado para edicao colaborativa de cotacao de farmacia. A meta e chegar perto do comportamento do Google Sheets: linhas estaveis, save por celula, presenca ao vivo, filtros locais, regras condicionais explicitas, ultima gravacao vencendo e historico para recuperacao.
