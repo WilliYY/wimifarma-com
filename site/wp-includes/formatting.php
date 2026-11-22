@@ -560,7 +560,7 @@ function wpautop( $text, $br = true ) {
 	$text = preg_replace( '|<p>(<li.+?)</p>|', '$1', $text );
 
 	// If a <blockquote> is wrapped with a <p>, move it inside the <blockquote>.
-	$text = preg_replace( '|<p><blockquote([^>]*)>|i', '<blockquote$1><p>', $text );
+	$text = preg_replace( '!<p><blockquote((?:[^>"\']|"[^"]*"|\'[^\']*\')*)>!i', '<blockquote$1><p>', $text );
 	$text = str_replace( '</blockquote></p>', '</p></blockquote>', $text );
 
 	// If an opening or closing block element tag is preceded by an opening <p> tag, remove it.
@@ -4851,6 +4851,7 @@ function wp_make_link_relative( $link ) {
  * of functions depending on the $option.
  *
  * @since 2.0.5
+ * @since 7.1.5 The `show_on_front` option is sanitized.
  *
  * @global wpdb $wpdb WordPress database abstraction object.
  *
@@ -5087,6 +5088,13 @@ function sanitize_option( $option, $value ) {
 					__( 'A structure tag is required when using custom permalinks. <a href="%s">Learn more</a>' ),
 					__( 'https://wordpress.org/documentation/article/customize-permalinks/#choosing-your-permalink-structure' )
 				);
+			}
+			break;
+
+		case 'show_on_front':
+			// Any value other than 'page' is treated as 'posts'.
+			if ( 'page' !== $value ) {
+				$value = 'posts';
 			}
 			break;
 
