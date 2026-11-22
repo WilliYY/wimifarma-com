@@ -61,6 +61,7 @@ O XP usa `xp_sales.source='referral_coupon_redemption'` e `source_entity_id=<ref
 
 - Somente gestor cancela uma utilizacao ativa e informa motivo.
 - O cancelamento marca a utilizacao como `CANCELLED`, cria uma unica `REVERSAL` e estorna logicamente o XP em `xp_sales.deleted_at`/`deleted_by`.
+- Premio e estorno compartilham advisory lock transacional por origem + ID no banco XP. O premio rele o estado atual da utilizacao depois de obter o lock; cancelamento ja confirmado impede insert tardio, mesmo quando o estorno nao encontrou lancamento. Se o premio ja esta em curso, o estorno espera e cancela o resultado confirmado. O status local nao aceita `AWARDED`, `SKIPPED` ou `FAILED` tardio sobre uma utilizacao cancelada. O cancelamento libera sua transacao de negocio antes do estorno XP. Falha de conexao entre bancos continua auditada e nao desfaz a utilizacao cancelada; repetir o cancelamento tenta novamente o estorno.
 - Nenhum historico e apagado.
 - Se a comissao ja foi paga, o estorno pode deixar o saldo do indicador negativo; o valor fica exposto e compensa comissoes futuras. Isso preserva o caixa real sem editar pagamento passado.
 

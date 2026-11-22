@@ -161,6 +161,71 @@ async function testModule(module) {
   console.log(`PASS ${module}: SSO logout, invalid SSO, direct login, operator switch, persistent pair/user/IP limits`);
 }
 
+async function testSsoModules() {
+  for (const module of ['login-senha', 'entrega', 'comissao']) {
+    const first = { id: 1, username: 'adm', role: 'admin' };
+    const second = { id: 2, username: 'next', role: 'admin' };
+    let homeUser = null;
+    let allowed = true;
+    const names = ['requireUser', 'regenerateWithUser'];
+    if (module === 'login-senha') names.push('resolveRequestUser');
+    const auth = loadFunctions(module, names, {
+      userByHomeSso: async () => homeUser,
+      hasHomeSsoCookie: req => Boolean(req.cookie),
+      currentUser: async user => user || null,
+      requestScope: () => 'company', canAccessVault: async () => allowed,
+      auditBlockedAccess: async () => {}, canAccessDelivery: () => allowed,
+    });
+    function request(source = 'home', cookie = false) {
+      const req = { cookie, originalUrl: '/' + module + '/', regenerations: 0 };
+      function session() {
+        return { user: first, authenticationSource: source, csrfToken: 'old-csrf',
+          regenerate(callback) { req.regenerations++; req.session = {}; callback(); } };
+      }
+      req.session = session();
+      return req;
+    }
+    const response = () => ({ redirectTo: null, code: 200,
+      redirect(path) { this.redirectTo = path; },
+      status(code) { this.code = code; return this; }, type() { return this; }, send() {} });
+    for (const source of ['home', undefined]) {
+      const req = request(source);
+      if (source === undefined) delete req.session.authenticationSource;
+      const res = response();
+      assert.equal(await auth.requireUser(req, res), null, module + ': absent SSO rejects home and legacy sessions');
+      assert.equal(req.session.user, undefined, module + ': rejected identity is cleared');
+      assert.equal(res.redirectTo, '/');
+    }
+    for (const source of ['home', 'direct']) {
+      const req = request(source, true);
+      assert.equal(await auth.requireUser(req, response()), null, module + ': invalid or expired SSO cannot reuse old identity');
+      assert.equal(req.session.user, undefined);
+    }
+    const direct = request('direct');
+    assert.equal((await auth.requireUser(direct, response())).id, first.id, module + ': direct sessions remain independent of SSO');
+    homeUser = second;
+    const switched = request('home', true);
+    switched.session.returnTo = '/' + module + '/history';
+    assert.equal((await auth.requireUser(switched, response())).id, second.id, module + ': follows current Home operator');
+    assert.equal(switched.regenerations, 1);
+    assert.notEqual(switched.session.csrfToken, 'old-csrf');
+    assert.equal(switched.session.authenticationSource, 'home');
+    assert.equal(switched.session.returnTo, '/' + module + '/history');
+    homeUser = first;
+    const adopted = request('direct', true);
+    await auth.requireUser(adopted, response());
+    assert.equal(adopted.session.authenticationSource, 'home', module + ': valid SSO makes the session Home-dependent');
+    adopted.cookie = false;
+    homeUser = null;
+    assert.equal(await auth.requireUser(adopted, response()), null);
+    if (module !== 'comissao') {
+      allowed = false;
+      assert.equal(await auth.requireUser(request('direct'), response()), null, module + ': existing access restriction stays enforced');
+    }
+    console.log('PASS ' + module + ': absent/invalid/expired SSO, legacy sessions, direct session, operator and CSRF rotation, access restrictions');
+  }
+}
+
 async function testXpCard(module) {
   const oldUser = { id: 7, username: 'old', role: 'user' };
   let homeUser = null;
@@ -201,10 +266,14 @@ async function testXpCard(module) {
 
 (async () => {
   const selected = process.argv.slice(2);
+  if (selected[0] === 'sso-modules') { await testSsoModules(); return; }
   if (selected[0] === 'xp-card') {
     for (const module of ['usuarios', 'xp']) await testXpCard(module);
     return;
   }
   for (const module of selected.length ? selected : ['notas', 'usuarios', 'codigos', 'gestao', 'pedidos', 'tarefa', 'xp', 'financeiro']) await testModule(module);
-  if (!selected.length) for (const module of ['usuarios', 'xp']) await testXpCard(module);
+  if (!selected.length) {
+    for (const module of ['usuarios', 'xp']) await testXpCard(module);
+    await testSsoModules();
+  }
 })().catch(error => { console.error(error); process.exitCode = 1; });

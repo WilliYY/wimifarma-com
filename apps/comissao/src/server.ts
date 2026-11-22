@@ -59,6 +59,7 @@ type XpRevocationResult = { revoked: boolean; alreadyRevoked?: boolean; message:
 
 declare module 'express-session' {
   interface SessionData {
+    authenticationSource?: 'home' | 'direct';
     csrfToken?: string;
     redemptionToken?: string;
     personToken?: string;
@@ -195,6 +196,7 @@ async function regenerateWithUser(req: Request, user: SessionUser): Promise<void
   await new Promise<void>((resolve, reject) => req.session.regenerate((error) => {
     if (error) return reject(error);
     req.session.user = user;
+    req.session.authenticationSource = 'home';
     req.session.csrfToken = crypto.randomBytes(24).toString('hex');
     if (returnTo) req.session.returnTo = returnTo;
     resolve();
@@ -202,12 +204,18 @@ async function regenerateWithUser(req: Request, user: SessionUser): Promise<void
 }
 
 async function requireUser(req: Request, res: Response): Promise<SessionUser | null> {
-  let user = await currentUser(req.session.user);
   const homeUser = await userByHomeSso(req);
-  if (homeUser && (!user || user.id !== homeUser.id)) {
-    await regenerateWithUser(req, homeUser);
-    user = homeUser;
+  let user: SessionUser | null = null;
+  if (hasHomeSsoCookie(req)) {
+    if (homeUser) {
+      if (!req.session.user || req.session.user.id !== homeUser.id) await regenerateWithUser(req, homeUser);
+      req.session.authenticationSource = 'home';
+      user = homeUser;
+    }
+  } else if (req.session.authenticationSource === 'direct') {
+    user = await currentUser(req.session.user);
   }
+  if (!user) delete req.session.user;
   if (!user) {
     req.session.returnTo = req.originalUrl;
     res.redirect('/');
@@ -325,7 +333,11 @@ async function linkedXpEmployee(userId: number): Promise<{ id: number; name: str
 }
 
 async function setRedemptionXpStatus(redemptionId: number, status: RedemptionRow['xp_status']): Promise<void> {
-  await referralPool.query(`UPDATE referral_redemptions SET xp_status = $1 WHERE id = $2`, [status, redemptionId]);
+  await referralPool.query(
+    `UPDATE referral_redemptions SET xp_status = $1 WHERE id = $2
+       AND (status = 'ACTIVE' OR $1 = 'REVOKED')`,
+    [status, redemptionId],
+  );
 }
 
 async function awardXp(redemptionId: number, user: SessionUser): Promise<XpResult> {
@@ -341,6 +353,15 @@ async function awardXp(redemptionId: number, user: SessionUser): Promise<XpResul
     const client = await xpPool.connect();
     try {
       await client.query('BEGIN');
+      // Award and revocation share this lock even when no xp_sales row exists yet.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`${reward.source}:${reward.sourceEntityId}`]);
+      const current = await referralPool.query<QueryResultRow & { status: string }>(
+        'SELECT status FROM referral_redemptions WHERE id = $1', [redemptionId],
+      );
+      if (current.rows[0]?.status !== 'ACTIVE') {
+        await client.query('COMMIT');
+        return { awarded: false, message: 'Utilizacao cancelada ou indisponivel; nenhum XP foi gerado.' };
+      }
       const existing = await client.query<XpSaleRow>(
         `SELECT id::text, deleted_at FROM xp_sales WHERE source = $1 AND source_entity_id = $2 LIMIT 1`, [reward.source, reward.sourceEntityId],
       );
@@ -399,6 +420,8 @@ async function revokeXp(redemptionId: number, actor: SessionUser): Promise<XpRev
     const client = await xpPool.connect();
     try {
       await client.query('BEGIN');
+      // Award and revocation share this lock even when no xp_sales row exists yet.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`${reward.source}:${reward.sourceEntityId}`]);
       const existing = await client.query<XpSaleRow>(
         `SELECT id::text, deleted_at FROM xp_sales WHERE source = $1 AND source_entity_id = $2 LIMIT 1 FOR UPDATE`,
         [reward.source, reward.sourceEntityId],

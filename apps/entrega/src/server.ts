@@ -75,6 +75,7 @@ type HealthRow = QueryResultRow & {
 
 declare module 'express-session' {
   interface SessionData {
+    authenticationSource?: 'home' | 'direct';
     csrfToken?: string;
     creationToken?: string;
     paymentToken?: string;
@@ -221,6 +222,7 @@ async function regenerateWithUser(req: Request, user: SessionUser): Promise<void
     req.session.regenerate((error) => {
       if (error) return reject(error);
       req.session.user = user;
+      req.session.authenticationSource = 'home';
       req.session.csrfToken = crypto.randomBytes(24).toString('hex');
       if (returnTo) req.session.returnTo = returnTo;
       resolve();
@@ -229,12 +231,18 @@ async function regenerateWithUser(req: Request, user: SessionUser): Promise<void
 }
 
 async function requireUser(req: Request, res: Response): Promise<SessionUser | null> {
-  let user = await currentUser(req.session.user);
   const homeUser = await userByHomeSso(req);
-  if (homeUser && (!user || user.id !== homeUser.id)) {
-    await regenerateWithUser(req, homeUser);
-    user = homeUser;
+  let user: SessionUser | null = null;
+  if (hasHomeSsoCookie(req)) {
+    if (homeUser) {
+      if (!req.session.user || req.session.user.id !== homeUser.id) await regenerateWithUser(req, homeUser);
+      req.session.authenticationSource = 'home';
+      user = homeUser;
+    }
+  } else if (req.session.authenticationSource === 'direct') {
+    user = await currentUser(req.session.user);
   }
+  if (!user) delete req.session.user;
   if (!user) {
     req.session.returnTo = req.originalUrl;
     res.redirect('/');
@@ -408,17 +416,26 @@ async function awardXpForDelivery(deliveryId: number, responsibleUserId: number,
     const client = await xpPool.connect();
     try {
       await client.query('BEGIN');
-      const existing = await client.query<{ id: string } & QueryResultRow>(
-        'SELECT id::text FROM xp_sales WHERE source = $1 AND source_entity_id = $2 LIMIT 1',
+      // Award and revocation share this lock even when no xp_sales row exists yet.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`${reward.source}:${reward.sourceEntityId}`]);
+      const current = await deliveryPool.query<{ status: string } & QueryResultRow>(
+        'SELECT status FROM deliveries WHERE id = $1', [deliveryId],
+      );
+      if (current.rows[0]?.status !== 'ACTIVE') {
+        await client.query('COMMIT');
+        return { awarded: false, message: 'XP nao gerado porque esta entrega esta cancelada ou indisponivel.' };
+      }
+      const existing = await client.query<{ id: string; deleted_at: string | null } & QueryResultRow>(
+        'SELECT id::text, deleted_at FROM xp_sales WHERE source = $1 AND source_entity_id = $2 LIMIT 1',
         [reward.source, reward.sourceEntityId],
       );
       if (existing.rows[0]) {
         await client.query('COMMIT');
         return {
           awarded: false,
-          alreadyAwarded: true,
+          alreadyAwarded: !existing.rows[0].deleted_at,
           employeeName: employee.name,
-          message: `400 XP ja estavam registrados para ${employee.name}.`,
+          message: existing.rows[0].deleted_at ? 'O XP desta entrega permanece estornado.' : `400 XP ja estavam registrados para ${employee.name}.`,
         };
       }
 
@@ -484,6 +501,8 @@ async function revokeXpForDelivery(deliveryId: number, actor: SessionUser): Prom
     const client = await xpPool.connect();
     try {
       await client.query('BEGIN');
+      // Award and revocation share this lock even when no xp_sales row exists yet.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`${reward.source}:${reward.sourceEntityId}`]);
       const existing = await client.query<{ id: string; deleted_at: string | null } & QueryResultRow>(
         `SELECT id::text, deleted_at
            FROM xp_sales

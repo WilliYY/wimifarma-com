@@ -73,6 +73,7 @@ O modulo `/entrega/` registra entregas de balcao, imprime um comprovante local e
 - Reimpressao usa o registro existente e nao escreve em entrega/comissao.
 - Cancelamento usa lock, muda entrega e comissao atomicamente e mantem o historico.
 - Depois do commit do cancelamento, o lancamento XP recebe `deleted_at`/`deleted_by`; falha no XP nao reativa a entrega e fica auditada para conferencia.
+- Premio e estorno serializam no Postgres XP pelo mesmo advisory lock transacional de `source` + `source_entity_id`, inclusive quando ainda nao existe `xp_sales`. Antes de premiar, o helper rele o status atual da entrega dentro desse lock. Assim, o estorno espera um premio em curso, e um premio atrasado nao recria XP depois de um cancelamento confirmado. A transacao de cancelamento do negocio termina antes de aguardar o lock XP; nao ha transacao distribuida. Indisponibilidade do XP continua visivel/auditada e exige conferencia ou repeticao do cancelamento, sem reativar a entrega.
 - Comissao ja paga bloqueia cancelamento da entrega na aplicacao e no trigger do banco; um estorno futuro precisa ser um fluxo contabil explicito.
 - Registros cancelados nao podem ser reativados nem reimpressos.
 

@@ -81,6 +81,7 @@ type VaultView = {
 
 declare module 'express-session' {
   interface SessionData {
+    authenticationSource?: 'home' | 'direct';
     csrfToken?: string;
     flash?: Flash;
     returnTo?: string;
@@ -434,6 +435,7 @@ function regenerateWithUser(req: Request, user: User): Promise<void> {
         return;
       }
       req.session.user = user;
+      req.session.authenticationSource = 'home';
       req.session.csrfToken = crypto.randomBytes(24).toString('hex');
       if (returnTo) req.session.returnTo = returnTo;
       resolve();
@@ -442,15 +444,18 @@ function regenerateWithUser(req: Request, user: User): Promise<void> {
 }
 
 async function resolveRequestUser(req: Request): Promise<User | null> {
-  let user = await currentUser(req.session.user);
   const homeUser = await userByHomeSso(req);
-  if (homeUser && (!user || user.id !== homeUser.id)) {
-    await regenerateWithUser(req, homeUser);
-    user = homeUser;
-  } else if (!user && homeUser) {
-    await regenerateWithUser(req, homeUser);
-    user = homeUser;
+  let user: User | null = null;
+  if (hasHomeSsoCookie(req)) {
+    if (homeUser) {
+      if (!req.session.user || req.session.user.id !== homeUser.id) await regenerateWithUser(req, homeUser);
+      req.session.authenticationSource = 'home';
+      user = homeUser;
+    }
+  } else if (req.session.authenticationSource === 'direct') {
+    user = await currentUser(req.session.user);
   }
+  if (!user) delete req.session.user;
   if (user) req.session.user = user;
   return user;
 }

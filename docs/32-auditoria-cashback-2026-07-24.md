@@ -4,6 +4,12 @@
 
 > Nota de 2026-08-22: Miauby Interno e WhatsApp podem emitir Cashback rapido pelo endpoint interno tokenizado `/api/internal/miauby/quick-vouchers`. O fluxo reutiliza lock, faixa de codigo, validade e auditoria existentes; emissao anonima nao gera XP, identificada usa a regra atual e somente o Interno abre impressao local.
 
+## Manutencao de 2026-11-22: idempotencia do resgate normal
+
+Gastar/Usar CashBack gera um novo UUID em cada formulario. O resgate normal exige esse UUID e o reserva em `cashback_redemption_operations`, vinculado ao ator e ao hash de cliente, responsavel, valor e observacao. A reserva, compra, eventual resgate, itens FIFO, novo credito e fila de mensagem confirmam na mesma transacao. A chave primaria serializa clique duplo, retry e concorrencia antes do consumo de saldo. Repetir a mesma operacao devolve a compra e o recibo originais e pode recuperar a tentativa de XP pela mesma origem idempotente; dados diferentes com a mesma chave sao recusados. Compras iguais legitimas usam UUIDs diferentes. O fluxo de codigos rapidos preserva suas regras e locks existentes.
+
+Formularios antigos sem UUID no resgate normal pedem reabertura da secao antes de gravar; o servidor nao inventa uma chave no POST. O schema e criado de forma idempotente no startup, sem reescrever compras historicas. Os testes executaveis em `apps/cashback/test/automaticRedemptionIdempotency.test.mjs` cobrem concorrencia, recibo, operacoes distintas, chave invalida e rollback, com um banco transacional simulado; nao comprovam um deploy ou uma corrida em Postgres real.
+
 ## Escopo e criterio
 
 Auditoria tecnica do Cashback Node/Postgres, vouchers rapidos e da integracao Wimi Impressora. Foram revisados controles de sessao, CSRF, autorizacao, transacoes de compra/resgate, validade, codigos, fila de impressao, dependencias e o estado operacional do VPS.
