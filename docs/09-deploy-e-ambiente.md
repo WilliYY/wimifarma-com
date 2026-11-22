@@ -1,5 +1,27 @@
 # 09 - Deploy e ambiente
 
+## Preflight das credenciais em produção
+
+Antes de recriar serviços em produção, executar `set -o pipefail` e `docker compose config --format json | python3 scripts/check-production-compose.py` no VPS. O preflight valida a configuração efetiva do MySQL, do WordPress e da Comissão. Ele mostra somente os nomes das variáveis com problema. Não salvar a saída de `docker compose config` em log ou arquivo compartilhado, pois ela contém os segredos resolvidos.
+
+Provisionar `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, `COMISSAO_POSTGRES_PASSWORD`, `COMISSAO_SESSION_SECRET` e as oito `WP_*_KEY`/`WP_*_SALT` no `.env` privado do VPS. A troca de senha de banco já inicializado exige atualizar o usuário no banco e seus consumidores. Recriar apenas os serviços afetados depois de backup validado e usar uma janela compatível com a operação. Chaves do WordPress e secret da Comissão renovam sessões. A Home central usa seu próprio segredo SSO.
+
+## Gestão do VPS
+
+O filtro versionado em `ops/nftables/wimifarma-management-ports.nft`, carregado pelo serviço `ops/systemd/wimifarma-management-ports.service`, restringe a administração do Nginx Proxy Manager (`81/tcp`) e a interface HTTPS do Portainer (`9443/tcp`) ao acesso local. O filtro atua antes do redirecionamento de portas do Docker. Use o túnel SSH com encaminhamento local para `127.0.0.1:81` e `127.0.0.1:9443` no VPS.
+
+Validar as regras com `nft -c -f` antes de instalar, confirmar SSH e acesso pelos túneis e validar a Home por GET. Para reverter só esse filtro, parar `wimifarma-management-ports.service`. A unidade remove somente a tabela `inet wimifarma_management`. Confirmar o uso de Portainer Edge, Cockpit e RPC antes de alterar as demais portas.
+
+## Backup diário completo
+
+O serviço `wimifarma-database-backup.timer` agenda a cópia dos 14 PostgreSQL e do MySQL. O script gera manifesto e checksums no diretório protegido fora do checkout. A primeira execução em 22/11/2026 produziu 15 dumps com checksums verificados. Os 15 dumps foram restaurados em containers isolados, sem portas publicadas. O timer anterior da Cotação continua ativo.
+
+Pelo menos uma cópia precisa ficar fora do VPS. Uma cópia local criptografada e validada no computador foi criada em 22/11/2026. Ela corresponde à primeira execução. O timer do VPS não atualiza essa cópia por conta própria. Mantenha a chave de recuperação separada do arquivo criptografado.
+
+## Atualização do núcleo WordPress
+
+A atualização da versão 6.9.4 para 6.9.12 usa somente arquivos oficiais do núcleo, conferidos pelo serviço de checksums do WordPress. O banco mantém a mesma versão de schema. Preservar `wp-config.php`, plugins, temas e dados. Validar a Home independente e o formulário do WordPress após publicar. [Notas oficiais da atualização](https://wordpress.org/documentation/wordpress-version/version-6-9-12/).
+
 ## O que esta parte do sistema faz
 
 Documenta como o projeto roda no local e no VPS, incluindo Docker, proxy, DNS, portas e cuidados de deploy.

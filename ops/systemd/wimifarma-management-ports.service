@@ -1,0 +1,13 @@
+[Unit]
+Description=Restrict Wimifarma management ports to local access
+Before=docker.service
+After=nftables.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/sbin/nft -f /etc/wimifarma-management-ports.nft
+ExecStop=-/usr/sbin/nft delete table inet wimifarma_management
+
+[Install]
+WantedBy=multi-user.target

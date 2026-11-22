@@ -1,0 +1,73 @@
+name: Verify Wimifarma
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  modules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - cashback
+          - codigos
+          - comissao
+          - core-auth
+          - cotacao
+          - entrega
+          - financeiro
+          - gestao
+          - login-senha
+          - miauby
+          - miauw-agent
+          - miauw-whatsapp
+          - notas
+          - pedidos
+          - tarefa
+          - usuarios
+          - xp
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check
+      - run: npm run build --if-present
+      - run: npm test --if-present
+      - run: npm audit --omit=dev --audit-level=high
+      - if: matrix.app == 'cotacao'
+        run: |
+          npm run typecheck
+          npm run build:ts
+          npm run test:frontend
+          npm run test:runtime
+          npm run test:falteiro
+          npm run test:encomendas
+
+  repository:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - run: npm ci --prefix apps/notas --no-audit --no-fund
+      - run: npm ci --prefix apps/cashback --no-audit --no-fund
+      - run: node --test scripts/test-module-auth.cjs scripts/test-cashback-cotacao-auth.cjs scripts/test-calendar-retirement.mjs
+      - run: bash scripts/test-database-backup.sh

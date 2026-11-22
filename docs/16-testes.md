@@ -1,5 +1,11 @@
 # 16 - Testes
 
+## Verificações no GitHub Actions
+
+O workflow `.github/workflows/verify.yml` instala dependências pelo lockfile e roda os checks, builds e testes existentes dos 17 módulos em Node 22. A Cotação inclui as suítes de frontend, runtime, Falteiro e Encomendas. Um job separado valida autenticação, retirada do Calendário e o backup com bancos simulados. Avisos de dependências de produção elevados ou críticos falham no job do módulo.
+
+O workflow roda para pull requests e pushes em `main`, com acesso somente de leitura ao repositório. A execução no GitHub e os checks exigidos pela proteção da branch são configurações independentes.
+
 ## Preservacao da Cotacao - 2026-11-17
 
 - `npm run test:frontend --prefix apps/cotacao` inclui `public/editing-safety.test.js`: editor preservado em redraw, ACK de cor durante autosave, rascunho/retry/beforeunload, snapshot tardio, evento antigo por celula e lotes maiores/incompletos. `npm run test:runtime --prefix apps/cotacao` inclui `src/persistence-regression.test.js`: snapshot/delta coerentes, locks de eventos, limite de lote, confirmacao de unchanged/noop, rollback e falha auxiliar de lembrete.

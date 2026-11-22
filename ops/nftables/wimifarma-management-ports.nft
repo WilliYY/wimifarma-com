@@ -1,0 +1,6 @@
+table inet wimifarma_management {
+  chain local_admin_prerouting {
+    type filter hook prerouting priority -150; policy accept;
+    iifname != "lo" fib daddr type local tcp dport { 81, 9443 } counter drop
+  }
+}
