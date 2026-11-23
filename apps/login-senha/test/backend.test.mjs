@@ -43,7 +43,7 @@ function fixture(username = 'adm', role = 'admin', basePath = '/login-senha') {
   vm.runInContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText, context);
   const req = {
     path: basePath + '/', originalUrl: basePath + '/',
-    session: { user, csrfToken: 'fixture-csrf' }, body: { csrf_token: 'fixture-csrf', id: '12' },
+    session: { user, authenticationSource: 'direct', csrfToken: 'fixture-csrf' }, body: { csrf_token: 'fixture-csrf', id: '12' },
     get() { return ''; },
   };
   const res = {
