@@ -4,6 +4,12 @@ import pg from 'pg';
 import { CASH_CLOSING_NOTIFICATION_SOURCE, resolveAutomationRecipientsForSource } from './cash-closing-recipients.js';
 import { geminiGenerationConfig } from './gemini-generation-config.js';
 import { requestOpenAiResponse, requestOpenAiTranscription, PIX_RECEIPT_RESPONSE_FORMAT } from './openai-provider.js';
+import {
+  canAutomaticallyRegisterPixReceipt,
+  normalizePixReceiptPaymentStatus,
+  type PixReceiptPaymentStatus,
+} from './pix-receipt-auto.js';
+import { PIX_RECEIPT_IDENTITY_SCHEMA, reservePixReceiptIdentity } from './pix-receipt-identity.js';
 import { COMMERCE_SCHEMA, createCommerceBridge, postgresCommerceStore } from './commerce-bridge.js';
 import {
   formatCotacaoEncomendasDailyMessage,
@@ -110,6 +116,9 @@ type AudioMedia = {
 
 type PixReceiptExtraction = {
   isPixReceipt: boolean;
+  paymentStatus: PixReceiptPaymentStatus;
+  mediaFingerprint?: string;
+  autoEvidence: ReturnType<typeof pixReceiptAutomaticEvidence>;
   ocrProvider?: string;
   ocrModel?: string;
   ocrPass?: 'primary' | 'conservative' | 'fallback';
@@ -807,6 +816,7 @@ const AUDIO_MAX_BYTES = numberEnv('MIAUW_WHATSAPP_AUDIO_MAX_BYTES', 10000000, 10
 const AUDIO_TTS_MAX_CHARS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_MAX_CHARS', 700, 80, 1800);
 const AUDIO_TTS_CACHE_TTL_SECONDS = numberEnv('MIAUW_WHATSAPP_AUDIO_TTS_CACHE_TTL_SECONDS', 900, 0, 3600);
 const PIX_RECEIPT_IMAGE_ENABLED = boolEnv('MIAUW_WHATSAPP_PIX_RECEIPT_IMAGE_ENABLED', false);
+const PIX_RECEIPT_AUTO_WIMIFARMA_ENABLED = boolEnv('MIAUW_WHATSAPP_PIX_RECEIPT_AUTO_WIMIFARMA_ENABLED', false);
 const PIX_RECEIPT_CNPJ = onlyDigits(textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_CNPJ') || '07676534000181');
 const PIX_RECEIPT_OCR_MODEL = textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_MODEL') || GEMINI_LIGHT_MODEL;
 const PIX_RECEIPT_OCR_PROVIDER = (textEnv('MIAUW_WHATSAPP_PIX_RECEIPT_OCR_PROVIDER') || (REPLY_ENGINE === 'openai' ? 'openai' : 'auto')).toLowerCase();
@@ -2190,6 +2200,7 @@ function isMissingPrefixHelpOnly(row?: QueueRow): boolean {
 
 async function ensureSchema(): Promise<void> {
   await pgPool.query(COMMERCE_SCHEMA);
+  await pgPool.query(PIX_RECEIPT_IDENTITY_SCHEMA);
   await pgPool.query(`
     CREATE TABLE IF NOT EXISTS miauw_whatsapp_contacts (
       id UUID PRIMARY KEY,
@@ -4276,6 +4287,9 @@ async function processQueueRow(row: QueueRow): Promise<void> {
                       reason: 'pix_receipt_missing_fields',
                     };
                     effectiveBodyText = '';
+                  } else if (PIX_RECEIPT_AUTO_WIMIFARMA_ENABLED) {
+                    mediaFailureReply = await registerAutomaticPixReceipt(row, extraction, targetMatch);
+                    effectiveBodyText = '';
                   } else {
                     const pharmacyReceiptContext = isPharmacyUserContext(whatsappUserContext);
                     const pixReceiptCommand = pixReceiptCommandFromExtraction(extraction, targetMatch);
@@ -4344,10 +4358,15 @@ async function processQueueRow(row: QueueRow): Promise<void> {
             provider_status: error instanceof ProviderHttpError ? error.statusCode : 0,
           },
         });
+        const attemptedAutomaticWrite = isRecord(row.payload_summary) && Boolean(row.payload_summary.pix_receipt_auto_key);
         mediaFailureReply = {
-          text: spendGuardBlocked ? pixReceiptOcrBlockedReply('gemini_spend_guard_paused').text : PIX_CNPJ_MANUAL_HINT_REPLY,
+          text: attemptedAutomaticWrite
+            ? 'Não consegui confirmar o lançamento. Confira no Financeiro antes de reenviar.'
+            : spendGuardBlocked ? pixReceiptOcrBlockedReply('gemini_spend_guard_paused').text : PIX_CNPJ_MANUAL_HINT_REPLY,
           engine: 'blocked',
-          reason: spendGuardBlocked ? 'pix_receipt_ocr_spend_guard' : 'pix_receipt_ocr_failed',
+          reason: attemptedAutomaticWrite
+            ? 'pix_receipt_auto_write_unconfirmed'
+            : spendGuardBlocked ? 'pix_receipt_ocr_spend_guard' : 'pix_receipt_ocr_failed',
         };
         effectiveBodyText = '';
       }
@@ -4371,14 +4390,15 @@ async function processQueueRow(row: QueueRow): Promise<void> {
       };
       replyAsAudio = false;
     }
-    const reportDialogReply = await maybeHandleReportDialogReply(row, effectiveBodyText, senderModuleHashes, whatsappUserContext);
+    const automaticReceiptHandled = PIX_RECEIPT_AUTO_WIMIFARMA_ENABLED && incomingPixReceiptMedia && mediaFailureReply !== null;
+    const reportDialogReply = automaticReceiptHandled ? null : await maybeHandleReportDialogReply(row, effectiveBodyText, senderModuleHashes, whatsappUserContext);
     effectiveBodyText = row.body_text;
-    const encomendaProductReply = reportDialogReply ? null : await maybeHandleEncomendaProductReply(row, whatsappUserContext, senderModuleHashes);
-    const taskSelectionReply = reportDialogReply || encomendaProductReply ? null : await maybeHandleTaskSelectionReply(row);
-    const pedidoSelectionReply = reportDialogReply || encomendaProductReply || taskSelectionReply ? null : await maybeHandlePedidoSelectionReply(row, senderModuleHashes);
-    const taskTargetSelectionReply = reportDialogReply || encomendaProductReply || taskSelectionReply || pedidoSelectionReply ? null : await maybeHandleTaskTargetSelectionReply(row, whatsappUserContext);
-    const responsibleSelectionReply = reportDialogReply || encomendaProductReply || taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply ? null : await maybeHandleResponsibleSelectionReply(row, whatsappUserContext);
-    const confirmationReply = reportDialogReply || encomendaProductReply || taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply || responsibleSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
+    const encomendaProductReply = automaticReceiptHandled || reportDialogReply ? null : await maybeHandleEncomendaProductReply(row, whatsappUserContext, senderModuleHashes);
+    const taskSelectionReply = automaticReceiptHandled || reportDialogReply || encomendaProductReply ? null : await maybeHandleTaskSelectionReply(row);
+    const pedidoSelectionReply = automaticReceiptHandled || reportDialogReply || encomendaProductReply || taskSelectionReply ? null : await maybeHandlePedidoSelectionReply(row, senderModuleHashes);
+    const taskTargetSelectionReply = automaticReceiptHandled || reportDialogReply || encomendaProductReply || taskSelectionReply || pedidoSelectionReply ? null : await maybeHandleTaskTargetSelectionReply(row, whatsappUserContext);
+    const responsibleSelectionReply = automaticReceiptHandled || reportDialogReply || encomendaProductReply || taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply ? null : await maybeHandleResponsibleSelectionReply(row, whatsappUserContext);
+    const confirmationReply = automaticReceiptHandled ? null : reportDialogReply || encomendaProductReply || taskSelectionReply || pedidoSelectionReply || taskTargetSelectionReply || responsibleSelectionReply || await maybeHandleConfirmationReply(row, whatsappUserContext);
     const structuredConversation = confirmationReply || audioFailureReply || mediaFailureReply
       ? null
       : await maybeHandleStructuredConversation(row, effectiveBodyText, whatsappUserContext, senderModuleHashes);
@@ -4794,7 +4814,7 @@ async function enqueueResponsibleWimifarmaFallbackReply(
   );
 }
 
-function wimifarmaWhatsappContext(row: ResponsibleSelectionFallbackRow): WhatsappUserContext {
+function wimifarmaWhatsappContext(row: Pick<QueueRow, 'sender_phone_hash' | 'sender_phone_mask'>): WhatsappUserContext {
   return {
     id: null,
     username: 'wimifarma',
@@ -10187,6 +10207,8 @@ function pixReceiptExtractionSummary(
   return {
     pix_receipt_attempted: true,
     pix_receipt_detected: extraction.isPixReceipt,
+    pix_receipt_payment_status: extraction.paymentStatus,
+    pix_receipt_media_fingerprint: extraction.mediaFingerprint,
     pix_receipt_outcome: safeText(outcome, 60),
     pix_receipt_amount: extraction.amount > 0 ? extraction.amount : undefined,
     pix_receipt_paid_date: safeText(extraction.paidDate, 20) || undefined,
@@ -10282,7 +10304,8 @@ async function findRecentPixReceiptMediaDuplicate(row: QueueRow): Promise<PixRec
 async function findRecentPixReceiptIdentifierDuplicate(row: QueueRow, extraction: PixReceiptExtraction): Promise<PixReceiptDuplicateMatch | null> {
   const endToEndId = comparablePixReceiptIdentifier(extraction.endToEndId, 16);
   const transactionId = comparablePixReceiptIdentifier(extraction.transactionId, 16);
-  if (!endToEndId && !transactionId) return null;
+  const fingerprint = extraction.mediaFingerprint || '';
+  if (!endToEndId && !transactionId && !fingerprint) return null;
   const result = await pgPool.query<PixReceiptDuplicateMatch>(
     `SELECT id::text,
             created_at::text,
@@ -10292,6 +10315,8 @@ async function findRecentPixReceiptIdentifierDuplicate(row: QueueRow, extraction
               WHEN $2 <> ''
                 AND regexp_replace(lower(COALESCE(payload_summary->>'pix_receipt_end_to_end_id', '')), '[^a-z0-9]', '', 'g') = $2
               THEN 'end_to_end_id'
+              WHEN $4 <> '' AND payload_summary->>'pix_receipt_media_fingerprint' = $4
+              THEN 'media_content_hash'
               ELSE 'transaction_id'
             END AS match_reason
        FROM miauw_whatsapp_events
@@ -10302,10 +10327,12 @@ async function findRecentPixReceiptIdentifierDuplicate(row: QueueRow, extraction
           ($2 <> '' AND regexp_replace(lower(COALESCE(payload_summary->>'pix_receipt_end_to_end_id', '')), '[^a-z0-9]', '', 'g') = $2)
           OR
           ($3 <> '' AND regexp_replace(lower(COALESCE(payload_summary->>'pix_receipt_transaction_id', '')), '[^a-z0-9]', '', 'g') = $3)
+          OR
+          ($4 <> '' AND payload_summary->>'pix_receipt_media_fingerprint' = $4)
         )
       ORDER BY created_at DESC
       LIMIT 1`,
-    [row.id, endToEndId, transactionId],
+    [row.id, endToEndId, transactionId, fingerprint],
   );
   return result.rows[0] || null;
 }
@@ -10381,7 +10408,12 @@ async function extractPixReceiptFromQueuedMedia(row: QueueRow): Promise<PixRecei
     ? await fetchMetaReceiptMedia(row)
     : await fetchEvolutionReceiptMedia(row);
   await markPixReceiptOcrAttempt(row);
-  return requestPixReceiptExtraction(media, row.trace_id, pixReceiptExtractionHints(row));
+  const extraction = await requestPixReceiptExtraction(media, row.trace_id, pixReceiptExtractionHints(row));
+  if (PIX_RECEIPT_AUTO_WIMIFARMA_ENABLED) {
+    extraction.mediaFingerprint = crypto.createHash('sha256')
+      .update(HASH_SALT).update(':pix-media:').update(media.base64, 'base64').digest('hex');
+  }
+  return extraction;
 }
 
 function isRetriablePixReceiptError(error: unknown, row: QueueRow): boolean {
@@ -10556,6 +10588,20 @@ function sanitizePixReceiptDiagnostic(value: string): string {
     .replace(/\b\d{1,3}(?:\.\d{3})*,\d{2}\b/g, '[valor]');
 }
 
+function pixReceiptAutomaticEvidence(data: JsonRecord) {
+  const fields = isRecord(data.field_confidences) ? data.field_confidences : {};
+  return {
+    paidDate: confidenceFromReceiptValue(data.date_confidence ?? fields.paid_at) >= 0.55
+      ? dateFromReceiptValue(data.paid_at_date)
+      : '',
+    amountConfidence: numberFromReceiptValue(data.amount_brl) > 0
+      ? confidenceFromReceiptValue(data.amount_confidence ?? fields.amount)
+      : 0,
+    payerConfidence: confidenceFromReceiptValue(data.payer_confidence ?? fields.payer_name),
+    targetConfidence: confidenceFromReceiptValue(data.target_confidence ?? fields.destination),
+  };
+}
+
 function normalizePixReceiptExtraction(data: JsonRecord): PixReceiptExtraction {
   const rawText = stringFromKeys(data, ['raw_text', 'rawText', 'texto_bruto', 'ocr_text'], 2000);
   const amount = numberFromReceiptValue(data.amount_brl ?? data.amount ?? data.valor ?? data.value)
@@ -10569,6 +10615,8 @@ function normalizePixReceiptExtraction(data: JsonRecord): PixReceiptExtraction {
   const idConfidence = confidenceFromReceiptKeys(data, ['id_confidence', 'identifier_confidence', 'end_to_end_confidence', 'e2e_confidence', 'end_to_end_id', 'transaction_id'], confidence);
   return {
     isPixReceipt: boolFromKeys(data, ['is_pix_receipt', 'isPixReceipt', 'comprovante_pix']),
+    paymentStatus: normalizePixReceiptPaymentStatus(data.payment_status),
+    autoEvidence: pixReceiptAutomaticEvidence(data),
     destinationCnpj: onlyDigits(data.destination_cnpj_digits ?? data.destinationCnpj ?? data.cnpj_destino ?? data.destination_cnpj),
     destinationKey: onlyDigits(data.destination_key_digits ?? data.destinationKey ?? data.chave_pix_destino ?? data.destination_key ?? data.pix_key),
     destinationName: stringFromKeys(data, ['destination_name', 'destinationName', 'nome_destino', 'destino']),
@@ -10985,9 +11033,10 @@ function pixReceiptExtractionPrompt(
     'Bancos/layouts esperados incluem Banco do Brasil, Itau, Bradesco, Santander, Caixa, Nubank, PicPay e Mercado Pago.',
     'A data do Pix/pagamento tem prioridade sobre "comprovante emitido em", "documento", "autenticacao" ou rodape. Se so existir data de emissao e ela nao for claramente a data do Pix, deixe paid_at_date vazio ou baixa confianca.',
     'amount_brl e o valor efetivamente transferido no Pix. Ignore saldo, limite, tarifa, taxa, agencia, conta, CPF, CNPJ, codigo, documento, autenticacao, ID Pix/E2E e valores de outras secoes.',
+    'payment_status deve ser completed somente se o documento indicar pagamento efetivado; scheduled para agendado ou programado; pending para pendente, em processamento ou aguardando; failed para cancelado, estornado ou nao realizado; unknown se nao puder comprovar pelo documento. Nao confunda agendamento com comprovante final e nunca use a legenda como prova de pagamento.',
     'CNPJ pode vir com mascara ou so digitos. Chave Pix pode ser igual ao CNPJ. Se encontrar CNPJ de destino diferente do alvo, retorne o destino real encontrado.',
     'end_to_end_id, transaction_id e destination_key_digits sao opcionais: extraia quando existirem, mas nao coloque em missing se nao aparecerem.',
-    'Retorne JSON com este formato exato: {"is_pix_receipt":boolean,"destination_cnpj_digits":"somente digitos ou vazio","destination_key_digits":"somente digitos ou vazio","destination_name":"nome do recebedor/favorecido/destino","payer_name":"nome do pagador/origem","amount_brl":65.00,"paid_at_date":"YYYY-MM-DD ou vazio","paid_at_time":"HH:MM ou vazio","institution":"banco/instituicao principal","end_to_end_id":"ID Pix/E2E ou vazio","transaction_id":"documento/autenticacao/id transacao ou vazio","confidence":0.0,"amount_confidence":0.0,"payer_confidence":0.0,"target_confidence":0.0,"date_confidence":0.0,"id_confidence":0.0,"field_confidences":{"amount":0.0,"payer_name":0.0,"destination":0.0,"paid_at":0.0,"end_to_end_id":0.0},"missing":["campos obrigatorios inseguros"],"diagnostics":["motivo curto sanitizado"],"raw_text":"trechos curtos relevantes, maximo 900 caracteres"}.',
+    'Retorne JSON com este formato exato: {"is_pix_receipt":boolean,"payment_status":"completed|scheduled|pending|failed|unknown (um valor)","destination_cnpj_digits":"somente digitos ou vazio","destination_key_digits":"somente digitos ou vazio","destination_name":"nome do recebedor/favorecido/destino","payer_name":"nome do pagador/origem","amount_brl":65.00,"paid_at_date":"YYYY-MM-DD ou vazio","paid_at_time":"HH:MM ou vazio","institution":"banco/instituicao principal","end_to_end_id":"ID Pix/E2E ou vazio","transaction_id":"documento/autenticacao/id transacao ou vazio","confidence":0.0,"amount_confidence":0.0,"payer_confidence":0.0,"target_confidence":0.0,"date_confidence":0.0,"id_confidence":0.0,"field_confidences":{"amount":0.0,"payer_name":0.0,"destination":0.0,"paid_at":0.0,"end_to_end_id":0.0},"missing":["campos obrigatorios inseguros"],"diagnostics":["motivo curto sanitizado"],"raw_text":"trechos curtos relevantes, incluindo a situacao do pagamento, maximo 900 caracteres"}.',
     'Se nao for comprovante Pix, use is_pix_receipt false, confidence baixa, missing com o motivo e nao invente campos.',
   ].filter(Boolean).join(' ');
 }
@@ -11830,6 +11879,7 @@ function publicStatus(): JsonRecord {
     audio_tts_cache_ttl_seconds: AUDIO_TTS_CACHE_TTL_SECONDS,
     audio_tts_cache_entries: audioReplyCache.size,
     pix_receipt_image_enabled: PIX_RECEIPT_IMAGE_ENABLED,
+    pix_receipt_auto_wimifarma_enabled: PIX_RECEIPT_AUTO_WIMIFARMA_ENABLED,
     pix_receipt_media_enabled: PIX_RECEIPT_IMAGE_ENABLED,
     pix_receipt_cnpj_configured: PIX_RECEIPT_CNPJ !== '',
     pix_receipt_ocr_provider: pixReceiptOcrProvider,
@@ -16154,6 +16204,7 @@ async function createPixCnpjFromWhatsapp(
   userContext: WhatsappUserContext,
   idempotencyKey = `whatsapp:pix-cnpj:${traceId}`,
   resolvedOverride?: ResolvedPixCnpjResponsible,
+  automaticReceiptDate?: string,
 ): Promise<ReplyResult> {
   if (!INTERNAL_TOKEN) {
     await mergeWhatsappEventSummaryByTrace(traceId, {
@@ -16196,7 +16247,7 @@ async function createPixCnpjFromWhatsapp(
     pix_cnpj_manual_outcome: 'sending_to_financeiro',
     pix_cnpj_manual_amount_cents: command.amount_cents,
     pix_cnpj_manual_actor_user_id: resolved.actorUserId,
-    pix_cnpj_manual_origin: 'manual_text',
+    pix_cnpj_manual_origin: automaticReceiptDate ? 'media_ocr_auto' : 'manual_text',
   });
 
   const dateTimeLabel = saoPauloShortNowLabel();
@@ -16209,13 +16260,14 @@ async function createPixCnpjFromWhatsapp(
       idempotency_key: idempotencyKey,
       categoria: 'Pix CNPJ',
       amount_cents: command.amount_cents,
-      data: saoPauloTodayIso(),
+      data: automaticReceiptDate || saoPauloTodayIso(),
       responsavel: resolved.responsibleName,
       observacao: pixCnpjFinanceiroObservation(command, resolved, dateTimeLabel),
       actor_user_id: resolved.actorUserId,
       raw_text: safeOutboundText(command.raw, 500),
       contact_mask: senderMask,
     }),
+    ...(automaticReceiptDate ? { signal: AbortSignal.timeout(12000) } : {}),
   });
   const data = await response.json().catch(() => ({}));
   if (!isRecord(data)) throw new Error(`financeiro_pix_cnpj_http_${response.status}`);
@@ -16249,6 +16301,64 @@ async function createPixCnpjFromWhatsapp(
     };
   }
   throw new Error(safeText(data.message || data.error, 180) || `financeiro_pix_cnpj_http_${response.status}`);
+}
+
+async function registerAutomaticPixReceipt(
+  row: QueueRow,
+  extraction: PixReceiptExtraction,
+  targetMatch: PixReceiptTargetMatch,
+): Promise<ReplyResult> {
+  const blocked = async (outcome: string, message: string): Promise<ReplyResult> => {
+    await mergePixReceiptEventSummary(row.id, pixReceiptExtractionSummary(extraction, outcome, targetMatch));
+    return { text: message, engine: 'blocked', reason: `pix_receipt_${outcome}` };
+  };
+  if (!CONFIRMED_ACTIONS_ENABLED) {
+    return blocked('auto_writes_disabled', 'O lançamento automático está desativado. Não registrei o Pix.');
+  }
+  if (!(targetMatch.cnpjMatch || targetMatch.keyMatch) || !canAutomaticallyRegisterPixReceipt(extraction.paymentStatus, extraction.rawText)) {
+    return blocked('payment_unconfirmed', 'Não confirmei um Pix concluído para a Wimifarma. Envie o comprovante da transferência efetivada.');
+  }
+  const date = extraction.autoEvidence.paidDate;
+  const timestamp = Date.parse(`${date}T00:00:00Z`);
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== date || date > saoPauloTodayIso()) {
+    return blocked('paid_date_unconfirmed', 'Não consegui confirmar a data do pagamento. Não registrei o Pix.');
+  }
+  if (extraction.autoEvidence.amountConfidence < 0.55 || extraction.autoEvidence.payerConfidence < 0.45 || extraction.autoEvidence.targetConfidence < 0.7) {
+    return blocked('auto_fields_unconfirmed', 'Não consegui confirmar valor, pagador ou destino com segurança. Não registrei o Pix.');
+  }
+  const command = pixReceiptCommandFromExtraction(extraction, targetMatch);
+  const payload = isRecord(row.payload_summary) ? row.payload_summary : {};
+  const key = await reservePixReceiptIdentity(pgPool, {
+    endToEndId: extraction.endToEndId,
+    mediaFingerprint: extraction.mediaFingerprint || '',
+    amountCents: command.amount_cents,
+    paidDate: date,
+  });
+  if (!key || (payload.pix_receipt_auto_key && payload.pix_receipt_auto_key !== key)) {
+    return blocked('auto_identity_unconfirmed', 'Não consegui conciliar este comprovante. Confira no Financeiro antes de reenviar.');
+  }
+
+  const attempted = {
+    ...pixReceiptExtractionSummary(extraction, 'auto_registering', targetMatch),
+    pix_receipt_extracted: true,
+    pix_receipt_target_match: true,
+    pix_receipt_auto_key: key,
+  };
+  await mergePixReceiptEventSummary(row.id, attempted);
+  row.payload_summary = { ...payload, ...attempted };
+  const result = await createPixCnpjFromWhatsapp(command, row.trace_id, row.sender_phone_mask, wimifarmaWhatsappContext(row), key, {
+    responsibleName: 'Wimifarma',
+    replyName: 'Wimifarma',
+    actorUserId: null,
+    publicObservation: safeOutboundText(command.public_observation, 180),
+    auditObservation: 'Responsavel institucional Wimifarma: comprovante Pix concluido lido pelo WhatsApp.',
+  }, date);
+  const registered = result.reason === 'pix_cnpj_created' || result.reason === 'pix_cnpj_duplicate';
+  await mergePixReceiptEventSummary(row.id, {
+    pix_receipt_outcome: registered ? 'accepted' : 'auto_registration_blocked',
+    pix_receipt_auto_result: result.reason,
+  });
+  return result;
 }
 
 type ResolvedSangriaResponsible = {

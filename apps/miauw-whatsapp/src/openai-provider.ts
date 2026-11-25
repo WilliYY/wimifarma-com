@@ -9,6 +9,7 @@ const fieldProperties = {
 };
 const receiptProperties = {
   is_pix_receipt: { type: 'boolean' },
+  payment_status: { type: 'string', enum: ['completed', 'scheduled', 'pending', 'failed', 'unknown'] },
   destination_cnpj_digits: nullableString, destination_key_digits: nullableString,
   destination_name: nullableString, payer_name: nullableString,
   amount_brl: { type: ['number', 'null'] },

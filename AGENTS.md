@@ -46,6 +46,8 @@ Para tarefas de arquitetura, banco, APIs, autenticacao, permissoes, seguranca, d
 
 ## Contexto atual
 
+- Desde 2026-11-25, o Pix por foto/PDF no Miauby WhatsApp pode ser lancado imediatamente com responsavel institucional `Wimifarma`, com `MIAUW_WHATSAPP_PIX_RECEIPT_AUTO_WIMIFARMA_ENABLED=true`. Preserve allowlist, card Financeiro, CNPJ/chave de destino, Pix efetivado, data/valor confiaveis e idempotencia do Financeiro. Agendado, pendente e inconclusivo nao gravam. O Pix por texto e a sangria mantem seus fluxos. Consulte `docs/21-miauby-whatsapp.md`.
+
 - Desde 2026-11-22, o VPS usa backup diario completo dos 14 PostgreSQL e do MySQL. Os 15 dumps da primeira execucao passaram por restauracao em containers isolados. O timer legado da Cotacao continua ativo. Existe uma copia externa criptografada daquela execucao no PC; o timer do VPS nao a atualiza. Consulte `docs/09-deploy-e-ambiente.md`.
 - Desde 2026-11-22, as portas de administracao 81 e 9443 no VPS exigem acesso local pelo tunel SSH. As regras versionadas atuam antes do DNAT Docker. Nao ampliar o bloqueio a Edge, Cockpit ou RPC sem validar uso e acesso de recuperacao. O nucleo WordPress foi atualizado para 6.9.12 sem alterar schema, com a Home e a tela de login verificadas em producao.
 - A decisao de backend e evoluir Node LTS, TypeScript, Express e Postgres por cortes pequenos, sem mudar os contratos de producao. Use `docs/decisoes/2026-11-22-backend-wimifarma.md`. Antes de recriar servicos, valide as credenciais auditadas com o preflight de producao de `docs/09-deploy-e-ambiente.md`.

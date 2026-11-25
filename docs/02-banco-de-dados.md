@@ -1,5 +1,7 @@
 # 02 - Banco de dados
 
+No Postgres do Miauby WhatsApp, `miauw_whatsapp_pix_receipt_identity_aliases` associa o hash do arquivo e o ID Pix normalizado e protegido à mesma chave idempotente do Financeiro. A reserva usa bloqueios transacionais em ordem estável; ocorre antes de chamar o Financeiro e guarda valor e data para detectar leituras conflitantes. Não guarda o arquivo, o nome do pagador ou o texto bruto.
+
 ## O que esta parte do sistema faz
 
 O banco guarda dados do WordPress, dos modulos internos, do core de autenticacao, do Cashback, da Cotacao V2, da Gestao/Pedidos, da Tarefa, do XP, de Codigos, do Calendario historico, do Financeiro, do Bloco de notas/lembretes, de Usuarios e do cofre Login / Senha. A migracao trouxe dados do HostGator para MySQL local em Docker; core auth, Cashback, Cotacao V2, Gestao/Pedidos, Tarefa, XP, Codigos, Financeiro, Bloco de notas/lembretes, Usuarios, Login / Senha, Miauby sombra e Miauby WhatsApp usam Postgres para os modulos que precisam de evolucao mais forte.
